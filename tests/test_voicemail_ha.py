@@ -244,7 +244,7 @@ def mailbox_lab(lab, tmp_path):
     return lab
 
 
-@pytest.mark.parametrize("termination", ["remote", "limit", "removed"])
+@pytest.mark.parametrize("termination", ["remote", "limit", "removed", "remote_then_removed", "lookup_then_removed"])
 async def test_tts_then_voicemail_reuses_media_and_saves_received_pcm(mailbox_lab, monkeypatch, termination):
     lab = mailbox_lab
     stream = tts_fixture(monkeypatch, lab)
@@ -294,11 +294,55 @@ async def test_tts_then_voicemail_reuses_media_and_saves_received_pcm(mailbox_la
             detach()
         if termination == "remote":
             lab.phones[0].remote_hangup()
-        if termination == "removed":
+        if termination in {"removed", "remote_then_removed", "lookup_then_removed"}:
             from custom_components.voip_stack.mailbox import async_remove_mailbox
 
-            await async_remove_mailbox(lab.hass, "kitchen")
+            if termination == "remote_then_removed":
+                archive = await get_archive(lab.hass)
+                written, release = asyncio.Event(), asyncio.Event()
+                original_io = archive.run_io
+
+                async def blocked_finish(function, *args):
+                    result = await original_io(function, *args)
+                    if function.__name__ == "finish":
+                        written.set()
+                        await release.wait()
+                    return result
+
+                archive.run_io = blocked_finish
+                lab.phones[0].remote_hangup()
+                await asyncio.wait_for(written.wait(), 2)
+                assert not session.live
+                removal = asyncio.create_task(async_remove_mailbox(lab.hass, "kitchen"))
+                try:
+                    await asyncio.sleep(0)  # Start removal while finalization is held.
+                finally:
+                    release.set()
+                await asyncio.wait_for(removal, 2)
+            elif termination == "lookup_then_removed":
+                from custom_components.voip_stack import voicemail as voicemail_module
+
+                lookup, release = asyncio.Event(), asyncio.Event()
+                original_get = voicemail_module.get_archive
+
+                async def blocked_lookup(hass):
+                    lookup.set()
+                    await release.wait()
+                    return await original_get(hass)
+
+                monkeypatch.setattr(voicemail_module, "get_archive", blocked_lookup)
+                lab.phones[0].remote_hangup()
+                await asyncio.wait_for(lookup.wait(), 2)
+                removal = asyncio.create_task(async_remove_mailbox(lab.hass, "kitchen"))
+                try:
+                    await asyncio.sleep(0)
+                finally:
+                    release.set()
+                await asyncio.wait_for(removal, 2)
+            else:
+                await async_remove_mailbox(lab.hass, "kitchen")
             await lab.hass.async_block_till_done()
+            assert not (await session.terminate(session.termination_intent)).errors
             archive = await get_archive(lab.hass)
             assert not lab.calls.sessions and not saved_events
             assert not archive.list("kitchen")
@@ -1021,6 +1065,41 @@ async def test_removing_phone_without_voicemail_needs_no_media_directory(lab):
     assert lab.calls.component("media_archive") is None
     await async_remove_mailbox(lab.hass, "sip:bedroom0")
     assert lab.calls.component("media_archive") is None
+
+
+async def test_cancelled_removal_waits_for_message_deletion(mailbox_lab):
+    from custom_components.voip_stack.mailbox import async_remove_mailbox
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    path = archive.segment_path(message["id"], "kitchen")
+    written, release = asyncio.Event(), asyncio.Event()
+    original_io = archive.run_io
+
+    async def gated(function, *args):
+        result = await original_io(function, *args)
+        if function.__name__ == "remove":
+            written.set()
+            await release.wait()
+        return result
+
+    archive.run_io = gated
+    task = asyncio.create_task(async_remove_mailbox(lab.hass, "kitchen"))
+    try:
+        await asyncio.wait_for(written.wait(), 2)
+        task.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not path.exists() and not archive.list("kitchen")
+        assert not archive._active and archive._reserved == 0
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 async def test_permanent_esphome_device_removal_purges_mailbox(mailbox_lab):

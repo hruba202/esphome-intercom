@@ -1,6 +1,7 @@
 """Private mailbox configuration and the call-owned media archive boundary."""
 
 from pathlib import Path
+import asyncio
 import hashlib
 import hmac
 import secrets
@@ -185,18 +186,34 @@ def mailbox_snapshot(hass, endpoint_id):
 
 async def async_remove_mailbox(hass, endpoint_id):
     """Permanently remove one phone's mailbox after its applications release it."""
+    from .session_cleanup import async_wait_for_cleanup
+
+    await async_wait_for_cleanup(asyncio.create_task(
+        _remove_mailbox(hass, endpoint_id), name="voip-mailbox-remove",
+    ))
+
+
+async def _remove_mailbox(hass, endpoint_id):
     from .endpoint_session import TerminationIntent
+    from .voicemail import VoicemailCall
 
     runtime = require_runtime_data(hass)
     owner = runtime.sip
     if owner is None:
         return
+    barriers = []
     for session in tuple(owner.sessions.values()):
         application = owner.resource_for(session.call_id, "voicemail")
-        if application is not None and application.mailbox_id == endpoint_id and session.live:
+        if application is not None and application.mailbox_id == endpoint_id:
+            # A remote BYE may already own termination while its writer is
+            # finishing. Mark every affected deposit before awaiting any one.
+            if isinstance(application, VoicemailCall):
+                application.removed = True
             barrier = owner.request_termination(session.call_id, TerminationIntent("phone_removed"), generation=session.generation)
             if barrier is not None:
-                await barrier
+                barriers.append(barrier)
+    if barriers:
+        await asyncio.gather(*barriers)
     archive = owner.component("media_archive")
     if archive is not None:
         await archive.remove_mailbox(endpoint_id)

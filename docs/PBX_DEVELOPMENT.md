@@ -428,7 +428,7 @@ notification is sent by this qualification.
 The remaining PBX checkpoints above still need completion. Nothing in this
 branch has been published or deployed to the user's home HA.
 
-### Pending Automation forwarding
+### Pending automation forwarding
 
 Pending outgoing announcements now carry the selected trunk and failure policy
 through the existing route decision. Failed forwarding uses the common
@@ -457,3 +457,10 @@ own mailbox, selected and deleted that message, and the original media file was
 removed. With the lab's optional routing automations temporarily disabled, the
 configured two-second timeout produced an answer after 2.059 seconds. Their
 previous enabled states and the phone's previous settings were restored.
+
+Mailbox removal also waits for deposits whose remote party has already hung
+up. All affected applications are marked before awaiting their existing cleanup
+barriers, so a concurrent save cannot announce a new message for the removed
+phone. Cancelling the removal caller waits for the owned deletion to finish.
+The regressions hold both disk finalization and the final archive lookup open,
+then verify no message event, no WAV, no active writer and no cleanup errors.

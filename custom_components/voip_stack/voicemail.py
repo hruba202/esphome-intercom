@@ -105,6 +105,8 @@ class VoicemailCall(LocalCallApplication):
         entry = await self.writer.finish()
         if entry is not None and not self.removed:
             archive = await get_archive(self.hass)
+            if self.removed:
+                return
             duration = max(segment["start"] + segment["frames"] / segment["sample_rate"] for segment in entry["segments"])
             self.hass.bus.async_fire(EVENT_VOICEMAIL_RECEIVED, {
                 "mailbox_id": self.mailbox_id, "message_id": entry["id"], "caller": entry["caller"],
@@ -114,7 +116,7 @@ class VoicemailCall(LocalCallApplication):
             self.hass.bus.async_fire(EVENT_VOICEMAIL_CHANGED, {"endpoint_id": self.mailbox_id})
 
     async def close(self, _reason):
-        self.removed = _reason == "phone_removed"
+        self.removed = self.removed or _reason == "phone_removed"
         if self.close_task is None:
             self.close_task = asyncio.create_task(self._finish(), name=f"voip-voicemail-save-{self.session.call_id}")
         await async_wait_for_cleanup(self.close_task)
