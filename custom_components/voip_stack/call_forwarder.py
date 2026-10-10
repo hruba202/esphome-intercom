@@ -246,6 +246,7 @@ async def async_forward_existing_call(
             if decision.action in {
                 RouteAction.DIRECT, RouteAction.FORWARD, RouteAction.BRIDGE,
                 RouteAction.TRUNK, RouteAction.ASSIST, RouteAction.GROUP,
+                RouteAction.AUTOMATION,
             }:
                 from .local_softphone_runtime import PendingLocalSource
 
@@ -592,6 +593,34 @@ async def async_forward_existing_call(
                             role="destination",
                         )
                     raise
+                return
+
+            if decision.action is RouteAction.AUTOMATION:
+                from .automation_call import attach_automation_application, queue_automation_request
+
+                current = registry.get_session(call_id)
+                if current is None or decision.entry is None:
+                    raise RuntimeError("Automation route is no longer available")
+                claimed = registry.transition(
+                    call_id, owner="automation",
+                    state=CallState.IN_CALL.value if _source_dialog_is_answered(preanswered) else CallState.RINGING.value,
+                    callee=decision.entry.display_name, route_kind="automation",
+                    expected_owner=current.owner, expected_revision=current.revision,
+                )
+                if claimed is None:
+                    raise RuntimeError("Automation route ownership changed")
+                if application is None:
+                    next_application = attach_automation_application(
+                        hass, current, invite, decision.entry, local_ip, local_source=local_source,
+                    )
+                else:
+                    # Transfer the existing media/application resource rather
+                    # than binding a second receiver to its RTP port.
+                    application.cancel_deadline()
+                    application.contact = decision.entry
+                    application.controller = ""
+                    next_application = application
+                queue_automation_request(next_application)
                 return
 
             reservation = (preanswered or {}).get("rtp_reservation")
@@ -956,25 +985,7 @@ async def async_forward_existing_call(
                         raise RuntimeError("Assist route ownership changed")
                 assist_invite = invite
                 if local_source is not None:
-                    assist_invite = replace(
-                        invite, remote_rtp_port=dest_relay_port,
-                        remote_sdp=build_answer_directional(
-                            local_ip, local_ip, dest_relay_port,
-                            invite.send_format, invite.recv_format,
-                        ).encode(),
-                    )
-                    local_source.stage_media({
-                        "invite": replace(
-                            invite, remote_rtp_port=source_relay_port,
-                            remote_sdp=build_answer_directional(
-                                local_ip, local_ip, source_relay_port,
-                                invite.send_format, invite.recv_format,
-                            ).encode(),
-                        ),
-                        "local_rtp_port": dest_relay_port,
-                        "endpoint_id": local_source.call.caller_endpoint_id,
-                        "media_client_id": local_source.call.caller_media_owner_id,
-                    })
+                    assist_invite = local_source.stage_application_media(invite, source_relay_port, dest_relay_port)
                 await runtime.start_local_assist_bridge(
                     assist_invite,
                     reservation=reservation,

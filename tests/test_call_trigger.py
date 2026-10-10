@@ -23,7 +23,7 @@ def registry(monkeypatch):
     return registry
 
 
-@pytest.mark.parametrize("action_name", ["tts_say", "wait_unanswered"])
+@pytest.mark.parametrize("action_name", ["tts_say", "wait_unanswered", "hangup"])
 async def test_native_runner_binds_each_call_across_await(hass, registry, action_name):
     sessions = [
         registry.upsert(name, state="ringing", owner="automation")

@@ -186,6 +186,18 @@ def test_ring_group_answer_is_submitted_to_fork_controller(softphone_answer) -> 
     )
 
 
+@pytest.mark.parametrize("owner", ["automation", "assist", "voicemail"])
+def test_late_phone_answer_cannot_take_over_an_application(softphone_answer, owner):
+    command = _command()
+    command.registry.sessions[command.call_id] = SimpleNamespace(owner=owner)
+    softphone_answer.bind_service_call_controller = Mock()
+    with pytest.raises(_ServiceValidationError, match="handled by an application"):
+        asyncio.run(softphone_answer.async_answer_browser_call(
+            SimpleNamespace(), SimpleNamespace(data={}), command,
+        ))
+    softphone_answer.bind_service_call_controller.assert_not_called()
+
+
 def test_generic_forward_owner_rejects_direct_answer(softphone_answer) -> None:
     hass = SimpleNamespace(
         data={"voip_stack": {}},

@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ServiceValidationError
 
 from .call_projection import publish_phone_projection
 from .call_scope import endpoint_call_ids, pending_routes
@@ -51,6 +52,9 @@ async def async_answer_browser_call(
     call_id = command.call_id
     registry = command.registry
     if call_id and registry.resolve_session_id(call_id) in registry.sessions:
+        session = registry.sessions[registry.resolve_session_id(call_id)]
+        if getattr(session, "owner", "") in {"automation", "assist", "voicemail"}:
+            raise ServiceValidationError("The call is already handled by an application")
         bind_service_call_controller(
             registry,
             call_id,

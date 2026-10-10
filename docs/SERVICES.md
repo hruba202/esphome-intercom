@@ -527,6 +527,38 @@ that execution ends its call. A successful forward hands the call to the new
 destination instead. Observational automations, such as notifications, do not
 end calls merely because their action sequence finished.
 
+An unanswered Home Assistant phone call can also be taken over by its native
+`call_unanswered` automation. For an incoming SIP caller or a browser calling
+another HA phone, `tts_say` answers the original caller and releases the ringing
+phone. Subsequent actions use that same call. A notification alone leaves the
+phone ringing and does not acquire control. The caller can still hang up.
+
+For example, this branch supports the following rule for an HA phone named
+`Kitchen`. The explicit duration works even without a timeout configured on
+the phone:
+
+```yaml
+alias: Kitchen unanswered greeting
+triggers:
+  - trigger: voip_stack.call_unanswered
+    options:
+      destination: Kitchen
+      for:
+        seconds: 30
+actions:
+  - action: voip_stack.tts_say
+    data:
+      tts_entity_id: tts.piper
+      message: "Nobody is available in the kitchen. Please try again later."
+  - action: voip_stack.hangup
+mode: parallel
+```
+
+Use your own TTS entity. A phone answer that wins the race invalidates the
+unanswered trigger's control, so the automation cannot interrupt that answer.
+This development path does not yet cover taking over every outgoing SIP call
+from a browser or an Automation caller.
+
 ### `voip_stack.wait_unanswered`
 
 **Wait without answering** keeps an unanswered Automation contact call in its

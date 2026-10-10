@@ -101,8 +101,21 @@ seconds and completed BYE. Maintained YAML local 30-second guards are now
 commented examples, not enabled defaults. Group-specific routing limits still
 need qualification separately.
 
-Remaining before completing phone policies: native TTS takeover of a phone call,
-forwarding to applications and outgoing-call retargeting across every source type.
+Native TTS takeover now attaches an Automation application to an unanswered
+incoming SIP or local browser call. It retains the original session and releases
+the previous destination. A native execution supplies the controller and call
+generation, including for an implicit `hangup` after speaking. A naked Call-ID
+does not grant application ownership. Late answers from the former destination
+are rejected once an application owns the call.
+
+Forwarding to another Automation contact reuses the current application media
+and RTP socket, but releases the old execution's control. Browser callers retain
+their card's hangup command. Announcement synthesis waits for that browser's
+current media connection; hanging up during this wait releases the application
+without starting synthesis.
+
+Remaining before completing phone policies: outgoing-call retargeting across
+every source type and integration of later mailbox destinations.
 Forwarded endpoint identities now stay in the existing session metadata, including
 local-browser and group origins, so later trunk legs retain their access limits.
 Do not promote this branch or claim the full six-phase plan is implemented.
@@ -119,6 +132,20 @@ The second increment's protocol/frontend/documentation run passed 238 tests and
 Later focused runs cover the startup changes and forwarding provenance. The
 long-running witness and failure/recovery evidence are under the ignored
 `test_captures/ha-pbx/` directory.
+
+The third increment passed 356 HA tests before the final implicit-hangup and
+browser-cancellation witnesses. The resulting focused run passed 55 tests,
+including real UDP announcement samples, browser-source handoff and application
+transfer without a second receiver. These use a simulated browser RTP adapter,
+not a physical browser or phone qualification. The implicit-hangup witness first
+reproduced a missing generation binding; the fix extends the existing native
+action binder instead of weakening the application's ownership checks.
+
+The final application/routing subset passed 92 tests (one slow witness excluded).
+It checks that a phone answered, terminated, reassigned or replaced while the
+advertised address is being resolved cannot be claimed by the old execution.
+A takeover also drops the former destination from command scope while preserving
+the caller. The software suite passed 1931 tests and 162 subtests (4 deselected).
 
 Executed so far:
 

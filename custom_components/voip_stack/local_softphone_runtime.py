@@ -458,6 +458,30 @@ class PendingLocalSource:
         self.media.clear()
         self.media.update(descriptor)
 
+    def stage_application_media(self, invite, source_port: int, browser_port: int):
+        """Connect the existing browser RTP adapter to a local application."""
+        from dataclasses import replace
+        from .core.sdp import build_answer_directional
+
+        local_ip = invite.source_host
+        self.stage_media({
+            "invite": replace(
+                invite, remote_rtp_port=source_port,
+                remote_sdp=build_answer_directional(
+                    local_ip, local_ip, source_port, invite.send_format, invite.recv_format,
+                ).encode(),
+            ),
+            "local_rtp_port": browser_port,
+            "endpoint_id": self.call.caller_endpoint_id,
+            "media_client_id": self.call.caller_media_owner_id,
+        })
+        return replace(
+            invite, remote_rtp_port=browser_port,
+            remote_sdp=build_answer_directional(
+                local_ip, local_ip, browser_port, invite.send_format, invite.recv_format,
+            ).encode(),
+        )
+
     def connect_browser(self, endpoint_id: str, media_owner_id: str, *, send_video: bool) -> None:
         """Adopt a selected browser winner without replacing the caller media."""
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):

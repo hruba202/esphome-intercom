@@ -198,16 +198,19 @@ async def _handle_sip_decline_service(call: ServiceCall) -> None:
 
 async def _handle_sip_hangup_service(call: ServiceCall) -> None:
     from .automation_call import automation_call
+    from .automation_context import current_execution
     from .endpoint_lifecycle import call_registry
     from .endpoint_session import TerminationIntent
     from .session_cleanup import async_wait_for_cleanup
 
     call_id = str(call.data.get("call_id") or "")
     application = automation_call(call.hass, call_id) if call_id else None
-    if application is not None and application.outgoing:
+    if application is not None and (
+        application.outgoing or current_execution.get() is not None or not call.data.get("device_id")
+    ):
         application.claim(call)
         barrier = call_registry(call.hass).request_termination(
-            call_id, TerminationIntent.bye(str(call.data.get("reason") or "local_hangup")),
+            call_id, TerminationIntent(str(call.data.get("reason") or "local_hangup")),
             generation=application.session.generation,
         )
         if barrier is not None:

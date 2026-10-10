@@ -104,10 +104,34 @@ def test_automation_contact_is_local_even_with_external_trunk(target):
     )
 
 
+@pytest.mark.parametrize("phone_takeover", [False, True])
 async def test_announcement_answers_once_and_sends_complete_pcm(
-    application, monkeypatch
+    application, monkeypatch, phone_takeover
 ):
     app, registry, peer, released = application
+    binding = None
+    if phone_takeover:
+        from custom_components.voip_stack import automation_context, peer_snapshot, websocket_api
+        from custom_components.voip_stack.call_scope import call_belongs_to_endpoint
+        registry.release_resource(app.session.call_id, f"automation:{app.session.call_id}", value=app)
+        registry.transition(app.session.call_id, owner="ha_softphone", state="ringing")
+        app.session.metadata.update(endpoint_id="old-phone", source_endpoint_id="sip-caller",
+                                    dest_endpoint_id="old-phone", target_endpoint_id="old-phone")
+        fields = registry.event_fields(app.session.call_id, "ringing")
+        execution = automation_context.CallExecution(app.session.token, {
+            **fields, "automation_control": "routable",
+        }, ringing_guard=(fields["sequence"], app.session.callee))
+        binding = module.current_execution.set(execution)
+        monkeypatch.setattr(peer_snapshot, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
+        monkeypatch.setattr(websocket_api, "_release_ha_softphone_claim", Mock())
+        original_token = app.session.token
+        app, _ = await module.resolve_application_action(service(app))
+        assert app.session.token == original_token
+        assert app.session.owner == "automation"
+        assert app.controller == execution.controller
+        assert execution.ringing_guard is None
+        assert not call_belongs_to_endpoint(registry, app.session.call_id, "old-phone")
+        assert call_belongs_to_endpoint(registry, app.session.call_id, "sip-caller")
     pcm = b"\x80\x01" * 960
 
     class Stream:
@@ -144,8 +168,100 @@ async def test_announcement_answers_once_and_sends_complete_pcm(
         await registry.request_termination(
             app.session.call_id, TerminationIntent("test_done")
         )
+        if binding is not None:
+            module.current_execution.reset(binding)
     assert len(released) == 1
     assert app.media.transport is None
+
+
+async def test_call_id_alone_cannot_take_over_a_ringing_phone(application):
+    app, registry, _peer, _released = application
+    registry.release_resource(app.session.call_id, f"automation:{app.session.call_id}", value=app)
+    registry.transition(app.session.call_id, owner="ha_softphone", state="ringing")
+    try:
+        with pytest.raises(ServiceValidationError, match="no call handled"):
+            await module.resolve_application_action(service(app))
+        assert app.session.owner == "ha_softphone"
+        assert registry.resource_for(app.session.call_id, "automation") is None
+    finally:
+        await registry.request_termination(app.session.call_id, TerminationIntent("test_done"))
+
+
+@pytest.mark.parametrize("answered", [False, True])
+async def test_application_hangup_uses_its_controller_without_a_browser_phone(application, monkeypatch, answered):
+    from custom_components import voip_stack
+    from custom_components.voip_stack import endpoint_lifecycle
+
+    app, registry, _peer, _released = application
+    monkeypatch.setattr(endpoint_lifecycle, "call_registry", lambda _h: registry)
+    controller = Context()
+    app.claim(service(app, context=controller))
+    if answered:
+        await app.answer()
+    call = ServiceCall(app.hass, "voip_stack", "hangup", {
+        "call_id": app.session.call_id, "expected_generation": app.session.generation,
+    }, context=controller)
+    await voip_stack._handle_sip_hangup_service(call)
+    assert not app.session.live
+    assert app.session.termination_intent.reason == "local_hangup"
+
+
+@pytest.mark.parametrize("changed", ["answered", "ended", "owner", "generation"])
+async def test_phone_takeover_rechecks_call_after_address_resolution(application, monkeypatch, changed):
+    from custom_components.voip_stack import automation_context, peer_snapshot
+    from custom_components.voip_stack.endpoint_session import CallToken
+
+    app, registry, _peer, _released = application
+    registry.release_resource(app.session.call_id, f"automation:{app.session.call_id}", value=app)
+    registry.transition(app.session.call_id, owner="ha_softphone", state="ringing")
+    token = app.session.token
+    if changed == "generation":
+        token = CallToken(token.call_id, token.generation + 1)
+    binding = module.current_execution.set(automation_context.CallExecution(token, {"automation_control": "routable"}))
+
+    async def resolve_host(_hass):
+        if changed == "answered":
+            registry.transition(app.session.call_id, state="in_call")
+        elif changed == "owner":
+            registry.transition(app.session.call_id, owner="router")
+        elif changed == "ended":
+            await registry.request_termination(app.session.call_id, TerminationIntent("remote_hangup"))
+        return "127.0.0.1"
+
+    monkeypatch.setattr(peer_snapshot, "async_advertise_host", resolve_host)
+    try:
+        with pytest.raises(ServiceValidationError, match="no longer an unanswered"):
+            await module.resolve_application_action(service(app))
+        assert registry.resource_for(app.session.call_id, "automation") is None
+        assert app.session.owner != "automation"
+    finally:
+        module.current_execution.reset(binding)
+        barrier = registry.request_termination(app.session.call_id, TerminationIntent("test_done"))
+        if barrier is not None:
+            await barrier
+
+
+async def test_native_automation_can_hangup_implicitly_after_speaking(application, monkeypatch):
+    from custom_components import voip_stack
+    from custom_components.voip_stack import automation_context, endpoint_lifecycle
+
+    app, registry, _peer, _released = application
+    monkeypatch.setattr(endpoint_lifecycle, "call_registry", lambda _h: registry)
+    monkeypatch.setattr(automation_context, "call_registry", lambda _h: registry)
+    execution = automation_context.CallExecution(app.session.token, {"automation_control": "routable"})
+    binding = module.current_execution.set(execution)
+    try:
+        app.claim(service(app))
+        await app.answer()
+        call = automation_context.bind_call_action(ServiceCall(app.hass, "voip_stack", "hangup", {}))
+        await voip_stack._handle_sip_hangup_service(call)
+        assert not app.session.live
+        assert app.media.transport is None
+    finally:
+        module.current_execution.reset(binding)
+        barrier = registry.request_termination(app.session.call_id, TerminationIntent("test_done"))
+        if barrier is not None:
+            await barrier
 
 
 async def test_browser_announcement_waits_for_current_connection(application, monkeypatch):
@@ -331,6 +447,75 @@ async def test_confirmed_call_handoff_changes_owner_without_second_answer(applic
         await registry.request_termination(
             app.session.call_id, TerminationIntent("test_done")
         )
+    assert len(released) == 1
+
+
+async def test_forward_to_another_automation_reuses_media_and_releases_old_controller(application, monkeypatch):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.voip_stack import call_forwarder
+    from custom_components.voip_stack.endpoint_registry import EndpointRegistry
+    from custom_components.voip_stack.endpoint_routing import EndpointRouteResolver
+    from custom_components.voip_stack.runtime_data import VoipStackRuntime
+
+    app, registry, peer, released = application
+    entry = MockConfigEntry(domain="voip_stack", data={})
+    entry.add_to_hass(app.hass)
+    entry.runtime_data = VoipStackRuntime(
+        transport_config={}, assist_config={}, trunk_config={},
+        endpoints=EndpointRegistry(), phones=None, sip=registry,
+    )
+    next_contact = RosterEntry("Next", extension="777", metadata={"virtual_endpoint": "automation"})
+    requested = asyncio.Event()
+    monkeypatch.setattr(module, "publish_bridge_projection", lambda *_args, **kwargs: (
+        requested.set() if kwargs.get("event_type") == "automation_requested" else None
+    ))
+    monkeypatch.setattr(call_forwarder, "_call_registry", lambda _h: registry)
+    monkeypatch.setattr(call_forwarder, "_async_build_peer_snapshot", AsyncMock(return_value=[]))
+    monkeypatch.setattr(call_forwarder, "_roster_from_peers", lambda *_args: [next_contact])
+    monkeypatch.setattr(call_forwarder, "publish_bridge_projection", Mock())
+    forbidden = Mock(side_effect=AssertionError("A local application must not dial a new SIP leg"))
+    runtime = call_forwarder.ForwardRuntime(
+        hass=app.hass, config={"sip_port": 5060}, local_ip="127.0.0.1",
+        route_resolver=EndpointRouteResolver(app.hass, "127.0.0.1", 5060),
+        browser_leg_for_member=forbidden, defer_invite_to_softphone=forbidden,
+        prepare_outbound_leg=forbidden, publish_pending_ringing=forbidden,
+        start_local_assist_bridge=forbidden,
+    )
+    try:
+        await app.answer()
+        original_media, original_transport = app.media, app.media.transport
+        app.controller = "previous-execution"
+        await call_forwarder.async_forward_existing_call(
+            runtime, call_id=app.session.call_id, destination="Next",
+        )
+        task = registry.task_for(app.session.call_id, "forward")
+        if task is not None:
+            await task
+        # Audio workers intentionally stay alive for the conversation. Wait
+        # for this handoff's event rather than every task in Home Assistant.
+        await asyncio.wait_for(requested.wait(), 2)
+        assert registry.resource_for(app.session.call_id, "automation") is app
+        assert app.session.owner == "automation"
+        assert app.session.callee == "Next"
+        assert app.controller == ""
+        assert app.media is original_media
+        assert app.media.transport is original_transport
+        assert module.send_final_response.call_count == 1
+
+        pcm = b"\x11\x00" * 320
+
+        async def samples():
+            yield pcm
+
+        await app.media.play_pcm_stream(samples())
+        async with asyncio.timeout(2):
+            while True:
+                packet = rtp.parse_packet(await app.hass.loop.sock_recv(peer, 2048))
+                if any(packet.payload):
+                    assert packet.payload == b"\x00\x11" * 320
+                    break
+    finally:
+        await registry.request_termination(app.session.call_id, TerminationIntent("test_done"))
     assert len(released) == 1
 
 

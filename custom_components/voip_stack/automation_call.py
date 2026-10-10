@@ -24,6 +24,7 @@ from .core.sdp import build_answer_directional, first_offered_dtmf_format
 from .sip_runtime import send_final_response
 
 if TYPE_CHECKING:
+    from .local_softphone_runtime import PendingLocalSource
     from .roster import RosterEntry
     from .sip_listener import SipInvite
 
@@ -45,6 +46,7 @@ class AutomationCall:
     deadline: asyncio.TimerHandle | None = None
     operation: asyncio.Task | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    local_source: PendingLocalSource | None = None
 
     def require_current(self, generation: int | None = None) -> None:
         registry = call_registry(self.hass)
@@ -131,6 +133,9 @@ class AutomationCall:
             or take_delayed_offer_ports(registry, self.session.call_id)
             or RtpPortReservation.allocate(self.hass)
         )
+        if self.local_source is not None:
+            self.invite = self.local_source.stage_application_media(self.invite, *reservation.ports)
+            registry.set_pending_invite(self.session.call_id, self.invite)
 
         async def complete(reason: str) -> None:
             registry.request_termination(
@@ -186,7 +191,12 @@ class AutomationCall:
                 caller=self.invite.caller,
                 callee=self.contact.display_name,
                 route_kind="automation",
-                response_already_sent=self.answered,
+                response_already_sent=self.answered or self.local_source is not None,
+                **({
+                    "endpoint_id": self.local_source.call.caller_endpoint_id,
+                    "source_endpoint_id": self.local_source.call.caller_endpoint_id,
+                    "media_client_id": self.local_source.call.caller_media_owner_id,
+                } if self.local_source is not None else {}),
             )
             if not result.committed:
                 raise ServiceValidationError(
@@ -215,6 +225,8 @@ class AutomationCall:
                 )
             # The shared preanswered resource now owns the reservation through handoff.
             media.release_reservation_on_stop = False
+            if self.local_source is not None:
+                self.local_source.connected(self.contact.display_name, "automation")
             publish_bridge_projection(
                 self.hass,
                 self.session,
@@ -414,6 +426,127 @@ def automation_call(hass, call_id: str) -> AutomationCall | None:
     return call_registry(hass).resource_for(call_id, "automation")
 
 
+def attach_automation_application(hass, session, invite, contact, local_ip, *, controller="", local_source=None) -> AutomationCall:
+    """Attach application resources after the existing session grants ownership."""
+    session.ensure_live()
+    if session.owner != "automation":
+        raise RuntimeError("Automation ownership has not been acquired")
+    registry = call_registry(hass)
+    preanswered = registry.resource_for(session.call_id, "preanswered")
+    application = AutomationCall(
+        hass, session, invite, contact, local_ip, controller=controller,
+        answered=bool((preanswered or {}).get("final_response_sent")),
+        playback=registry.resource_for(session.call_id, "browser_playback"),
+        local_source=local_source,
+    )
+    registry.own_resource(
+        session.call_id, f"automation:{session.call_id}", application, application.close,
+        stage=CleanupStage.MEDIA, generation=session.generation,
+    )
+    if local_source is not None:
+        if application.playback is None:
+            application.playback = BrowserPlayback()
+            registry.own_resource(
+                session.call_id, f"browser_playback:{session.call_id}",
+                application.playback, application.playback.close,
+                stage=CleanupStage.MEDIA, generation=session.generation,
+            )
+        if not local_source.paused:
+            local_source.pause()
+        local_source.commit(keep_media=True)
+    else:
+        # The old destination no longer participates. Preserve the caller's
+        # scope, not the phone that stopped ringing when the application won.
+        session.update_metadata(
+            endpoint_id=str(session.metadata.get("source_endpoint_id") or ""),
+            dest_endpoint_id="", target_endpoint_id="", ring_endpoint_ids=(),
+        )
+    return application
+
+
+def queue_automation_request(application: AutomationCall) -> None:
+    """Publish the accepted application target, suppressing superseded routes."""
+    session = application.session
+    registry = call_registry(application.hass)
+    revision, contact = session.revision, application.contact
+
+    def publish() -> None:
+        if (not session.live or application.contact is not contact
+                or not registry.is_current(session.call_id, revision=revision, owner="automation")):
+            return
+        application.arm_deadline()
+        publish_bridge_projection(
+            application.hass, session, direction="incoming", event_type="automation_requested",
+            route_kind="automation", generation=session.generation,
+            called_extension=contact.extension, destination=contact.display_name,
+        )
+
+    application.hass.loop.call_soon(publish)
+
+
+async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> AutomationCall:
+    """Let a native call execution explicitly claim its unanswered SIP caller.
+
+    An arbitrary call_id is insufficient. The execution must still refer to
+    this generation and the phone must not have answered in the meantime.
+    """
+    from .peer_snapshot import async_advertise_host
+    from .roster import RosterEntry
+    from .websocket_api import _release_ha_softphone_claim
+
+    execution = current_execution.get()
+    registry = call_registry(call.hass)
+    if (execution is None or not execution.active
+            or execution.token.call_id != registry.resolve_session_id(call_id)
+            or execution.snapshot.get("automation_control") == "observed"):
+        raise ServiceValidationError("The selected phone has no call handled by an automation")
+    local_ip = await async_advertise_host(call.hass)
+    session = registry.get_session(call_id, generation=execution.token.generation)
+    invite = registry.artifact_for(call_id, "pending_invite")
+    if (not local_ip or session is None or not session.live
+            or session.owner not in {"ha_softphone", "local_bridge"} or session.state != CallState.RINGING.value):
+        raise ServiceValidationError("The triggering call is no longer an unanswered Home Assistant phone call")
+    local_source = None
+    if session.owner == "local_bridge":
+        from .local_softphone_runtime import PendingLocalSource, local_softphone_bridge
+        from .runtime_data import require_runtime_data
+
+        bridge = local_softphone_bridge(call.hass)
+        snapshot = bridge.get_call(call_id) if bridge is not None else None
+        if snapshot is not None:
+            local_source = PendingLocalSource(call.hass, snapshot, local_ip, int(
+                require_runtime_data(call.hass).transport_config.get("sip_port", 5060)
+            ))
+            invite = local_source.invite
+    if invite is None:
+        raise ServiceValidationError("The triggering caller has no media source available")
+    revision = session.revision
+    endpoint_id = str(session.metadata.get("endpoint_id") or "")
+    contact = RosterEntry(session.callee or invite.target, metadata={"virtual_endpoint": "automation"})
+    claimed = registry.transition(
+        call_id, owner="automation", state=CallState.RINGING.value, route_kind="automation",
+        expected_owner=session.owner, expected_revision=revision,
+        expected_generation=execution.token.generation,
+    )
+    if claimed is None:
+        raise ServiceValidationError("The call changed while automation control was being acquired")
+    registry.set_pending_invite(call_id, invite)
+    application = attach_automation_application(
+        call.hass, session, invite, contact, local_ip, controller=execution.controller,
+        local_source=local_source,
+    )
+    if endpoint_id and local_source is None:
+        if not _release_ha_softphone_claim(call.hass, call_id, endpoint_id=endpoint_id):
+            registry.release_endpoint_claim(call_id, endpoint_id)
+    # The same execution may now speak, wait for DTMF and hand off the call.
+    # It is no longer constrained to the old ringing snapshot.
+    execution.ringing_guard = None
+    publish_bridge_projection(
+        call.hass, session, direction="incoming", event_type="forwarding", route_kind="automation",
+    )
+    return application
+
+
 async def resolve_application_action(call: ServiceCall):
     """Use the trigger's call or an explicitly selected phone's active call."""
     call_id = str(call.data.get("call_id") or "")
@@ -435,7 +568,7 @@ async def resolve_application_action(call: ServiceCall):
     else:
         application = automation_call(call.hass, call_id)
     if application is None:
-        raise ServiceValidationError("The selected phone has no call handled by an automation")
+        application = await take_over_ringing_phone(call, call_id)
     return application, call
 
 
@@ -502,38 +635,6 @@ async def route_automation_call(runtime, invite, decision, registry, source_endp
         route_kind="automation",
     )
     registry.set_pending_invite(invite.call_id, invite)
-    application = AutomationCall(
-        runtime.hass,
-        session,
-        invite,
-        decision.entry,
-        runtime.local_ip,
-        answered=answered,
-        playback=registry.resource_for(invite.call_id, "browser_playback"),
-    )
-    registry.own_resource(
-        invite.call_id,
-        f"automation:{invite.call_id}",
-        application,
-        application.close,
-        stage=CleanupStage.MEDIA,
-        generation=session.generation,
-    )
-
-    def publish() -> None:
-        if not registry.is_generation_current(session.call_id, session.generation):
-            return
-        application.arm_deadline()
-        publish_bridge_projection(
-            runtime.hass,
-            session,
-            direction="incoming",
-            event_type="automation_requested",
-            route_kind="automation",
-            generation=session.generation,
-            called_extension=decision.entry.extension,
-            destination=decision.entry.display_name,
-        )
-
-    runtime.hass.loop.call_soon(publish)
+    application = attach_automation_application(runtime.hass, session, invite, decision.entry, runtime.local_ip)
+    queue_automation_request(application)
     return SipInviteResult(180, "Ringing", to_tag="", defer_final=True)

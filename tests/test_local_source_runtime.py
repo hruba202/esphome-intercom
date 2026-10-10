@@ -1,6 +1,10 @@
 """Browser source handoff uses a real, supported RTP contract."""
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+import asyncio
+import socket
+import struct
 
 import pytest
 
@@ -35,3 +39,130 @@ def test_pending_browser_source_offers_mono_rtp_without_lowering_sample_rate(mon
         assert format.audio_format.channels == 1
         assert format.audio_format.nominal_frame_bytes <= 1200
     assert media == {"local_bridge": True}
+
+
+@pytest.mark.parametrize("hangup_before_audio_ready", [False, True])
+async def test_native_automation_takes_browser_caller_without_a_second_sip_call(
+    hass, monkeypatch, socket_enabled, hangup_before_audio_ready,
+):
+    from homeassistant.core import Context, ServiceCall
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.voip_stack import automation_call, peer_snapshot
+    from custom_components.voip_stack.automation_context import CallExecution, current_execution
+    from custom_components.voip_stack.core import rtp
+    from custom_components.voip_stack.endpoint_registry import EndpointRegistry
+    from custom_components.voip_stack.endpoint_session import TerminationIntent
+    from custom_components.voip_stack.media_ports import RtpPortReservation
+    from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
+    from custom_components.voip_stack.phone_control import CallControlRequest, PhoneAdapterRegistry, PhoneOperation
+    from custom_components.voip_stack.runtime_data import VoipStackRuntime
+
+    endpoints = EndpointRegistry()
+    for name in ("caller", "callee"):
+        endpoints.register(PhoneEndpoint(
+            endpoint_id=name, name=name, kind=EndpointKind.BROWSER,
+            device_id=f"device-{name}", availability="available",
+            capabilities=frozenset({"audio", "dtmf"}),
+        ))
+    calls = SipEndpointRuntime(allow_dark_sessions=True)
+    calls.activate()
+    entry = MockConfigEntry(domain="voip_stack", data={})
+    entry.add_to_hass(hass)
+    entry.runtime_data = VoipStackRuntime(
+        transport_config={"sip_port": 5060, "advertise_host": "127.0.0.1"},
+        assist_config={}, trunk_config={}, endpoints=endpoints,
+        phones=PhoneAdapterRegistry(hass, endpoints), sip=calls,
+    )
+    bridge = local.async_setup_local_softphone_bridge(hass)
+    snapshot = local.start_local_softphone_call(
+        hass, "caller", "callee", context=Context(), caller_owner_id="browser-caller-owner",
+    )
+    session = calls.get_session(snapshot.call_id)
+    execution = CallExecution(session.token, {"automation_control": "routable"})
+    binding = current_execution.set(execution)
+    monkeypatch.setattr(peer_snapshot, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    sender = Mock(side_effect=AssertionError("A local browser has no SIP answer to send"))
+    monkeypatch.setattr(automation_call, "send_final_response", sender)
+    # The peer is the caller's existing RTP adapter, not a second browser phone.
+    peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    peer.bind(("127.0.0.1", 0))
+    peer.setblocking(False)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        source_port = probe.getsockname()[1]
+    reservation = RtpPortReservation(hass, (source_port, peer.getsockname()[1]))
+    monkeypatch.setattr(RtpPortReservation, "allocate", lambda _h: reservation)
+    announcement = None
+    try:
+        call = ServiceCall(hass, "voip_stack", "tts_say", {
+            "call_id": session.call_id, "expected_generation": session.generation,
+        })
+        app, _ = await automation_call.resolve_application_action(call)
+        assert app.local_source is not None
+        assert bridge.get_call(session.call_id) is None
+        assert endpoints.require("callee").active_call_id == ""
+        assert endpoints.require("caller").active_call_id == session.call_id
+        await app.answer()
+        assert app.session.state == "in_call"
+        assert app.session.metadata["source_endpoint_id"] == "caller"
+        sender.assert_not_called()
+
+        synthesized = asyncio.Event()
+
+        async def samples():
+            synthesized.set()
+            yield b"\x40\x00" * 960
+
+        connection = object()
+        app.playback.attach(connection)
+        waiting_for_browser = asyncio.Event()
+        wait_ready = app.playback.wait_ready
+
+        async def observe_wait_ready():
+            waiting_for_browser.set()
+            await wait_ready()
+
+        monkeypatch.setattr(app.playback, "wait_ready", observe_wait_ready)
+        announcement = asyncio.create_task(app._play_announcement(call, samples))
+        async with asyncio.timeout(2):
+            await waiting_for_browser.wait()
+        assert not synthesized.is_set()
+        if not hangup_before_audio_ready:
+            app.playback.ready(connection)
+            async with asyncio.timeout(2):
+                await announcement
+                while True:
+                    packet = rtp.parse_packet(await hass.loop.sock_recv(peer, 4096))
+                    decoded = struct.unpack(f"!{len(packet.payload) // 2}h", packet.payload)
+                    if any(decoded):
+                        assert max(decoded) >= 60
+                        break
+        assert len(calls.sessions) == 1
+        # A card command is independent of the automation's execution context.
+        current_execution.reset(binding)
+        binding = None
+        hangup = ServiceCall(hass, "voip_stack", "hangup", {
+            "device_id": "device-caller", "call_id": session.call_id,
+        })
+        await entry.runtime_data.phones.control(
+            hangup, PhoneOperation.HANGUP, CallControlRequest(call_id=session.call_id),
+        )
+        assert not session.live
+        assert app.media.transport is None
+        assert endpoints.require("caller").active_call_id == ""
+        assert endpoints.require("callee").active_call_id == ""
+        if hangup_before_audio_ready:
+            with pytest.raises((asyncio.CancelledError, ConnectionError)):
+                await announcement
+            assert not synthesized.is_set()
+    finally:
+        if binding is not None:
+            current_execution.reset(binding)
+        if announcement is not None:
+            announcement.cancel()
+            await asyncio.gather(announcement, return_exceptions=True)
+        barrier = calls.request_termination(session.call_id, TerminationIntent("test_done"))
+        if barrier is not None:
+            await barrier
+        local.async_shutdown_local_softphone_bridge(hass)
+        peer.close()
