@@ -97,6 +97,44 @@ async def test_automation_announcement_uses_selected_trunk_and_preserves_registr
     assert all(client.ready and not client._outbound_dialogs for client in sip_trunks(lab.hass).values())
 
 
+async def test_pending_announcement_forward_uses_explicit_trunk(trunks, monkeypatch):
+    from types import SimpleNamespace
+    from custom_components.voip_stack.call_forwarder import async_forward_existing_call
+
+    lab = trunks
+    first, second = lab.phones
+    first.auto_answer = False
+    context = Context()
+    stream = tts_fixture(monkeypatch, lab)
+    task = asyncio.create_task(dial(lab, context, destination="External", trunk_id="home", answer_timeout=5))
+    try:
+        await asyncio.wait_for(first.invited.wait(), 2)
+        call_id = first.invites[0].header("Call-ID")
+        await async_forward_existing_call(SimpleNamespace(
+            hass=lab.hass, config=lab.runtime.transport_config, local_ip="127.0.0.1",
+        ), call_id=call_id, destination="External", trunk_id="work", on_failure="terminate")
+        result = await asyncio.wait_for(task, 5)
+        assert result["call_id"] == call_id
+        assert len(first.invites) == len(second.invites) == 1
+        assert lab.calls.get_session(call_id).metadata["outbound_trunk_id"] == "work"
+        await lab.hass.services.async_call("voip_stack", "tts_say", {
+            "tts_entity_id": "tts.test", "message": "Wake up",
+        }, blocking=True, context=context)
+        await lab.hass.services.async_call("voip_stack", "hangup", {}, blocking=True, context=context)
+        voiced = []
+        while not second.audio.empty():
+            packet = rtp.parse_packet(second.audio.get_nowait()[0])
+            if any(packet.payload):
+                voiced.append(packet.payload)
+        assert b"".join(voiced) == b"\x01\x80" * 960
+        assert len(stream.calls) == 1 and first.audio.empty()
+        assert not lab.calls.sessions
+        assert all(client.ready and not client._outbound_dialogs for client in sip_trunks(lab.hass).values())
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_unavailable_selected_trunk_never_dials_the_healthy_default(trunks):
     lab = trunks
     await sip_trunk(lab.hass, "work").stop()

@@ -105,6 +105,13 @@ Optional stale-decision guards:
 - `expected_sequence`: sequence copied from the same occurrence.
 - `on_failure`: `resume` (default), `terminate`, or `busy`.
 
+These choices also apply while an Automation contact's outgoing announcement
+is waiting for an answer. `resume` starts a fresh SIP attempt to the previous
+destination using its previous trunk; the automation keeps its original call
+reference. `trunk_id` can select another configured line for the forwarded
+destination. The original `answer_timeout` remains the total answer deadline
+and is not restarted by forwarding.
+
 See [Automation Dial Plan](AUTOMATION_DIALPLAN.md) for complete examples.
 
 ### `voip_stack.transfer`

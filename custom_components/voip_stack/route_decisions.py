@@ -174,6 +174,8 @@ def set_pending_route_decision(hass: HomeAssistant, data: dict) -> None:
             "endpoint_id": endpoint_id,
             "media_client_id": str(data.get("media_client_id") or "").strip(),
             "send_video": bool(data.get("send_video", False)),
+            **({"on_failure": data["on_failure"]} if "on_failure" in data else {}),
+            **({"trunk_id": data["trunk_id"]} if "trunk_id" in data else {}),
         }
     )
     invite = route.get("invite")

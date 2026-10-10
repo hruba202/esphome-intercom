@@ -427,3 +427,18 @@ notification is sent by this qualification.
 
 The remaining PBX checkpoints above still need completion. Nothing in this
 branch has been published or deployed to the user's home HA.
+
+### Pending Automation forwarding
+
+Pending outgoing announcements now carry the selected trunk and failure policy
+through the existing route decision. Failed forwarding uses the common
+`RouteAbortContext`: resume redials the prior destination, busy records a 486
+termination, and terminate closes the session. One install path owns replacement
+legs and their RTP reservations. The source application, generation and public
+call reference survive a successful forward or resume. The original cumulative
+answer deadline remains in force.
+
+Socket tests cover a busy or unresolved replacement with each policy, explicit
+forwarding from one registered trunk to another with actual announcement RTP,
+late answers to the cancelled original leg, and cancellation during retargeting.
+The registration flows remain ready after the calls have released their dialogs.

@@ -183,14 +183,12 @@ async def async_forward_existing_call(
     context = _validate_snapshot()
     pending = registry.artifact_for(call_id, "pending_route")
     if pending is not None and pending.get("outgoing_automation"):
-        if on_failure != "terminate":
-            raise _service_error("Outgoing announcement forwarding requires on_failure: terminate",
-                                 "forward_failure_policy_invalid")
         from .route_decisions import set_pending_route_decision
 
         set_pending_route_decision(hass, {
             "call_id": call_id, "action": "forward", "destination": destination,
             "expected_state": expected_state, "expected_sequence": expected_sequence,
+            "on_failure": on_failure, "trunk_id": trunk_id,
         })
         return
     route_resolver = runtime.route_resolver.for_call(call_id, trunk_id=trunk_id)

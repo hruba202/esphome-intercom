@@ -531,6 +531,53 @@ async def test_retarget_failure_or_cancellation_releases_both_attempts(lab, monk
         await asyncio.gather(task, return_exceptions=True)
 
 
+@pytest.mark.parametrize("destination", ["bedroom1", "missing-phone"])
+@pytest.mark.parametrize("failure_policy", ["resume", "busy", "terminate"])
+async def test_announcement_forward_can_resume_original_destination(lab, monkeypatch, destination, failure_policy):
+    from custom_components.voip_stack.call_forwarder import async_forward_existing_call
+
+    first, second = lab.phones
+    first.auto_answer = False
+    second.final_status = 486
+    context = Context()
+    stream = tts_fixture(monkeypatch, lab)
+    task = asyncio.create_task(dial(lab, context, answer_timeout=5))
+    try:
+        await asyncio.wait_for(first.invited.wait(), 2)
+        original_id = first.invites[0].header("Call-ID")
+        original_session = lab.calls.get_session(original_id)
+        first.auto_answer = True
+        await async_forward_existing_call(SimpleNamespace(
+            hass=lab.hass, config=lab.runtime.transport_config, local_ip="127.0.0.1",
+        ), call_id=original_id, destination=destination, on_failure=failure_policy)
+        if failure_policy != "resume":
+            with pytest.raises(ServiceValidationError):
+                await asyncio.wait_for(task, 5)
+            assert len(first.invites) == 1 and not stream.calls
+            assert not lab.calls.sessions
+            assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
+            if failure_policy == "busy":
+                assert original_session.termination_intent.response_status == 486
+                assert original_session.termination_intent.public_state == "busy"
+            return
+        result = await asyncio.wait_for(task, 5)
+        assert result["call_id"] == original_id
+        assert len(first.invites) == 2
+        assert first.invites[1].header("Call-ID") != original_id
+        assert len(second.invites) == (1 if destination == "bedroom1" else 0)
+        assert any(request.method == "CANCEL" for request in first.requests)
+        await lab.hass.services.async_call("voip_stack", "tts_say", {
+            "tts_entity_id": "tts.test", "message": "Wake up",
+        }, blocking=True, context=context)
+        await lab.hass.services.async_call("voip_stack", "hangup", {}, blocking=True, context=context)
+        assert len(stream.calls) == 1 and first.bye.is_set()
+        assert not lab.calls.sessions
+        assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_stale_generation_and_different_controller_cannot_touch_call(lab, monkeypatch):
     stream = tts_fixture(monkeypatch, lab)
     context = Context()

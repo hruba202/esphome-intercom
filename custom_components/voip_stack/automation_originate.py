@@ -27,6 +27,7 @@ from .phonebook_runtime import registered_roster_entries
 from .runtime_data import require_runtime_data
 from .sip_runtime import enable_reused_tcp_connection, uri_transport
 from .trunk_policy import is_trunk_uri
+from .route_abort import RouteAbortContext, RouteAbortIntent, async_abort_route
 
 
 async def _dial_attempt(hass, registry, session, attempt, destination, timeout):
@@ -197,44 +198,98 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             call_id, f'automation:{call_id}', application, application.close,
             stage=CleanupStage.MEDIA, generation=session.generation,
         )
+        async def install_attempt(target, selection):
+            nonlocal attempt, client, destination, trunk_selection
+            session.ensure_live()
+            if registry.resource_for(call_id, "automation") is not application:
+                raise ServiceValidationError("The outgoing call changed application")
+            trunk_selection = selection
+            rerouted = resolve_phone_target(
+                decision=resolve_route(target, entries), endpoint_registry=runtime.endpoints,
+                roster_entries=entries, route_resolver=resolve_route, call_id=call_id,
+            )
+            if rerouted.failure is not None:
+                raise ServiceValidationError(f"Phone routing failed: {rerouted.failure.decline_reason}")
+            target = rerouted.decision.target or target
+            candidate = prepare(target)
+            candidate_id = candidate.client.dialog_ids.call_id
+            try:
+                if candidate.endpoint_id:
+                    registry.claim_endpoint(call_id, candidate.endpoint_id, role='destination')
+                registry.own_resource(
+                    call_id, f'automation_ports:{candidate_id}', candidate.ports,
+                    lambda _reason, ports=candidate.ports: ports.release(), stage=CleanupStage.RESERVATION,
+                    generation=session.generation,
+                )
+                registry.add_leg(call_id, candidate_id, role='callee', state='calling')
+                registry.attach_sip_client(call_id, candidate_id, candidate.client, role='callee', state='calling',
+                                           trunk_id=candidate.trunk_id)
+                registry.transition(call_id, owner='automation', state=CallState.CALLING.value,
+                                    callee=target, dest_endpoint_id=candidate.endpoint_id,
+                                    outbound_trunk_id=candidate.trunk_id)
+                session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
+                    *session.metadata.get("policy_endpoint_ids", ()), *rerouted.forwarded_endpoint_ids,
+                ))))
+            except BaseException:
+                if candidate.endpoint_id:
+                    registry.release_endpoint_claim(call_id, candidate.endpoint_id)
+                await async_close_outbound_leg(candidate, bye_or_cancel=True)
+                raise
+            attempt, client, destination = candidate, candidate.client, target
+
+        def release_attempt_claim():
+            if attempt.endpoint_id:
+                registry.release_endpoint_claim(call_id, attempt.endpoint_id)
+                session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
+                    *session.metadata.get("policy_endpoint_ids", ()), attempt.endpoint_id,
+                ))))
+
+        fallback = None
+        failure_policy = 'terminate'
+
+        async def abort_forward(reason):
+            return await async_abort_route(fallback, RouteAbortIntent(
+                'busy' if failure_policy == 'busy' else reason, failure_policy,
+                486 if failure_policy == 'busy' else 0,
+            ))
+
         timeout = float(call.data.get('answer_timeout', 30))
         async with asyncio.timeout(timeout):
             while True:
                 outcome, route = await _dial_attempt(hass, registry, session, attempt, destination, timeout)
+                if outcome.disposition is DialDisposition.ANSWERED:
+                    break
                 if outcome.disposition is not DialDisposition.REROUTE:
+                    if fallback is not None:
+                        release_attempt_claim()
+                        if await abort_forward(outcome.reason or 'forward_failed'):
+                            fallback = None
+                            continue
                     break
                 session.ensure_live()
-                if attempt.endpoint_id:
-                    registry.release_endpoint_claim(call_id, attempt.endpoint_id)
-                    session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
-                        *session.metadata.get("policy_endpoint_ids", ()), attempt.endpoint_id,
-                    ))))
-                destination = route["destination"]
-                rerouted = resolve_phone_target(
-                    decision=resolve_route(destination, entries), endpoint_registry=runtime.endpoints,
-                    roster_entries=entries, route_resolver=resolve_route,
+                previous_destination, previous_trunk = destination, trunk_selection.identity
+
+                async def resume(target=previous_destination, identity=previous_trunk):
+                    await install_attempt(target, select_call_trunk(hass, requested=identity))
+                    publish_bridge_projection(hass, session, event_type='forwarding',
+                                              direction='outgoing', route_kind='automation',
+                                              last_sip_event='ROUTE_RESUME')
+
+                fallback = RouteAbortContext(
+                    hass, registry, call_id, transition_resume=True, resume_owner='automation',
+                    resume_state=CallState.CALLING.value, resume_callee=previous_destination,
+                    resume_route_kind='automation', publish_resume=resume,
                 )
-                if rerouted.failure is not None:
-                    raise ServiceValidationError(f"Phone routing failed: {rerouted.failure.decline_reason}")
-                destination = rerouted.decision.target or destination
-                attempt = prepare(destination)
-                client = attempt.client
-                registry.own_resource(
-                    call_id, f'automation_ports:{client.dialog_ids.call_id}', attempt.ports,
-                    lambda _reason, ports=attempt.ports: ports.release(), stage=CleanupStage.RESERVATION,
-                    generation=session.generation,
-                )
-                registry.transition(call_id, owner="automation", state=CallState.CALLING.value,
-                                    callee=destination, dest_endpoint_id=attempt.endpoint_id,
-                                    outbound_trunk_id=attempt.trunk_id)
-                session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
-                    *session.metadata.get("policy_endpoint_ids", ()), *rerouted.forwarded_endpoint_ids,
-                ))))
-                registry.add_leg(call_id, client.dialog_ids.call_id, role="callee", state="calling")
-                registry.attach_sip_client(call_id, client.dialog_ids.call_id, client, role="callee", state="calling",
-                                           trunk_id=attempt.trunk_id)
-                if attempt.endpoint_id:
-                    registry.claim_endpoint(call_id, attempt.endpoint_id, role="destination")
+                failure_policy = route.get('on_failure', 'terminate')
+                release_attempt_claim()
+                try:
+                    selection = select_call_trunk(hass, requested=route.get('trunk_id') or previous_trunk)
+                    await install_attempt(route['destination'], selection)
+                except Exception as err:
+                    if await abort_forward(str(err)):
+                        fallback = None
+                        continue
+                    raise
             if outcome.disposition is not DialDisposition.ANSWERED or client.dialog is None:
                 raise ServiceValidationError(f"The destination did not answer: {outcome.reason or outcome.disposition.value}")
             application.require_current()

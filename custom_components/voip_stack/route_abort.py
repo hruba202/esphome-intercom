@@ -16,7 +16,7 @@ from .media_ports import release_media_reservation
 from .outbound_attempts import OutboundLeg, async_cleanup_outbound_attempts
 from .runtime_data import call_runtime_artifacts
 
-_ROUTE_OWNERS = {"router", "bridge", "assist"}
+_ROUTE_OWNERS = {"router", "bridge", "assist", "automation"}
 
 
 @dataclass(frozen=True, slots=True)
