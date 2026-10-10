@@ -293,3 +293,109 @@ Never treat these initial policy tests as hardware qualification.
 - https://www.rfc-editor.org/rfc/rfc4235.html
 - https://docs.asterisk.org/Configuration/Applications/Voicemail/Message-Waiting-Indication/
 - https://developer.signalwire.com/freeswitch/applications/utilities/
+
+### Mailbox implementation checkpoint
+
+The branch now has a call-owned mailbox deposit application. It reuses the
+local application media preparation used by Automation, including answer
+commit, negotiated receive mappings, re-INVITE, browser-source ownership and
+session cleanup. `send_to_voicemail` transfers the current Automation execution;
+completion of that old execution does not end the mailbox recording.
+
+Mailbox configuration is private phone-subentry data, or the existing parent
+entry's ESP settings keyed by stable endpoint identity. A phone rename preserves
+this data. Enabling a mailbox does not enable forwarding. Explicit
+`voicemail.<phone>` destinations and no-answer mailbox outcomes reach the same
+deposit application. SIP feature codes, namespace validation on every editing
+surface, mailbox access menus and MWI are still being implemented.
+
+The archive writes native decoded PCM outside the event loop through a bounded
+queue. Different negotiated formats become lossless WAV segments. Storage quota
+includes active writes; completed messages use private files and atomic
+metadata. Interrupted recordings recover from their private pending journals.
+No second RTP receiver, decoder, periodic disk poll or public `/www` file is
+introduced. The read/delete UI and authenticated playback are not yet present.
+
+Executable evidence includes:
+
+- A real SIP call originated by an HA script, TTS followed by mailbox deposit,
+  exact received PCM on disk, remote hangup and recording time-limit cleanup.
+- A real audio re-INVITE during recording, preserving both native sample rates.
+- Browser-originated SIP ringing followed by a configured no-answer mailbox:
+  CANCEL reaches the former destination, the caller keeps its session identity,
+  and its audio reaches the selected mailbox.
+- Direct incoming SIP deposit through the actual HA listener, without browser
+  playback resources or a second outgoing SIP call.
+- Archive crash recovery, disk failures, cancelled creation, concurrent quota
+  accounting, slow writers, cross-mailbox access rejection and clean retries.
+- Native HA phone reconfiguration preserving mailbox identity and settings.
+
+These are automated socket and HA-runtime tests. They do not constitute a test
+of a physical SIP handset, its voicemail button, MWI indicator or audio output.
+
+
+### Clarified mailbox playback contract
+
+Selecting a message in the existing phone card starts an ordinary call from that
+phone to its mailbox, without a PIN for its own mailbox. The mailbox application
+plays the selected message over the existing call media path. A conventional
+SIP phone reaches the same application and selects messages through its menu.
+The card only retrieves message metadata and sends commands; there is no
+separate HTTP audio player or public/signed audio-download endpoint. Any selected
+message reference belongs to that exact call, never a global next-call setting.
+
+Own-mailbox access uses the existing PBX endpoint identification for registered
+SIP phones and trusted, configured ESP endpoints. No new mandatory PIN is added
+to normal own-phone access. Home Assistant card controls reuse the existing
+phone-control authorization boundary.
+
+### Mailbox ownership and permanent endpoint removal
+
+A mailbox belongs to the stable phone endpoint. Permanently deleting an HA
+softphone or removing an ESP endpoint from VoIP Stack must remove its voicemail
+messages, mailbox PIN and mailbox settings through the same backend lifecycle.
+Temporary unavailability, ESP reboot, SIP registration expiry and integration
+reload do not delete a mailbox. Recreating a phone with the same display name
+must not recover the deleted endpoint's mailbox. Qualification must cover both
+permanent removal and the temporary-disconnection cases.
+
+### Telephone mailbox qualification
+
+The same mailbox application now serves `*97`, `*98`, named access and deposit
+routes. Its configurable HA TTS voice is required globally. Keypad input
+interrupts the prompt and keeps the digit; the menu's message numbering remains
+fixed for that call. Other-mailbox access requires the mailbox's configured PIN.
+PIN digits are not published as ordinary call DTMF events or logged.
+
+The automated baresip test registers a real baresip process, subscribes to
+message-summary, calls `*97`, receives recorded audio, selects and deletes the
+message with RTP telephone events, observes the updated MWI counts and hangs
+up. A real Chromium card in the HA lab has also completed this telephone path
+using its existing keypad and the configured local xTTS provider. Captured
+browser audio contains the deterministic 550 Hz message recorded from baresip.
+This qualifies the existing keypad path, not the unfinished message-list UI.
+
+The real MWI test exposed a missing Contact in successful SUBSCRIBE responses.
+The common SIP response builder now supplies Contact and the dialog route set
+for SUBSCRIBE/NOTIFY, following RFC 6665. Removing a mailbox sends a final
+`Subscription-State: terminated;reason=noresource` and releases the existing
+subscription timer. Removing a phone during a deposit terminates its call,
+discards the mailbox files and suppresses the new-message event.
+
+Archive read-state and deletion operations complete their disk and in-memory
+updates before propagating cancellation, using the existing cleanup primitive.
+A regression cancels each operation immediately after the real disk write and
+verifies that counts and quota agree before and after reloading the archive.
+
+The dedicated card list now calls that same application to listen and delete.
+Its read-only metadata query returns the current call's frozen DTMF selection
+for a stable message ID. Deletion waits for the application's confirmed event
+before hanging up. The browser test clicks the actual list buttons, detects the
+recorded 550 Hz signal in received audio, deletes the message and verifies idle
+with the list still open. Runtime tests also cover an unrelated active call,
+an idle phone retaining its previous Call-ID, and the public schema-2 call
+response arriving before a separate phone-state event.
+
+Still unfinished: complete-file export, optional STT automation actions, and
+the remaining PBX checkpoints listed above. Nothing in this branch has been
+published or deployed to the user's home HA.

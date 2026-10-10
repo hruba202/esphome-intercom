@@ -12,7 +12,7 @@ from homeassistant.core import Context, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.voip_stack import automation_call as module
-from custom_components.voip_stack import media_ports
+from custom_components.voip_stack import media_ports, local_application
 from custom_components.voip_stack.core import rtp, sdp, sip
 from custom_components.voip_stack.endpoint_session import TerminationIntent
 from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
@@ -38,10 +38,12 @@ def application(hass, monkeypatch, socket_enabled):
     monkeypatch.setattr(
         media_ports, "release_sip_rtp_port_pair", lambda _h, pair: released.append(pair)
     )
-    monkeypatch.setattr(module.RtpPortReservation, "allocate", lambda _h: reservation)
+    monkeypatch.setattr(local_application.RtpPortReservation, "allocate", lambda _h: reservation)
     monkeypatch.setattr(module, "call_registry", lambda _h: registry)
+    monkeypatch.setattr(local_application, "call_registry", lambda _h: registry)
+    monkeypatch.setattr(local_application, "publish_bridge_projection", Mock())
     monkeypatch.setattr(module, "publish_bridge_projection", Mock())
-    monkeypatch.setattr(module, "send_final_response", Mock(return_value=True))
+    monkeypatch.setattr(local_application, "send_final_response", Mock(return_value=True))
     monkeypatch.setattr(module, "call_runtime_artifacts", lambda _h: registry)
     fmt = sdp.RtpPcmFormat(96, "L16", 16000, 1, 20)
     invite = SipInvite(
@@ -148,7 +150,7 @@ async def test_announcement_answers_once_and_sends_complete_pcm(
     try:
         await app.say(service(app))
         assert app.answered
-        assert module.send_final_response.call_count == 1
+        assert local_application.send_final_response.call_count == 1
         received = bytearray()
         async with asyncio.timeout(2):
             while len(received) < len(pcm):
@@ -295,7 +297,7 @@ async def test_browser_announcement_waits_for_current_connection(application, mo
         async with asyncio.timeout(2):
             await task
         assert synthesized.is_set()
-        assert module.send_final_response.call_count == 1
+        assert local_application.send_final_response.call_count == 1
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
@@ -500,7 +502,7 @@ async def test_forward_to_another_automation_reuses_media_and_releases_old_contr
         assert app.controller == ""
         assert app.media is original_media
         assert app.media.transport is original_transport
-        assert module.send_final_response.call_count == 1
+        assert local_application.send_final_response.call_count == 1
 
         pcm = b"\x11\x00" * 320
 
@@ -638,7 +640,7 @@ async def test_tcp_reset_releases_listener_connection_without_unhandled_error(
 
 async def test_tts_confirms_existing_trunk_early_media(application):
     app, registry, _peer, _released = application
-    reservation = module.RtpPortReservation.allocate(app.hass)
+    reservation = local_application.RtpPortReservation.allocate(app.hass)
     registry.attach_media(
         app.session.call_id,
         {
@@ -654,7 +656,7 @@ async def test_tts_confirms_existing_trunk_early_media(application):
             "final_response_sent"
         ]
         assert app.session.answer_committed
-        assert module.send_final_response.call_count == 1
+        assert local_application.send_final_response.call_count == 1
     finally:
         await registry.request_termination(
             app.session.call_id, TerminationIntent("test_done")
@@ -695,7 +697,7 @@ async def test_wait_unanswered_keeps_ringing_without_answer_or_media(application
         await app.wait_unanswered(service(app, duration=0.04))
         assert app.session.live and app.session.state == 'ringing'
         assert not app.answered and app.media is None
-        module.send_final_response.assert_not_called()
+        local_application.send_final_response.assert_not_called()
         with pytest.raises(BlockingIOError):
             peer.recv(2048)
         assert released == []
@@ -716,7 +718,7 @@ async def test_caller_cancel_interrupts_unanswered_wait(application):
     assert isinstance(result, asyncio.CancelledError)
     assert app.operation is None and app.deadline is None
     assert not app.answered and app.media is None and released == []
-    module.send_final_response.assert_not_called()
+    local_application.send_final_response.assert_not_called()
 
 
 async def test_unanswered_wait_rejects_an_already_answered_call(application):
@@ -741,7 +743,7 @@ async def test_wait_then_forward_does_not_answer_early(application):
             call_id=app.session.call_id, destination='Reception', on_failure='resume',
         )
         assert not app.answered and app.media is None
-        module.send_final_response.assert_not_called()
+        local_application.send_final_response.assert_not_called()
     finally:
         await registry.request_termination(app.session.call_id, TerminationIntent('test_done'))
 
@@ -781,7 +783,7 @@ async def test_native_ha_script_waits_without_call_id_then_finishes_unanswered(a
         assert len(captured)==1
         assert captured[0] == TerminationIntent.final_response('timeout',480)
         assert app.controller and not app.answered and app.media is None
-        module.send_final_response.assert_not_called()
+        local_application.send_final_response.assert_not_called()
     finally:
         detach()
         await terminate(app.session.call_id, TerminationIntent('test_done'))

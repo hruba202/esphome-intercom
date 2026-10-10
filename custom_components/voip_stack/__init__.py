@@ -503,6 +503,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     phonebook_handlers = build_phonebook_service_handlers(_refresh_and_push_phonebook)
     from .automation_call import async_play_media, async_tts_say, async_wait_for_dtmf, async_wait_unanswered
     from .external_call_access import async_set_external_call_access
+    from .mailbox import async_set_voicemail_settings
+    from .voicemail import async_send_to_voicemail
 
     await async_register_services(
         hass,
@@ -518,6 +520,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "set_send_video": _handle_set_send_video_service,
             "set_ha_softphone_settings": _handle_set_ha_softphone_settings_service,
             "set_phone_settings": _handle_set_phone_settings_service,
+            "set_voicemail_settings": async_set_voicemail_settings,
+            "send_to_voicemail": async_send_to_voicemail,
             "call": _handle_sip_call_target_service,
             "forward": _handle_sip_forward_service,
             "tts_say": async_tts_say,
@@ -566,6 +570,9 @@ async def _async_setup_shared(hass: HomeAssistant, config: dict | None = None) -
     registration.initialized = True
 
     async_register_websocket_api(hass)
+    from .mailbox_api import async_register_mailbox_api
+
+    async_register_mailbox_api(hass)
     from .audio_ws_view import async_register_audio_ws_view
 
     async_register_audio_ws_view(hass)
@@ -713,6 +720,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) ->
             "endpoint may already be listening on that port."
         )
     await _async_start_sip_trunk(hass)
+    from .mailbox import async_setup_mailboxes
+    await async_setup_mailboxes(hass, entry)
     from .trunk_config import sync_trunk_devices
     sync_trunk_devices(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -15,6 +15,24 @@ from .voip_phase1_support import (
 
 
 class SipUriTest(unittest.TestCase):
+    def test_subscription_target_refresh_responses_supply_contact_and_route_set(self):
+        for method in ("SUBSCRIBE", "NOTIFY"):
+            with self.subTest(method=method):
+                request = sip.parse_message(sip.build_request(method, "sip:101@192.0.2.10", [
+                    ("Via", "SIP/2.0/UDP 192.0.2.20:5060;branch=z9hG4bK-event"),
+                    ("From", "<sip:101@192.0.2.20>;tag=remote"), ("To", "<sip:101@192.0.2.10>"),
+                    ("Call-ID", "subscription"), ("CSeq", f"1 {method}"),
+                    ("Record-Route", "<sip:proxy@192.0.2.30;lr>"),
+                    ("Session-Expires", "1800"),
+                ]))
+                response = sip.parse_message(sip.build_uas_response(
+                    request, 200, "OK", contact_uri="sip:101@192.0.2.10:5060", to_tag="local",
+                ))
+                self.assertEqual(response.header("Contact"), "<sip:101@192.0.2.10:5060>")
+                self.assertEqual(response.header("Record-Route"), "<sip:proxy@192.0.2.30;lr>")
+                self.assertEqual(response.header("Session-Expires"), "")
+                self.assertEqual(sip.extract_tag(response.header("To")), "local")
+
     def test_fritzbox_service_code_round_trips_from_percent_encoded_uri(self) -> None:
         parsed = sip.parse_sip_uri("sip:%2A%2A621@192.0.2.1")
 

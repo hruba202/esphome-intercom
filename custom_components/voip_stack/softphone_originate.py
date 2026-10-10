@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -36,6 +37,7 @@ from .endpoint_termination import EndpointTerminationHandler
 from .endpoint_session import TerminationInitiator
 from .endpoint_registry import EndpointBusyError
 from .endpoint_routing import (
+    ha_router_decision,
     device_formats as _device_formats,
     roster_entry_formats as _roster_entry_formats,
     sip_target_audio_profile as _sip_target_audio_profile,
@@ -69,7 +71,7 @@ from .phone_endpoint import (
     EndpointAvailability,
     EndpointKind,
 )
-from .router import RouteAction, RouteReason, ha_uri_for, resolve_ha_router
+from .router import RouteAction, RouteReason, ha_uri_for
 from .runtime_data import (
     call_runtime_artifacts,
     endpoint_directory,
@@ -186,7 +188,7 @@ async def async_originate_browser_call(
 ) -> None:
     """Originate a standards SIP call from one Home Assistant browser phone."""
     from .roster import parse_roster_json
-    from .core.sip import parse_sip_uri, sip_default_port
+    from .core.sip import SipUri, parse_sip_uri, sip_default_port
     from .sip_client import SIP_TIMER_B, SipCallClient
 
     hass: HomeAssistant = call.hass
@@ -227,16 +229,16 @@ async def async_originate_browser_call(
         str(sensor.attributes.get("roster_json") or "") if sensor is not None else ""
     )
     contacts = parse_roster_json(roster_json) if roster_json else []
-    route = resolve_ha_router(target, contacts, trunk_ready=trunk_ready)
+    resolve_route = partial(ha_router_decision, hass, source_endpoint_id=endpoint_id,
+                            trunk_id=trunk_selection.identity)
+    route = resolve_route(target, contacts)
     from .inbound_routing.targets import resolve_phone_target
 
     resolved = resolve_phone_target(
         decision=route,
         endpoint_registry=endpoint_directory(hass),
         roster_entries=contacts,
-        route_resolver=lambda destination, entries: resolve_ha_router(
-            destination, entries, trunk_ready=trunk_ready,
-        ),
+        route_resolver=resolve_route,
     )
     if resolved.failure is not None:
         raise _service_error(
@@ -453,13 +455,14 @@ async def async_originate_browser_call(
     route_uri = route.sip_uri
     if route.action is RouteAction.GROUP:
         route_uri = ha_uri_for(route.target or target, contacts)
-    elif route.action in {RouteAction.ASSIST, RouteAction.AUTOMATION}:
-        # Assist is a PBX-local application.  Originate the browser media leg
+    elif route.action.is_local_application:
+        # Use the existing SIP adapter for every PBX-local application.
+        # Originate the browser media leg
         # to this integration's listener so the canonical inbound dispatcher
-        # owns the Assist session and RTP pipeline; never fall through to the
+        # owns the application session and RTP pipeline; never fall through to the
         # external-trunk resolver merely because the roster entry has no
         # network address of its own.
-        route_uri = ha_uri_for(route.target or target, contacts)
+        route_uri = str(SipUri(route.target or target, local_ip, int(cfg["sip_port"])))
         route = replace(route, action=RouteAction.BRIDGE, sip_uri=route_uri)
     if use_trunk:
         trunk_target = route.target or target

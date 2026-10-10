@@ -627,3 +627,72 @@ can invoke it, subject to the existing call owner/controller checks.
 
 See the [recorded announcement recipe](AUTOMATION_DIALPLAN.md#play-a-recorded-announcement)
 for a complete script, supported media and cancellation behavior.
+
+### `voip_stack.set_voicemail_settings`
+
+Configure a phone's mailbox. Select the phone with the native **Phone** device
+picker (`device_id` in YAML). `enabled` defaults to false for a new mailbox;
+turning it on does not enable call forwarding. Omitted fields retain their
+current values, and renaming the phone preserves the mailbox identity.
+
+`max_seconds` limits each message, from 1 to 3600 seconds (default 180).
+`greeting_media` uses Home Assistant's Media picker and must identify a
+`media-source://` item. `clear_greeting: true` removes that selection. A missing
+or unavailable greeting falls back to the recording tone. Messages are stored
+privately on the HA host, with a combined archive quota of 1 GiB and no automatic
+deletion. An empty recording creates no message.
+
+`pin` accepts 4 to 10 digits, or an empty value to disable access from another
+mailbox. Only a salted PIN hash is persisted. The shared menu voice and language
+are configured once in the integration's native reconfiguration flow, not in
+each mailbox. Enabling the global voicemail feature requires an available TTS
+entity and a supported prompt language. Current prompt translations cover
+English, Italian, German and Portuguese, filtered against the selected engine's
+supported languages.
+
+Dial `*97` or `mailbox` to access the calling phone's own mailbox without a PIN.
+`*98` asks for a mailbox extension; `mailbox.<phone>` selects one explicitly.
+Another mailbox requires its configured PIN. Dial `voicemail.<phone>` or
+`*60<extension>` to leave a message. During access, 1 selects the next message,
+2 deletes the selected message, 3 repeats it, and # ends the call. To select
+message 1 directly, send the DTMF sequence `01#` after answer. The initial 0
+starts message selection and # terminates the number. Any key interrupts the
+prompt without losing that key. Message numbers remain fixed for the call.
+
+SIP phones can subscribe to `message-summary` for their account. The PBX sends
+RFC 3842 MWI notifications containing new/old counts. The HA softphone's state
+reflects the same mailbox counts. Removing a phone permanently removes its
+mailbox; temporary disconnection or registration expiry does not.
+
+The HA softphone card shows **Voicemail** when the phone has messages. Open it
+to see the caller and reception date. Selecting a row calls `*97` from that
+phone and sends the message-selection digits over the ordinary call. **Delete**
+uses the same call and the menu's delete command, waits for confirmation, then
+hangs up. The list remains open. An unrelated active call is never replaced.
+Message selection uses the numbering frozen by that mailbox call, so a newly
+received message cannot shift the selected row to a different recording.
+
+### `voip_stack.send_to_voicemail`
+
+Transfer the automation's current call to a phone's enabled mailbox. Choose
+**Mailbox** with the native device picker (`mailbox` in YAML). Like `tts_say`,
+this action uses the call bound to the native VoIP trigger or to the preceding
+outgoing `call` action in the same script execution. An explicit `call_id` and
+`expected_generation` remain available for deliberately correlated scripts.
+
+The selected mailbox can belong to a different phone. `skip_greeting: true`
+skips its configured audio greeting; the recording tone still plays. For
+example, a native unanswered-call automation can run `tts_say` first, then this
+action with `skip_greeting: true`.
+
+The action returns after handing the call to the mailbox application. That
+application answers if necessary, plays the greeting/tone, records the caller,
+and ends the call when its recording limit expires. A remote hangup saves the
+message immediately. Completing the originating automation does not cut off
+the recording. Do not add `hangup` after this transfer: that execution no longer
+owns the mailbox call.
+
+`voip_stack_voicemail_received` reports a saved message's stable `mailbox_id`,
+opaque `message_id`, caller, duration and whether it is partial. It contains no
+public download URL. A recording or storage failure ends the mailbox deposit
+and uses the existing call cleanup; it does not leave a hidden media session.

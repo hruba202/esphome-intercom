@@ -33,9 +33,14 @@ class _RouteAction(Enum):
     GROUP = "group"
     ASSIST = "assist"
     AUTOMATION = "automation"
+    VOICEMAIL = "voicemail"
     DIRECT = "direct"
     FORWARD = "forward"
     BRIDGE = "bridge"
+
+    @property
+    def is_local_application(self):
+        return self in {self.ASSIST, self.AUTOMATION, self.VOICEMAIL}
 
 
 class _Availability(Enum):
@@ -135,6 +140,7 @@ def softphone_originate(monkeypatch):
             "EndpointBusyError": type("EndpointBusyError", (Exception,), {})
         },
         "endpoint_routing": {
+            "ha_router_decision": Mock(),
             "device_formats": Mock(return_value=[]),
             "roster_entry_formats": Mock(return_value=[]),
             "sip_target_audio_profile": Mock(return_value=([], [])),
@@ -315,7 +321,7 @@ def test_browser_to_browser_uses_local_bridge_before_network(
     softphone_originate._get_transport_config = Mock(
         return_value={"video_camera_send": True}
     )
-    softphone_originate.resolve_ha_router = Mock(return_value=route)
+    softphone_originate.ha_router_decision = Mock(return_value=route)
     softphone_originate._async_resolve_browser_destination = AsyncMock(
         return_value=(route, "Test", destination_endpoint)
     )
@@ -425,7 +431,7 @@ def test_outgoing_dahua_receive_only_offer_is_scoped(
     )
     entry = SimpleNamespace(metadata=metadata, sip_uri='sip:door@192.0.2.10', display_name='Door')
     route = SimpleNamespace(action=_RouteAction.DIRECT, reason=None, entry=entry, sip_uri=entry.sip_uri)
-    module.resolve_ha_router = Mock(return_value=route)
+    module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, 'Door', None))
     module._get_transport_config = Mock(return_value={
         'sip_port': 5060, 'sip_video': global_video, 'video_camera_send': camera_allowed,
@@ -473,7 +479,7 @@ def test_restricted_browser_rejects_trunk_before_call_start(softphone_originate,
     module._get_transport_config = Mock(return_value={"external_call_blocked_endpoints": ["caller"]})
     module._get_trunk_config = Mock(return_value={"trunk_server": "provider.example"})
     hass.runtime = SimpleNamespace(trunk_configs={}, trunk_config=module._get_trunk_config(hass), sip=None)
-    module.resolve_ha_router = Mock(return_value=route)
+    module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, "441234567890", None))
     module._async_prepare_ha_outbound_call = AsyncMock()
     with pytest.raises(_ServiceValidationError) as caught:
@@ -505,7 +511,7 @@ def test_static_dahua_contact_builds_full_offer_for_direct_and_trunk(
         action=_RouteAction.TRUNK if via_trunk else _RouteAction.DIRECT,
         reason=None, entry=entry, sip_uri=entry.sip_uri, target="8001",
     )
-    module.resolve_ha_router = Mock(return_value=route)
+    module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, "8001", None))
     module._get_transport_config = Mock(return_value={"sip_port": 5060, "sip_video": True, "video_camera_send": True})
     module._get_trunk_config = Mock(return_value={
@@ -565,7 +571,7 @@ def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_origi
         states=SimpleNamespace(get=lambda _: None),
     )
     route = SimpleNamespace(action=_RouteAction.TRUNK, reason=None, entry=None, sip_uri="", target="441234567890")
-    module.resolve_ha_router = Mock(return_value=route)
+    module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, route.target, None))
     module._get_transport_config = Mock(return_value={"sip_port": 5060, "sip_video": True, "video_camera_send": True})
     module._get_trunk_config = Mock(return_value={"trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha"})
@@ -589,3 +595,41 @@ def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_origi
     assert captured["include_dahua_pcm"] is False
     assert {fmt.frame_ms for fmt in captured["supported_send_formats"]} == {20}
     module.reserve_sip_video_media.assert_not_called()
+
+
+@pytest.mark.parametrize("action", [_RouteAction.ASSIST, _RouteAction.AUTOMATION, _RouteAction.VOICEMAIL])
+def test_every_local_application_uses_configured_pbx_listener_without_phonebook_hack(softphone_originate, action):
+    from dataclasses import dataclass
+    import importlib
+
+    module = softphone_originate
+    @dataclass
+    class Decision:
+        action: object
+        target: str = "application"
+        sip_uri: str = ""
+        entry: object = None
+        reason: object = None
+    route = Decision(action, entry=SimpleNamespace(display_name="Application", metadata={}, sip_uri=""))
+    hass = SimpleNamespace(data={"voip_stack": {}}, states=SimpleNamespace(get=lambda _: None))
+    endpoint = SimpleNamespace(endpoint_id="caller", device_id="browser", sip_uri_user="browser",
+                               availability=_Availability.AVAILABLE, supports=lambda _: False)
+    module.ha_router_decision = Mock(return_value=route)
+    module._async_resolve_browser_destination = AsyncMock(return_value=(route, route.target, None))
+    module._get_transport_config = Mock(return_value={"sip_port": 15060})
+    core = importlib.import_module(f"{module.__package__}.core.sip")
+    original = core.parse_sip_uri
+    class Resolved(Exception):
+        pass
+    def capture(value):
+        assert value == "sip:application@127.0.0.1:15060"
+        raise Resolved
+    core.parse_sip_uri = capture
+    try:
+        with pytest.raises(Resolved):
+            asyncio.run(module.async_originate_browser_call(
+                _call(hass, destination="application"), endpoint_id="caller", browser_endpoint=endpoint,
+            ))
+    finally:
+        core.parse_sip_uri = original
+    module.ha_router_decision.assert_called_once_with(hass, "application", [], source_endpoint_id="caller", trunk_id="")

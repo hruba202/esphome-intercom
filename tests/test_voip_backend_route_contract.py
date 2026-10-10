@@ -933,17 +933,6 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         self.assertIn("browser_endpoint = browser_phone(hass, endpoint_id)", runtime)
         self.assertIn("origin_endpoint_id=endpoint_id", runtime)
 
-    def test_ha_softphone_routes_assist_through_local_pbx_listener(self) -> None:
-        call_service = SOFTPHONE_ORIGINATE.read_text()
-        assist = call_service[
-            call_service.index(
-                "elif route.action in {RouteAction.ASSIST, RouteAction.AUTOMATION}:"
-            ) : call_service.index("if use_trunk:")
-        ]
-        self.assertIn("ha_uri_for(route.target or target, contacts)", assist)
-        self.assertIn("action=RouteAction.BRIDGE", assist)
-        self.assertIn("sip_uri=route_uri", assist)
-
     def test_ad_hoc_sip_uri_requires_admin_before_network_resolution(self) -> None:
         call_service = SOFTPHONE_ORIGINATE.read_text()
         route_guard = call_service.index("if route.reason is RouteReason.DIRECT_URI:")

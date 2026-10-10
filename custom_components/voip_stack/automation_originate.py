@@ -99,12 +99,14 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         raise ServiceValidationError("Select an enabled Automation contact as the calling identity")
     destination = str(call.data['destination']).strip()
     from .inbound_routing.targets import resolve_phone_target
-    from .router import RouteAction, RouteReason, resolve_ha_router
+    from .router import RouteAction, RouteReason
+    from .endpoint_routing import ha_router_decision
     from .trunk_selection import select_call_trunk
     from .config import trunk_identity_uri, trunk_leg_identity
 
     trunk_selection = select_call_trunk(hass, requested=str(call.data.get("trunk_id") or ""))
-    resolve_route = lambda target, roster: resolve_ha_router(target, roster, trunk_ready=trunk_selection.available)
+    def resolve_route(target, roster):
+        return ha_router_decision(hass, target, roster, trunk_id=trunk_selection.identity)
 
     initial_route = resolve_route(destination, entries)
     resolved = resolve_phone_target(
@@ -256,7 +258,9 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             async def update_media(_current, updated, _method):
                 commit = media.prepare_media_update(LocalAudioContract.from_dialog(updated))
                 async def apply():
-                    application.require_current()
+                    if (not registry.is_generation_current(call_id, session.generation)
+                            or registry.resource_for(call_id, "relay") is not media):
+                        raise RuntimeError("The local application media owner changed")
                     commit()
                 return apply
             client.on_media_update = update_media

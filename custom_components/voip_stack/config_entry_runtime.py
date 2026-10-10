@@ -72,6 +72,7 @@ def entry_runtime_signature(entry: ConfigEntry) -> dict:
             CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS,
             EXTERNAL_CALL_BLOCKED_ENDPOINTS, CONF_ESPHOME_PHONE_POLICIES,
             "default_trunk_id",
+            "esphome_mailboxes", "voicemail",
         }
     }
 
@@ -124,6 +125,13 @@ async def async_config_entry_updated(hass: HomeAssistant, entry: ConfigEntry) ->
         previous_contacts is not None and previous_contacts != contacts_signature
     )
     if phones_changed:
+        from .mailbox import async_remove_mailbox
+
+        previous_ids = {str(data.get("endpoint_id") or "") for _identity, _title, data in previous_phones}
+        current_ids = {str(data.get("endpoint_id") or "") for _identity, _title, data in phone_signature}
+        for endpoint_id in previous_ids - current_ids:
+            if endpoint_id:
+                await async_remove_mailbox(hass, endpoint_id)
         previous_browser_ids = {
             endpoint.endpoint_id
             for endpoint in tuple(getattr(runtime.endpoints, "endpoints", ()))
@@ -162,6 +170,8 @@ async def async_config_entry_updated(hass: HomeAssistant, entry: ConfigEntry) ->
         )
     if phones_changed or contacts_changed:
         await async_refresh_and_push_phonebook(hass)
+    from .mailbox import async_refresh_mailbox_state
+    await async_refresh_mailbox_state(hass)
 
 
 def register_phonebook_service_event_sync(hass: HomeAssistant) -> None:

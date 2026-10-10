@@ -14,7 +14,8 @@
           "media_capture": "Gravar áudio privado das chamadas para diagnóstico",
           "experimental_sip_video": "Ativar vídeo SIP para o softphone do Home Assistant",
           "sip_registrar_enabled": "Ativar contas SIP locais",
-          "trunk_enabled": "Ativar tronco SIP opcional"
+          "trunk_enabled": "Ativar tronco SIP opcional",
+          "voicemail_enabled": "Ativar correio de voz"
         },
         "data_description": {
           "sip_port": "Porta de escuta do endpoint SIP do Home Assistant. O Home Assistant aceita sinalização SIP por UDP e TCP nessa porta.",
@@ -99,6 +100,19 @@
         "data": {
           "trunk_register": "Registrar o tronco"
         }
+      },
+      "voicemail": {
+        "title": "Voz do correio de voz",
+        "description": "Escolha a entidade TTS do Home Assistant para o menu telefônico compartilhado.",
+        "data": {
+          "tts_entity_id": "Entidade TTS"
+        }
+      },
+      "voicemail_language": {
+        "title": "Idioma do correio de voz",
+        "data": {
+          "language": "Idioma"
+        }
       }
     },
     "error": {
@@ -108,7 +122,9 @@
       "trunk_server_required": "O servidor do tronco é obrigatório.",
       "trunk_username_required": "O usuário do tronco é obrigatório.",
       "trunk_password_required": "A senha do tronco é obrigatória.",
-      "trunk_allowed_ips_invalid": "Insira pelo menos um IP ou uma rede CIDR válida. Redes /0 sem restrições não são permitidas."
+      "trunk_allowed_ips_invalid": "Insira pelo menos um IP ou uma rede CIDR válida. Redes /0 sem restrições não são permitidas.",
+      "voicemail_tts_unavailable": "Selecione uma entidade TTS disponível.",
+      "voicemail_language_unsupported": "Este idioma não é compatível com os avisos e o mecanismo TTS selecionado."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",

@@ -222,6 +222,18 @@ async def route_invite(
     source_endpoint = (
         endpoint_registry.get(source_endpoint_id) if source_endpoint_id else None
     )
+    identified_source = source_endpoint_id if not trunk_invite and (
+        registered_source or caller_peer is not None or caller_is_known_roster_endpoint
+    ) else ""
+    local_client = registry.sip_client_for(invite.call_id)
+    local_session = registry.get_session(invite.call_id)
+    if local_client is not None and local_session is not None and invite.source_host in {local_ip, "127.0.0.1", "::1"}:
+        transport = getattr(local_client, "transport", None)
+        address = transport.get_extra_info("sockname") if transport is not None else None
+        if address and int(address[1]) == invite.source_port:
+            identified_source = str(local_session.metadata.get("source_endpoint_id") or "")
+    if identified_source:
+        invite = replace(invite, identified_source_endpoint_id=identified_source)
     route_bucket = _pending_routes(hass)
     pending = dict(registry.artifact_items("pending_invite"))
     if invite.call_id in route_bucket:
@@ -247,6 +259,9 @@ async def route_invite(
             to_tag="",
             decline_reason="capacity_exhausted",
         )
+    if not trunk_direct_preprocessed and decision.action is RouteAction.VOICEMAIL:
+        from .voicemail import route_voicemail_call
+        return await route_voicemail_call(runtime, invite, decision, registry, source_endpoint)
     if not trunk_direct_preprocessed and decision.action is RouteAction.AUTOMATION:
         from .automation_call import route_automation_call
         return await route_automation_call(runtime, invite, decision, registry, source_endpoint)
@@ -350,6 +365,9 @@ async def route_invite(
             })))
         # Dispatch the selected destination after the automation window,
         # including a direct trunk's unchanged phonebook/fallback decision.
+        if decision.action is RouteAction.VOICEMAIL:
+            from .voicemail import route_voicemail_call
+            return await route_voicemail_call(runtime, invite, decision, registry, source_endpoint)
         if decision.action is RouteAction.AUTOMATION:
             from .automation_call import route_automation_call
             return await route_automation_call(runtime, invite, decision, registry, source_endpoint)

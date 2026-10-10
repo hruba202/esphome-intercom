@@ -20,9 +20,19 @@ def normalized_aliases(values: Iterable[object]) -> set[str]:
     }
 
 
+def mailbox_route_aliases(item: Mapping[str, Any]) -> tuple[str, ...]:
+    """Named mailbox routes share the phone/contact namespace when enabled."""
+    settings = item.get("voicemail")
+    if not isinstance(settings, Mapping) or not settings.get("enabled", False):
+        return ()
+    return tuple(f"{prefix}.{value}" for prefix in ("voicemail", "mailbox")
+                 for field in ("endpoint_id", "id", "name", "extension", "username")
+                 if (value := str(item.get(field) or "").strip()))
+
+
 def mapping_route_aliases(item: Mapping[str, Any]) -> set[str]:
     """Return every dialable alias claimed by one persisted mapping."""
-    return normalized_aliases(item.get(field) for field in ROUTE_ALIAS_FIELDS)
+    return normalized_aliases((*(item.get(field) for field in ROUTE_ALIAS_FIELDS), *mailbox_route_aliases(item)))
 
 
 def mapping_group_aliases(item: Mapping[str, Any]) -> set[str]:

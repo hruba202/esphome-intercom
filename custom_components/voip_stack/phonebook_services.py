@@ -34,6 +34,8 @@ def _entry_mapping(entry: RosterEntry) -> dict[str, Any]:
 
 
 def _runtime_route_mappings(hass: Any) -> list[Mapping[str, Any]]:
+    from .mailbox import mailbox_settings
+
     mappings: list[Mapping[str, Any]] = []
     registry = endpoint_directory(hass)
     mappings.extend(
@@ -44,6 +46,7 @@ def _runtime_route_mappings(hass: Any) -> list[Mapping[str, Any]]:
             "username": endpoint.username,
             "ring_group": endpoint.ring_group,
             "conference_group": endpoint.conference_group,
+            "voicemail": mailbox_settings(hass, endpoint.endpoint_id),
         }
         for endpoint in registry.endpoints
     )

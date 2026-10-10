@@ -1012,6 +1012,7 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         ),
         "session_device_id": store.get("session_device_id", ""),
         "dnd": _ha_softphone_dnd(hass, endpoint_id),
+        "voicemail": dict(store.get("voicemail") or {"enabled": False, "new": 0, "old": 0, "total": 0}),
         "extension": _ha_softphone_extension(hass, endpoint_id),
         "groups": _ha_softphone_groups(hass, endpoint_id),
         "busy": bool(store.get("session_device_id") and active_softphone),

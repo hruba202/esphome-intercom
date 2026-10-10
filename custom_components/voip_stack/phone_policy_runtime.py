@@ -91,8 +91,7 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
         target_endpoint = runtime.endpoints.get(destination.target)
         target_name = target_endpoint.name if target_endpoint is not None else destination.target
         if destination.kind is DestinationKind.VOICEMAIL:
-            registry.request_termination(token.call_id, TerminationIntent("voicemail_unavailable"), generation=token.generation)
-            return
+            target_name = f"voicemail.{destination.target}"
         try:
             if registry.forward_call is None:
                 raise RuntimeError("SIP forwarding is unavailable")

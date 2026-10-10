@@ -214,6 +214,12 @@ def is_ha_target(hass: HomeAssistant, value: str) -> bool:
 def ha_router_decision(hass: HomeAssistant, target: str, entries: list, *, source_endpoint_id: str = "", trunk_id: str = ""):
     """Resolve one target against the canonical HA dial plan."""
 
+    if str(target or "").strip().casefold().startswith(("voicemail.", "mailbox", "*97", "*98", "*60")):
+        from .mailbox import resolve_mailbox_route
+
+        mailbox = resolve_mailbox_route(hass, target, entries, source_endpoint_id=source_endpoint_id)
+        if mailbox is not None:
+            return mailbox
     runtime = runtime_data(hass)
     if source_endpoint_id or trunk_id or (runtime is not None and runtime.trunk_configs):
         from .trunk_selection import select_call_trunk

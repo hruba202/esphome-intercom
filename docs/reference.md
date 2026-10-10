@@ -468,3 +468,25 @@ transmission finishes; the next action decides whether to hang up or continue.
 
 See [service fields](SERVICES.md#voip_stackplay_media) and the
 [complete example](AUTOMATION_DIALPLAN.md#play-a-recorded-announcement).
+
+### Mailbox actions on the PBX development branch
+
+- `voip_stack.set_voicemail_settings`: select a phone with `device_id`, then
+  configure `enabled`, `max_seconds`, a Media-picker `greeting_media` (or
+  `clear_greeting`), and optional `pin`. The IVR TTS entity and language are
+  required global settings in the integration's reconfiguration flow.
+  Omitted settings retain their existing values. Enabling a mailbox does not
+  configure a forwarding rule.
+- `voip_stack.send_to_voicemail`: select the receiving phone with `mailbox` and
+  optionally set `skip_greeting`. The current native Automation execution
+  identifies the call; explicit `call_id` and `expected_generation` are also
+  accepted. This action hands ownership to the mailbox and returns. The mailbox
+  saves the message on remote hangup or its recording limit, independently of
+  the completed script.
+
+See [mailbox configuration](SERVICES.md#voip_stackset_voicemail_settings) and
+[call handoff](SERVICES.md#voip_stacksend_to_voicemail) for limits and the current
+implementation boundary. SIP mailbox access and MWI use the common PBX call
+and subscription owners. The dedicated message-list controls are still being
+completed; the existing HA softphone dialpad can already dial *97 and send the
+same DTMF menu commands as a conventional SIP phone.

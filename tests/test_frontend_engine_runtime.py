@@ -822,6 +822,25 @@ superseded._hass = {{
   }},
   callService: async (...args) => supersededServices.push(args),
 }};
+// The public phone service returns schema 2 with nested phone/call objects.
+// Its returned identity must work before any independent state event arrives.
+const canonical = new Engine();
+canonical._hass = {{ callWS: async () => ({{ response: {{
+  schema_version: 2, success: true, operation: "call",
+  phone: {{device_id: "canonical-device", kind: "browser", name: "Kitchen"}},
+  call: {{call_id: "canonical-call", state: "in_call", destination: "*97"}},
+}} }}) }};
+const resumed = [];
+canonical.resumeSession = async (...args) => resumed.push(args);
+const canonicalReply = await canonical.startHaSoftphone(
+  {{name: "*97"}}, {{endpoint_id: "kitchen", device_id: "canonical-device"}},
+);
+assert.equal(canonicalReply.call_id, "canonical-call");
+assert.equal(canonicalReply.state, "in_call");
+assert.equal(canonical.ownsSoftphoneSession("canonical-call", "kitchen"), true);
+assert.equal(resumed.length, 1);
+assert.equal(resumed[0][2].call_id, "canonical-call");
+
 const staleReply = await superseded.startHaSoftphone(
   {{ name: "peer" }},
   {{ endpoint_id: "kitchen", device_id: "kitchen-device" }},

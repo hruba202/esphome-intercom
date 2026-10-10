@@ -79,14 +79,8 @@ def resolve_phone_target(
                 return TargetResolution(decision, candidate, SipInviteResult(
                     486, "Busy Here", to_tag="", decline_reason="phone_policy",
                 ))
-            if fallback.kind is DestinationKind.VOICEMAIL:
-                # Do not reinterpret an unavailable application as a trunk or
-                # silently dial the mailbox owner's ordinary telephone.
-                return TargetResolution(decision, candidate, SipInviteResult(
-                    480, "Temporarily Unavailable", to_tag="",
-                    decline_reason="voicemail_unavailable",
-                ))
-            forward_target = fallback.target
+            forward_target = (f"voicemail.{fallback.target}"
+                              if fallback.kind is DestinationKind.VOICEMAIL else fallback.target)
         if not forward_target:
             return TargetResolution(decision, candidate, forwarded_endpoint_ids=tuple(sorted(visited_endpoint_ids)))
         if candidate.endpoint_id in visited_endpoint_ids:

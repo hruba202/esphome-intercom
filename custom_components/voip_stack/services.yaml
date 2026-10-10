@@ -1214,3 +1214,99 @@ wait_for_dtmf:
               filter:
               - integration: voip_stack
               - integration: esphome
+
+set_voicemail_settings:
+  name: Configure voicemail
+  description: >-
+    Enable a phone's mailbox independently of its forwarding rules. Omitted
+    fields retain their settings. Messages stay available when new deposits
+    are disabled.
+  fields:
+    device_id:
+      name: Phone mailbox
+      required: true
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: Home Assistant softphone
+            - integration: voip_stack
+              model: SIP account
+            - integration: esphome
+    enabled:
+      name: Accept voicemail
+      selector:
+        boolean:
+    max_seconds:
+      name: Maximum message duration
+      description: Seconds allowed after the recording tone. New mailboxes use 180 seconds.
+      selector:
+        number:
+          min: 1
+          max: 3600
+          mode: box
+          unit_of_measurement: s
+    greeting_media:
+      name: Mailbox greeting
+      description: Optional audio from Home Assistant's media browser, played before the recording tone.
+      selector:
+        media:
+          accept:
+            - audio/*
+    clear_greeting:
+      name: Clear the greeting
+      description: Use the recording tone alone. Do not combine with a new greeting.
+      selector:
+        boolean:
+    pin:
+      name: Mailbox PIN
+      description: Optional 4 to 10 digits for access from another SIP account. An empty PIN disables that access.
+      selector:
+        text:
+          type: password
+
+send_to_voicemail:
+  name: Send call to voicemail
+  description: >-
+    Hand the automation's current call to an enabled phone mailbox. Recording
+    owns the call from this point and ends it after the message. Place this
+    after any greeting or TTS action; do not append hangup.
+  fields:
+    mailbox:
+      name: Destination mailbox
+      required: true
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: Home Assistant softphone
+            - integration: voip_stack
+              model: SIP account
+            - integration: esphome
+    skip_greeting:
+      name: Skip the mailbox greeting
+      description: Start with the recording tone, for example after a tts_say action.
+      default: false
+      selector:
+        boolean:
+    advanced:
+      name: Explicit call selection
+      collapsed: true
+      fields:
+        device_id:
+          name: Phone owning the call
+          selector:
+            device:
+              filter:
+                - integration: voip_stack
+                  model: Home Assistant softphone
+        call_id:
+          name: Call ID
+          selector:
+            text:
+        expected_generation:
+          name: Call generation
+          selector:
+            number:
+              min: 1
+              mode: box

@@ -966,15 +966,16 @@ def build_uas_response(
             value = f"{value};tag={to_tag}"
         if value:
             headers.append((name, value))
-    if request.method == "INVITE":
+    if request.method == "INVITE" or (request.method in {"SUBSCRIBE", "NOTIFY"} and 200 <= int(status_code) < 300):
         headers.extend(
             ("Record-Route", value)
             for value in request.header_values("Record-Route")
         )
-    if 200 <= int(status_code) < 300 and request.method in {"INVITE", "UPDATE"}:
+    if 200 <= int(status_code) < 300 and request.method in {"INVITE", "UPDATE", "SUBSCRIBE", "NOTIFY"}:
         if contact_uri:
             headers.append(("Contact", f"<{contact_uri}>"))
-        headers.extend(session_timer_response_headers(request))
+        if request.method in {"INVITE", "UPDATE"}:
+            headers.extend(session_timer_response_headers(request))
     if request.method == "INVITE" and 101 <= int(status_code) < 300:
         headers.append(("Supported", ", ".join(sorted(SUPPORTED_OPTION_TAGS))))
     if body:

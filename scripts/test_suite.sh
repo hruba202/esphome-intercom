@@ -97,6 +97,9 @@ ha_tests=(
   tests/test_trunk_access_ha.py
   tests/test_trunk_transfer_access.py
   tests/test_automation_call.py
+  tests/test_voicemail_ha.py
+  tests/test_call_ivr_ha.py
+  tests/test_voicemail_baresip_ha.py
   tests/test_automation_originate_ha.py
   tests/test_announcement_media_ha.py
   tests/test_call_trigger.py

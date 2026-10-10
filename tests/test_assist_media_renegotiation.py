@@ -32,7 +32,7 @@ def _module(name: str, **values):
     return module
 
 
-def _load_module(registry, answer_calls: list[dict]):
+def _load_module(registry, answer_calls: list[dict], *, generic=False):
     registry.resource_for = lambda call_id, kind: (
         getattr(registry, f"{kind}s", {}).get(call_id)
         if kind == "relay"
@@ -50,7 +50,7 @@ def _load_module(registry, answer_calls: list[dict]):
     sys.modules.setdefault("homeassistant", homeassistant)
     sys.modules.setdefault("homeassistant.core", core)
 
-    class AssistMediaSession:
+    class LocalCallMedia:
         def __init__(self) -> None:
             self.local_rtp_port = 41000
             self.committed = False
@@ -61,7 +61,11 @@ def _load_module(registry, answer_calls: list[dict]):
 
             return commit
 
+    class AssistMediaSession(LocalCallMedia):
+        pass
+
     _module("assist_runtime", AssistMediaSession=AssistMediaSession)
+    _module("local_call_media", LocalCallMedia=LocalCallMedia)
     _module("const", DOMAIN="voip_stack", HA_SOFTPHONE_DEVICE_ID="device")
     _module("endpoint_lifecycle", call_registry=lambda _hass: registry)
 
@@ -146,10 +150,11 @@ def _load_module(registry, answer_calls: list[dict]):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module, AssistMediaSession
+    return module, LocalCallMedia if generic else AssistMediaSession
 
 
-def test_assist_reinvite_returns_audio_answer_and_declines_video() -> None:
+@pytest.mark.parametrize("generic", [False, True])
+def test_assist_reinvite_returns_audio_answer_and_declines_video(generic) -> None:
     answer_calls: list[dict] = []
     registry = types.SimpleNamespace(
         preanswered={},
@@ -161,7 +166,7 @@ def test_assist_reinvite_returns_audio_answer_and_declines_video() -> None:
             call_id == "call" and generation == 7
         ),
     )
-    module, AssistMediaSession = _load_module(registry, answer_calls)
+    module, AssistMediaSession = _load_module(registry, answer_calls, generic=generic)
     owner = AssistMediaSession()
     registry.relays["call"] = owner
     video = types.SimpleNamespace(direction="recvonly")

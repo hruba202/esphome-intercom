@@ -307,7 +307,7 @@ async def test_forward_preserves_explicit_browser_camera_intent(browser_lab, des
 
 async def test_native_unanswered_action_can_speak_to_outgoing_browser_caller(browser_lab, monkeypatch):
     from custom_components import voip_stack
-    from custom_components.voip_stack import automation_call, automation_context, peer_snapshot
+    from custom_components.voip_stack import automation_call, automation_context, peer_snapshot, local_application
 
     lab = browser_lab
     lab.phones[0].auto_answer = False
@@ -317,7 +317,7 @@ async def test_native_unanswered_action_can_speak_to_outgoing_browser_caller(bro
         ringing_guard=(context.sequence, session.callee))
     binding = automation_context.current_execution.set(execution)
     monkeypatch.setattr(peer_snapshot, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
-    monkeypatch.setattr(automation_call, "send_final_response",
+    monkeypatch.setattr(local_application, "send_final_response",
                         Mock(side_effect=AssertionError("The browser caller has no SIP INVITE to answer")))
     try:
         call = automation_context.bind_call_action(ServiceCall(lab.hass, "voip_stack", "tts_say", {}))

@@ -14,7 +14,8 @@
           "media_capture": "Registra audio privato per la diagnostica",
           "experimental_sip_video": "Abilita video SIP per il softphone Home Assistant",
           "sip_registrar_enabled": "Abilita account softphone SIP locali",
-          "trunk_enabled": "Abilita trunk SIP opzionale"
+          "trunk_enabled": "Abilita trunk SIP opzionale",
+          "voicemail_enabled": "Abilita segreteria telefonica"
         },
         "data_description": {
           "sip_port": "Porta di ascolto dell'endpoint SIP HA. HA accetta signaling SIP sia su UDP sia su TCP su questa porta.",
@@ -99,6 +100,19 @@
         "data": {
           "trunk_register": "Registra il trunk"
         }
+      },
+      "voicemail": {
+        "title": "Voce della segreteria",
+        "description": "Scegli l'entità TTS di Home Assistant usata dal menu telefonico comune.",
+        "data": {
+          "tts_entity_id": "Entità TTS"
+        }
+      },
+      "voicemail_language": {
+        "title": "Lingua della segreteria",
+        "data": {
+          "language": "Lingua"
+        }
       }
     },
     "error": {
@@ -108,7 +122,9 @@
       "trunk_server_required": "Il server trunk è obbligatorio.",
       "trunk_username_required": "Lo username trunk è obbligatorio.",
       "trunk_password_required": "La password trunk è obbligatoria.",
-      "trunk_allowed_ips_invalid": "Inserisci almeno un IP o una rete CIDR validi. Non sono ammesse reti /0 senza restrizioni."
+      "trunk_allowed_ips_invalid": "Inserisci almeno un IP o una rete CIDR validi. Non sono ammesse reti /0 senza restrizioni.",
+      "voicemail_tts_unavailable": "Seleziona un'entità TTS disponibile.",
+      "voicemail_language_unsupported": "Questa lingua non è supportata sia dai messaggi della segreteria sia dal motore TTS scelto."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",

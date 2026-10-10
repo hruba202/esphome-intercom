@@ -89,6 +89,10 @@ class VoipStackCard extends HTMLElement {
     this._stopping = false;
     this._callOperationId = 0;
     this._softphoneSnapshot = null;
+    this._mailboxOpen = false;
+    this._mailboxMessages = [];
+    this._mailboxBusy = false;
+    this._mailboxCallId = "";
     this._activeSessionDeviceId = null;
     this._softphoneDnd = false;
     this._softphoneExtension = "";
@@ -689,6 +693,9 @@ class VoipStackCard extends HTMLElement {
       this._resetDeviceBindings();
       this._softphoneStateLoaded = false;
       this._softphoneSnapshot = null;
+      this._mailboxOpen = false;
+      this._mailboxMessages = [];
+      this._mailboxCallId = "";
       this._activeSessionDeviceId = null;
     }
     if (this._isPhonebookMode()) {
@@ -1919,6 +1926,11 @@ class VoipStackCard extends HTMLElement {
     els.settingsBtn.hidden = !showRuntimeOptions;
     els.settingsPanel.hidden = !showSettingsPanel;
     els.settingsBtn.setAttribute("aria-expanded", String(showSettingsPanel));
+    if (els.voicemailBtn) {
+      els.voicemailBtn.hidden = !softphoneMode || !(this._softphoneSnapshot?.voicemail?.total > 0 || this._mailboxOpen);
+      els.voicemailBtn.setAttribute("aria-expanded", String(this._mailboxOpen));
+      els.voicemailPanel.hidden = !this._mailboxOpen;
+    }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
     els.autoAnswerRow.hidden = !(showSettingsPanel && autoAnswerAvailable);
     els.autoAnswerCheckbox.checked = softphoneMode
@@ -2065,6 +2077,11 @@ class VoipStackCard extends HTMLElement {
     const els = this._els;
     if (!els) return;
     if (els.keypadBtn) els.keypadBtn.onclick = () => this._toggleKeypad();
+    if (els.voicemailBtn) els.voicemailBtn.onclick = async () => {
+      this._mailboxOpen = !this._mailboxOpen;
+      if (this._mailboxOpen) await this._loadMailbox();
+      this._render();
+    };
     if (els.keypadInput) els.keypadInput.oninput = (event) => this._setManualTarget(event.target.value);
     if (els.keypadKeys) {
       for (const [key, btn] of Object.entries(els.keypadKeys)) {
@@ -2233,7 +2250,7 @@ class VoipStackCard extends HTMLElement {
     }
   }
 
-  async _startCall() {
+  async _startCall(destination = "") {
     if (this._starting || this._stopping) return;
     const softphoneAction = this._isHaSoftphoneMode();
     const mediaIntentToken = softphoneAction ? {} : null;
@@ -2261,8 +2278,7 @@ class VoipStackCard extends HTMLElement {
       const deviceInfo = await this._getDeviceInfo();
       if (operationId !== this._callOperationId) return;
       if (softphoneAction) {
-        await this._startHaSoftphoneCall(deviceInfo, operationId);
-        return;
+        return await this._startHaSoftphoneCall(deviceInfo, operationId, destination);
       }
       if (deviceInfo?.softphone) {
         throw new Error("Set card mode to Home Assistant softphone to call from HA");
@@ -2298,8 +2314,8 @@ class VoipStackCard extends HTMLElement {
     }
   }
 
-  async _startHaSoftphoneCall(softphoneInfo, operationId) {
-    const manualTarget = this._softphoneKeypadOpen ? this._softphoneManualTarget.trim() : "";
+  async _startHaSoftphoneCall(softphoneInfo, operationId, destination = "") {
+    const manualTarget = destination || (this._softphoneKeypadOpen ? this._softphoneManualTarget.trim() : "");
     const target = manualTarget
       ? {
           device_id: `manual:${manualTarget}`,
@@ -2349,6 +2365,108 @@ class VoipStackCard extends HTMLElement {
     });
     if (reply && !reply.superseded && operationId === this._callOperationId) {
       this._applySoftphoneSnapshot(reply);
+    }
+    return reply;
+  }
+
+  async _loadMailbox() {
+    try {
+      const endpointId = this._getSoftphoneEndpointId();
+      const result = await this._hass.callWS({ type: "voip_stack/voicemail/list", endpoint_id: endpointId });
+      if (endpointId !== this._getSoftphoneEndpointId()) return;
+      this._mailboxMessages = result.messages || [];
+      this._renderMailbox();
+    } catch (err) { this._showError(err.message || String(err)); }
+  }
+
+  _renderMailbox() {
+    const panel = this._els?.voicemailPanel;
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!this._mailboxMessages.length) {
+      panel.textContent = this._t("No messages");
+      return;
+    }
+    for (const message of this._mailboxMessages) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0";
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "settings-btn";
+      play.style.cssText = "flex:1;min-width:0;white-space:normal;text-align:left";
+      play.textContent = `${message.read ? "" : "● "}${message.caller} · ${new Date(message.created_at * 1000).toLocaleString(this._hass?.language)}`;
+      play.setAttribute("aria-label", `${this._t("Listen")}: ${message.caller}`);
+      play.disabled = this._mailboxBusy;
+      play.onclick = () => this._mailboxMessage(message.id, false);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "settings-btn";
+      remove.textContent = this._t("Delete");
+      remove.disabled = this._mailboxBusy;
+      remove.onclick = () => this._mailboxMessage(message.id, true);
+      row.append(play, remove);
+      panel.appendChild(row);
+    }
+  }
+
+  async _mailboxMessage(messageId, remove) {
+    if (this._mailboxBusy || !this._isHaSoftphoneMode()) return;
+    const endpointId = this._getSoftphoneEndpointId();
+    const active = ["calling", "remote_ringing", "ringing", "answering", "in_call", "connecting", "terminating"]
+      .includes(this._softphoneSnapshot?.state);
+    let callId = active ? this._sessionCallId() : "";
+    if (callId && callId !== this._mailboxCallId) {
+      this._showError("End the current call before opening voicemail.");
+      return;
+    }
+    this._mailboxBusy = true;
+    this._renderMailbox();
+    let unsubscribe = null;
+    let timer = null;
+    try {
+      if (!callId) {
+        const reply = await this._startCall("*97");
+        callId = reply?.call_id || "";
+        if (!callId || reply?.superseded) throw new Error("The voicemail call could not start.");
+        this._mailboxCallId = callId;
+      }
+      const snapshot = await this._hass.callWS({
+        type: "voip_stack/voicemail/list", endpoint_id: endpointId, call_id: callId,
+      });
+      const digits = snapshot.selections?.[messageId];
+      if (!digits || !snapshot.messages.some((item) => item.id === messageId)) {
+        throw new Error("That message is no longer available in this call.");
+      }
+      let confirmation = null;
+      if (remove) {
+        let confirm;
+        confirmation = new Promise((resolve) => { confirm = resolve; });
+        unsubscribe = await this._hass.connection.subscribeEvents((event) => {
+          const data = event.data || {};
+          if (data.call_id === callId && data.mailbox_id === endpointId &&
+              data.message_id === messageId && data.operation === "deleted") confirm(true);
+        }, "voip_stack_voicemail_operation");
+        timer = setTimeout(() => confirm(false), 10000);
+      }
+      for (const digit of digits + (remove ? "2" : "")) {
+        if (this._getSoftphoneEndpointId() !== endpointId || voipStackEngine.callId !== callId ||
+            !voipStackEngine.sendDtmf(digit)) throw new Error("The voicemail call has ended.");
+      }
+      if (confirmation) {
+        if (!await confirmation) throw new Error("Voicemail deletion was not confirmed.");
+        if (this._sessionCallId() === callId) await this._hangup();
+      }
+    } catch (err) {
+      if (this._getSoftphoneEndpointId() === endpointId) {
+        this._showError(err.message || String(err));
+        if (callId && this._sessionCallId() === callId && this._mailboxCallId === callId) await this._hangup();
+      }
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (unsubscribe) unsubscribe();
+      this._mailboxBusy = false;
+      await this._loadMailbox();
+      this._render();
     }
   }
 

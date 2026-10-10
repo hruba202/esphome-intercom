@@ -1,4 +1,13 @@
 const PT_BR = {
+  "Voicemail": "Correio de voz",
+  "No messages": "Nenhuma mensagem",
+  "Listen": "Ouvir",
+  "Delete": "Excluir",
+  "End the current call before opening voicemail.": "Encerre a chamada atual antes de abrir o correio de voz.",
+  "The voicemail call could not start.": "Não foi possível iniciar a chamada para o correio de voz.",
+  "That message is no longer available in this call.": "Esta mensagem não está mais disponível nesta chamada.",
+  "The voicemail call has ended.": "A chamada para o correio de voz terminou.",
+  "Voicemail deletion was not confirmed.": "A exclusão da mensagem não foi confirmada.",
   "Outgoing SIP trunk": "Tronco SIP de saída",
   "Use default trunk": "Usar tronco padrão",
   "Unavailable trunk": "Tronco indisponível",
@@ -121,6 +130,15 @@ const PT_BR = {
 };
 
 const DE = {
+  "Voicemail": "Anrufbeantworter",
+  "No messages": "Keine Nachrichten",
+  "Listen": "Anhören",
+  "Delete": "Löschen",
+  "End the current call before opening voicemail.": "Beenden Sie den aktuellen Anruf, bevor Sie den Anrufbeantworter öffnen.",
+  "The voicemail call could not start.": "Der Anruf beim Anrufbeantworter konnte nicht gestartet werden.",
+  "That message is no longer available in this call.": "Diese Nachricht ist in diesem Anruf nicht mehr verfügbar.",
+  "The voicemail call has ended.": "Der Anruf beim Anrufbeantworter wurde beendet.",
+  "Voicemail deletion was not confirmed.": "Das Löschen der Nachricht wurde nicht bestätigt.",
   "Outgoing SIP trunk": "Ausgehender SIP-Trunk",
   "Use default trunk": "Standard-Trunk verwenden",
   "Unavailable trunk": "Trunk nicht verfügbar",

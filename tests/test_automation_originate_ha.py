@@ -24,6 +24,7 @@ class Phone(asyncio.DatagramProtocol):
         self.transport = None
         self.invites = []
         self.requests = []
+        self.invalid_datagrams = []
         self.invited = asyncio.Event()
         self.bye = asyncio.Event()
         self.answered = asyncio.Event()
@@ -69,7 +70,11 @@ class Phone(asyncio.DatagramProtocol):
         self.answered.set()
 
     def datagram_received(self, raw, address):
-        request = sip.parse_message(raw)
+        try:
+            request = sip.parse_message(raw)
+        except sip.SipError:
+            self.invalid_datagrams.append((address, len(raw), raw[:20].hex()))
+            return
         self.requests.append(request)
         if request.method == "INVITE":
             self.invites.append(request)
@@ -89,7 +94,7 @@ class Phone(asyncio.DatagramProtocol):
             self.respond(request, address, 200)
             self.bye.set()
 
-    def remote_hangup(self):
+    def remote_hangup(self, *, cseq=2):
         request = self.last_request
         port = self.transport.get_extra_info("sockname")[1]
         target = str(sip.parse_sip_uri(request.header("Contact")))
@@ -97,7 +102,7 @@ class Phone(asyncio.DatagramProtocol):
             ("Via", f"SIP/2.0/UDP 127.0.0.1:{port};branch=z9hG4bK-remote-bye"),
             ("From", request.header("To") + ";tag=bedroom"),
             ("To", request.header("From")), ("Call-ID", request.header("Call-ID")),
-            ("CSeq", "2 BYE"),
+            ("CSeq", f"{cseq} BYE"),
         ]
         self.transport.sendto(sip.build_request("BYE", target, headers), self.remote)
 
@@ -107,6 +112,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     from custom_components import voip_stack
     from custom_components.voip_stack import automation_originate as module, services
     from custom_components.voip_stack import automation_call
+    from custom_components.voip_stack import voicemail, mailbox
     from custom_components.voip_stack.endpoint_registry import EndpointRegistry
     from custom_components.voip_stack.phone_control import PhoneAdapterRegistry
     from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpoint
@@ -159,6 +165,8 @@ async def lab(hass, monkeypatch, socket_enabled):
         "tts_say": automation_call.async_tts_say,
         "play_media": automation_call.async_play_media,
         "hangup": voip_stack._handle_sip_hangup_service,
+        "send_to_voicemail": voicemail.async_send_to_voicemail,
+        "set_voicemail_settings": mailbox.async_set_voicemail_settings,
     })
     obj = SimpleNamespace(hass=hass, phones=phones, calls=calls, runtime=runtime, roster=roster)
     yield obj
@@ -173,6 +181,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     await asyncio.gather(*collectors, return_exceptions=True)
     for sock in sockets:
         sock.close()
+    assert not [item for phone in phones for item in phone.invalid_datagrams]
 
 
 def sequence(destination="bedroom0"):

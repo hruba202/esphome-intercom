@@ -12,7 +12,7 @@ from uuid import uuid4
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 
-from .config_validation import route_namespace_conflicts
+from .config_validation import route_namespace_conflicts, mailbox_route_aliases
 from .const import (
     CONF_ASSIST_ENDPOINT_ENABLED,
     CONF_ASSIST_EXTENSION,
@@ -657,6 +657,7 @@ def validate_sip_account_namespace(
                 data.get(CONF_PHONE_NAME),
                 data.get(CONF_PHONE_EXTENSION),
                 data.get(CONF_PHONE_USERNAME),
+                *mailbox_route_aliases(data),
             ),
             candidate_groups=groups,
             existing=(*existing, *accepted),
@@ -703,6 +704,7 @@ def replace_sip_account_subentries(
                 CONF_PHONE_OFFLINE_POLICY,
                 CONF_PHONE_OFFLINE_FORWARD_TARGET,
                 CONF_PHONE_POLICY,
+                "voicemail",
             ):
                 if key in previous.data:
                     data[key] = previous.data[key]

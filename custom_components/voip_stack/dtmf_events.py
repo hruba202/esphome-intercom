@@ -42,6 +42,8 @@ async def handle_sip_info(
         callback = getattr(relay, "on_dtmf", None)
         if callback is not None:
             callback("left", digit, "sip_info")
+            if getattr(relay, "private_dtmf", False):
+                return
             _LOGGER.info(
                 "SIP in-call INFO DTMF RX call_id=%s digit=%s transport=%s",
                 call_id,

@@ -259,7 +259,7 @@ async def async_forward_existing_call(
             if decision.action in {
                 RouteAction.DIRECT, RouteAction.FORWARD, RouteAction.BRIDGE,
                 RouteAction.TRUNK, RouteAction.ASSIST, RouteAction.GROUP,
-                RouteAction.AUTOMATION,
+                RouteAction.AUTOMATION, RouteAction.VOICEMAIL,
             }:
                 from .local_softphone_runtime import PendingLocalSource
 
@@ -637,6 +637,18 @@ async def async_forward_existing_call(
                             role="destination",
                         )
                     raise
+                return
+
+            if decision.action is RouteAction.VOICEMAIL:
+                from .voicemail import start_voicemail_application
+
+                mailbox = endpoint_directory(hass).get(decision.entry.metadata["mailbox_endpoint_id"])
+                if mailbox is None:
+                    raise RuntimeError("The selected mailbox is no longer available")
+                await start_voicemail_application(
+                    hass, session, invite, mailbox, local_ip,
+                    previous=application, local_source=local_source,
+                )
                 return
 
             if decision.action is RouteAction.AUTOMATION:

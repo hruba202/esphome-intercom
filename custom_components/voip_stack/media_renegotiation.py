@@ -16,7 +16,7 @@ import logging
 
 from homeassistant.core import HomeAssistant
 
-from .assist_runtime import AssistMediaSession
+from .local_call_media import LocalCallMedia
 from .endpoint_lifecycle import call_registry as _call_registry
 from .media_offer_answer import (
     validate_bridged_video_reoffer,
@@ -745,8 +745,8 @@ async def async_prepare_media_update(
     if session is None:
         return SipInviteResult(481, "Call/Transaction Does Not Exist")
     call_generation = session.generation
-    if isinstance(relay, AssistMediaSession):
-        # Assist terminates the media locally; it is deliberately stored under
+    if isinstance(relay, LocalCallMedia):
+        # Local applications terminate media here; they are stored under
         # the registry's generic media-owner slot for common teardown, but it
         # is not a two-leg RTP relay.  Answer every offered media section while
         # rejecting video with port zero, and atomically update its audio leg.
@@ -767,7 +767,7 @@ async def async_prepare_media_update(
             )
         except (RuntimeError, TypeError, ValueError) as err:
             _LOGGER.warning(
-                "SIP Assist media update rejected call_id=%s reason=%s",
+                "SIP local application media update rejected call_id=%s reason=%s",
                 call_id,
                 err,
             )
@@ -776,13 +776,13 @@ async def async_prepare_media_update(
         async def _commit_assist_update() -> None:
             if not registry.is_generation_current(call_id, call_generation):
                 raise RuntimeError(
-                    "SIP Assist media update belongs to a terminated call"
+                    "SIP local application media update belongs to a terminated call"
                 )
             if registry.resource_for(call_id, "relay") is not relay:
-                raise RuntimeError("SIP Assist media owner changed before commit")
+                raise RuntimeError("SIP local application media owner changed before commit")
             commit_assist()
             _LOGGER.info(
-                "SIP Assist %s committed call_id=%s remote_rtp=%s:%s "
+                "SIP local application %s committed call_id=%s remote_rtp=%s:%s "
                 "audio_direction=%s video=declined",
                 method,
                 call_id,

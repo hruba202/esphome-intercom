@@ -54,6 +54,8 @@ def _load_phonebook_services(monkeypatch, route_conflicts=None):
         char for char in str(value or "").lower() if char.isalnum()
     )
     roster.parse_roster_json = lambda _value: []
+    mailbox = types.ModuleType(f"{PACKAGE}.mailbox")
+    mailbox.mailbox_settings = lambda _hass, _endpoint: {}
     store = types.ModuleType(f"{PACKAGE}.store")
     store.manual_roster_entries = lambda _hass: []
     store.store_manual_roster_entries = lambda _hass, _entries: None
@@ -65,6 +67,7 @@ def _load_phonebook_services(monkeypatch, route_conflicts=None):
         runtime_data,
         roster,
         store,
+        mailbox,
     ):
         monkeypatch.setitem(sys.modules, dependency.__name__, dependency)
 

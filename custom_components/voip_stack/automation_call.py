@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import ClassVar
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
 from .authorization import async_require_service_admin
@@ -14,52 +14,22 @@ from .automation_context import current_execution
 from .browser_playback import BrowserPlayback
 from .call_projection import publish_bridge_projection
 from .endpoint_lifecycle import call_registry
-from .endpoint_session import CleanupStage, EndpointCallSession, TerminationIntent
+from .endpoint_session import CleanupStage, TerminationIntent
 from .fsm import CallState
-from .inbound_answer import async_commit_runtime_answer
-from .local_call_media import LocalCallMedia
-from .media_ports import RtpPortReservation, take_delayed_offer_ports
 from .runtime_data import call_runtime_artifacts
-from .core.sdp import build_answer_directional, first_offered_dtmf_format
-from .sip_runtime import send_final_response
 
-if TYPE_CHECKING:
-    from .local_softphone_runtime import PendingLocalSource
-    from .roster import RosterEntry
-    from .sip_listener import SipInvite
+from .local_application import LocalCallApplication, attach_local_application
 
 
 @dataclass(slots=True)
-class AutomationCall:
-    """Call-scoped application control, never an independent SIP dialog."""
+class AutomationCall(LocalCallApplication):
+    """Call-scoped automation control over the common local media owner."""
 
-    hass: HomeAssistant
-    session: EndpointCallSession
-    invite: SipInvite | None
-    contact: RosterEntry
-    local_ip: str
-    media: LocalCallMedia | None = None
-    playback: BrowserPlayback | None = None
+    owner: ClassVar[str] = "automation"
     controller: str = ""
-    answered: bool = False
-    outgoing: bool = False
     deadline: asyncio.TimerHandle | None = None
     operation: asyncio.Task | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    local_source: PendingLocalSource | None = None
-
-    def require_current(self, generation: int | None = None) -> None:
-        registry = call_registry(self.hass)
-        if (
-            not registry.is_generation_current(
-                self.session.call_id, self.session.generation
-            )
-            or self.session.owner != "automation"
-            or (generation is not None and generation != self.session.generation)
-        ):
-            raise ServiceValidationError(
-                "This automation call has ended or changed owner"
-            )
 
     def claim(self, call: ServiceCall) -> None:
         self.require_current(int(call.data.get("expected_generation", -1)))
@@ -120,124 +90,6 @@ class AutomationCall:
             self.operation.cancel()
             await asyncio.gather(self.operation, return_exceptions=True)
 
-    async def answer(self) -> None:
-        self.require_current()
-        if self.answered and self.media is not None:
-            return
-        if self.outgoing:
-            raise ServiceValidationError("The outgoing automation call is not ready")
-        registry = call_registry(self.hass)
-        preanswered = registry.resource_for(self.session.call_id, "preanswered")
-        reservation = (
-            (preanswered or {}).get("rtp_reservation")
-            or take_delayed_offer_ports(registry, self.session.call_id)
-            or RtpPortReservation.allocate(self.hass)
-        )
-        if self.local_source is not None:
-            self.invite = self.local_source.stage_application_media(self.invite, *reservation.ports)
-            registry.set_pending_invite(self.session.call_id, self.invite)
-
-        async def complete(reason: str) -> None:
-            registry.request_termination(
-                self.session.call_id,
-                TerminationIntent(reason),
-                generation=self.session.generation,
-            )
-
-        media = LocalCallMedia(
-            self.hass,
-            invite=self.invite,
-            local_rtp_port=reservation.ports[0],
-            reservation=reservation,
-            on_complete=complete,
-            rtp_source=(preanswered or {}).get("audio_rtp_source"),
-        )
-        from .dtmf_events import publish_dtmf_event
-
-        media.on_dtmf = lambda side, digit, transport: publish_dtmf_event(
-            self.hass,
-            call_id=self.session.call_id,
-            dest_call_id="",
-            caller=self.session.caller,
-            callee=self.session.callee,
-            side=side,
-            digit=digit,
-            transport=transport,
-        )
-        try:
-            await media.start()
-            self.require_current()
-            registry.attach_relay(self.session.call_id, media)
-            self.media = media
-            dtmf = first_offered_dtmf_format(self.invite.remote_sdp)
-            if dtmf is not None:
-                dtmf = replace(dtmf, events=dtmf.events & frozenset(range(16)))
-            answer = build_answer_directional(
-                self.local_ip,
-                self.local_ip,
-                reservation.ports[0],
-                self.invite.send_format,
-                self.invite.recv_format,
-                dtmf=dtmf,
-                remote_sdp=self.invite.remote_sdp,
-            )
-            result = await async_commit_runtime_answer(
-                registry,
-                self.session.call_id,
-                answer,
-                send_final_response=send_final_response,
-                response_context=self.hass,
-                owner="automation",
-                caller=self.invite.caller,
-                callee=self.contact.display_name,
-                route_kind="automation",
-                response_already_sent=self.answered or self.local_source is not None,
-                **({
-                    "endpoint_id": self.local_source.call.caller_endpoint_id,
-                    "source_endpoint_id": self.local_source.call.caller_endpoint_id,
-                    "media_client_id": self.local_source.call.caller_media_owner_id,
-                } if self.local_source is not None else {}),
-            )
-            if not result.committed:
-                raise ServiceValidationError(
-                    "The caller ended before the announcement could start"
-                )
-            self.answered = True
-            if preanswered is None:
-                registry.attach_media(
-                    self.session.call_id,
-                    {
-                        "rtp_reservation": reservation,
-                        "local_rtp_port": reservation.ports[0],
-                        "final_response_sent": True,
-                        "early_answer_sdp": answer,
-                        "audio_rtp_source": media.rtp_source,
-                    },
-                    provisional=True,
-                )
-            else:
-                registry.update_media(
-                    self.session.call_id,
-                    provisional=True,
-                    final_response_sent=True,
-                    early_answer_sdp=answer,
-                    audio_rtp_source=media.rtp_source,
-                )
-            # The shared preanswered resource now owns the reservation through handoff.
-            media.release_reservation_on_stop = False
-            if self.local_source is not None:
-                self.local_source.connected(self.contact.display_name, "automation")
-            publish_bridge_projection(
-                self.hass,
-                self.session,
-                event_type="answered",
-                direction="incoming",
-                route_kind="automation",
-            )
-        except BaseException:
-            await media.stop()
-            raise
-
     async def run_operation(
         self, call: ServiceCall, operation, *, timeout: float | None
     ):
@@ -293,18 +145,8 @@ class AutomationCall:
         await self.run_operation(call, play, timeout=float(call.data.get("timeout", 120)))
 
     async def say(self, call: ServiceCall) -> None:
-        from homeassistant.components import tts
-
-        def stream():
-            assert self.media is not None
-            options = {**call.data.get("options", {}), **self.media._tts_audio_output()}
-            result = tts.async_create_stream(
-                self.hass, call.data["tts_entity_id"], call.data.get("language"), options,
-            )
-            result.async_set_message(call.data["message"])
-            return result.async_stream_result()
-
-        await self._play_announcement(call, stream)
+        await self._play_announcement(call, lambda: self.speech_stream(
+            call.data["message"], call.data["tts_entity_id"], call.data.get("language"), call.data.get("options")))
 
     async def play_media(self, call: ServiceCall) -> None:
         from .announcement_media import async_audio_stream
@@ -428,41 +270,9 @@ def automation_call(hass, call_id: str) -> AutomationCall | None:
 
 
 def attach_automation_application(hass, session, invite, contact, local_ip, *, controller="", local_source=None) -> AutomationCall:
-    """Attach application resources after the existing session grants ownership."""
-    session.ensure_live()
-    if session.owner != "automation":
-        raise RuntimeError("Automation ownership has not been acquired")
-    registry = call_registry(hass)
-    preanswered = registry.resource_for(session.call_id, "preanswered")
-    application = AutomationCall(
-        hass, session, invite, contact, local_ip, controller=controller,
-        answered=bool((preanswered or {}).get("final_response_sent")),
-        playback=registry.resource_for(session.call_id, "browser_playback"),
-        local_source=local_source,
-    )
-    registry.own_resource(
-        session.call_id, f"automation:{session.call_id}", application, application.close,
-        stage=CleanupStage.MEDIA, generation=session.generation,
-    )
-    if local_source is not None:
-        if application.playback is None:
-            application.playback = BrowserPlayback()
-            registry.own_resource(
-                session.call_id, f"browser_playback:{session.call_id}",
-                application.playback, application.playback.close,
-                stage=CleanupStage.MEDIA, generation=session.generation,
-            )
-        if not local_source.paused:
-            local_source.pause()
-        local_source.commit(keep_media=True)
-    else:
-        # The old destination no longer participates. Preserve the caller's
-        # scope, not the phone that stopped ringing when the application won.
-        session.update_metadata(
-            endpoint_id=str(session.metadata.get("source_endpoint_id") or ""),
-            dest_endpoint_id="", target_endpoint_id="", ring_endpoint_ids=(),
-        )
-    return application
+    """Attach Automation control to the shared local application media owner."""
+    return attach_local_application(AutomationCall, hass, session, invite, contact, local_ip,
+                                    controller=controller, local_source=local_source)
 
 
 def queue_automation_request(application: AutomationCall) -> None:

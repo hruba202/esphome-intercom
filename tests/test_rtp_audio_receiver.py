@@ -41,6 +41,51 @@ def test_pcm_16k_normalizes_to_selected_pcmu_8k():
     assert np.max(np.abs(np.frombuffer(result[0], dtype='<i2')[24:] + 12000)) <= 2
 
 
+def test_recording_observer_gets_native_pcm_before_resampling_and_survives_reoffer():
+    selected, alternate = fmt(0, 'PCMU'), fmt(97, 'PCM', 16000)
+    receiver = RtpAudioReceiver(selected, (selected, alternate))
+    seen = []
+    detach = receiver.add_pcm_observer(lambda data, audio_format: seen.append((data, audio_format)))
+    source = pcm(12000, 320)
+    result = receiver.decode(97, source)
+    assert seen == [(source, alternate.audio_format)]
+    assert len(result[0]) == 320
+    updated = RtpAudioReceiver(alternate, (alternate,), previous=receiver)
+    updated.decode(97, source)
+    assert len(seen) == 2
+    detach()
+    updated.decode(97, source)
+    assert len(seen) == 2
+
+
+def test_recording_observer_failure_does_not_drop_call_audio():
+    selected = fmt(97, 'PCM', 16000)
+    receiver = RtpAudioReceiver(selected)
+    calls = []
+    def broken(_data, _format):
+        calls.append(1)
+        raise OSError("synthetic recording failure")
+    receiver.add_pcm_observer(broken)
+    source = pcm(1000, 320)
+    assert receiver.decode(97, source) == [source]
+    assert receiver.decode(97, source) == [source]
+    assert calls == [1]
+
+
+def test_recording_started_after_reoffer_preparation_survives_its_commit():
+    selected = fmt(97, 'PCM', 16000)
+    previous = RtpAudioReceiver(selected)
+    prepared = RtpAudioReceiver(selected, previous=previous)
+    seen = []
+    detach = previous.add_pcm_observer(lambda data, _format: seen.append(data))
+    source = pcm(700, 320)
+    assert prepared.decode(97, source) == [source]
+    assert seen == [source]
+    detach()
+    prepared.decode(97, source)
+    assert seen == [source]
+
+
 def test_payload_97_l16_uses_network_byte_order_not_vendor_pcm():
     selected, alternate = fmt(0, 'PCMU'), fmt(97, 'L16')
     receiver = RtpAudioReceiver(selected, (alternate,))

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from time import monotonic
+import logging
 
 from .core import rtp, sdp
 from .core.audio_pcm import PcmFrameConverter
 from .sip_client import RtpPayloadDecoder
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class RtpAudioReceiver:
@@ -20,6 +23,9 @@ class RtpAudioReceiver:
         previous: RtpAudioReceiver | None = None,
     ) -> None:
         self.selected_format = selected_format
+        # Share the observer collection even when it is empty: a recorder may
+        # attach after offer preparation but before the new receiver commits.
+        self._pcm_observers = previous._pcm_observers if previous is not None else {}
         self._formats = {fmt.payload_type: fmt for fmt in recv_formats}
         self._formats.setdefault(selected_format.payload_type, selected_format)
         if any(not 0 <= pt <= 127 for pt in self._formats):
@@ -76,6 +82,12 @@ class RtpAudioReceiver:
             self._converter = None
             self._active_format = None
 
+    def add_pcm_observer(self, observer):
+        """Tap decoded native PCM without another decoder or receive queue."""
+        observers = self._pcm_observers
+        observers[observer] = None
+        return lambda: observers.pop(observer, None)
+
     def decode(self, payload_type: int, payload: bytes) -> list[bytes]:
         fmt = self.format_for(payload_type)
         if fmt is None:
@@ -89,6 +101,13 @@ class RtpAudioReceiver:
         stride = source.container_bytes_per_sample * source.channels
         if not pcm or len(pcm) % stride:
             raise ValueError("decoded RTP audio is empty or not sample-aligned")
+        if self._pcm_observers:
+            for observer in tuple(self._pcm_observers):
+                try:
+                    observer(pcm, source)
+                except Exception:
+                    self._pcm_observers.pop(observer, None)
+                    _LOGGER.debug("Decoded audio observer failed; call audio continues", exc_info=True)
         self.observe_payload(payload_type)
         if fmt != self._active_format:
             self._pending.clear()

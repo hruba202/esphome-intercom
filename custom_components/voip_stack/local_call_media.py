@@ -426,10 +426,19 @@ class LocalCallMedia:
             **self.counters,
         }
 
-    async def play_pcm_stream(self, chunks: AsyncGenerator[bytes]) -> None:
-        """Pace a provider PCM stream through the existing RTP output queue."""
+    async def play_pcm_stream(self, chunks: AsyncGenerator[bytes], *, source_format=LOCAL_PCM_FORMAT) -> None:
+        """Pace PCM through the call's negotiated output, including native WAV."""
         pending = bytearray()
-        frame_bytes = LOCAL_PCM_FORMAT.nominal_frame_bytes
+        frame_bytes = source_format.nominal_frame_bytes
+        converter = None
+
+        def convert(frame):
+            nonlocal converter
+            destination = self.invite.send_format.audio_format
+            if converter is None or converter.dst != destination:
+                converter = PcmFrameConverter(source_format, destination)
+            return converter.convert(frame)
+
         async for chunk in chunks:
             if self.closed.is_set():
                 return
@@ -437,11 +446,11 @@ class LocalCallMedia:
             while len(pending) >= frame_bytes:
                 source_frame = bytes(pending[:frame_bytes])
                 del pending[:frame_bytes]
-                for frame in self.tx_converter.convert(source_frame):
+                for frame in convert(source_frame):
                     await self.tx_queue.put(frame)
         if pending:
             pending.extend(bytes(frame_bytes - len(pending)))
-            for frame in self.tx_converter.convert(bytes(pending)):
+            for frame in convert(bytes(pending)):
                 await self.tx_queue.put(frame)
 
     def start_consumer(self, consumer: Callable[[], Awaitable[None]]) -> None:

@@ -1822,7 +1822,10 @@ class VoipStackEngine extends EventTarget {
     };
     if (deviceId) request.service_data.device_id = deviceId;
     const serviceReply = await this._hass.callWS(request);
-    const reply = serviceReply?.response || serviceReply || {};
+    const response = serviceReply?.response || serviceReply || {};
+    const reply = response.schema_version === 2
+      ? { ...response, ...response.call, device_id: response.phone?.device_id }
+      : response;
     endpointId = String(reply?.endpoint_id || reply?.phone?.endpoint_id || endpointId).trim();
     deviceId = String(reply?.device_id || reply?.phone?.device_id || deviceId).trim();
     if (!endpointId || !deviceId) {

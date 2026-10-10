@@ -86,6 +86,8 @@ def _patch_route_prefix(
     )
     invites = pending_invites or {}
     registry = SimpleNamespace(
+        sip_client_for=lambda _call_id: None,
+        get_session=lambda _call_id: None,
         artifact_items=lambda name: (
             iter(invites.items()) if name == "pending_invite" else iter(())
         )
@@ -194,7 +196,8 @@ async def test_restricted_registered_caller_cannot_egress_after_route_override(m
     runtime.trunk_enabled.return_value = True
     caller = RosterEntry(id="alice", metadata={"endpoint_id": "sip:alice"})
     monkeypatch.setattr(invite_router, "_roster_entry_for_target", lambda *_: caller)
-    registry = SimpleNamespace(artifact_items=lambda _: iter(()), get_session=lambda _: None)
+    registry = SimpleNamespace(artifact_items=lambda _: iter(()), get_session=lambda _: None,
+                               sip_client_for=lambda _: None)
     monkeypatch.setattr(invite_router, "_call_registry", lambda _: registry)
     monkeypatch.setattr(invite_router, "registration_data", lambda _: SimpleNamespace(route_trigger_filters={}))
     monkeypatch.setattr(invite_router, "request_route_override", AsyncMock(return_value=SimpleNamespace(

@@ -14,7 +14,8 @@
           "media_capture": "Nehmen Sie den Ton privater Anrufe zur Diagnose auf",
           "experimental_sip_video": "Aktivieren Sie SIP-Video für das Home Assistant-Softphone",
           "sip_registrar_enabled": "Aktivieren Sie lokale SIP-Konten",
-          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk"
+          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk",
+          "voicemail_enabled": "Anrufbeantworter aktivieren"
         },
         "data_description": {
           "sip_port": "Abhörport für den HA-SIP-Endpunkt. HA akzeptiert SIP-Signalisierung über UDP und TCP an diesem Port.",
@@ -99,6 +100,19 @@
         "data": {
           "trunk_register": "Trunk registrieren"
         }
+      },
+      "voicemail": {
+        "title": "Stimme des Anrufbeantworters",
+        "description": "Wählen Sie die Home Assistant TTS-Entität für das gemeinsame Telefonmenü.",
+        "data": {
+          "tts_entity_id": "TTS-Entität"
+        }
+      },
+      "voicemail_language": {
+        "title": "Sprache des Anrufbeantworters",
+        "data": {
+          "language": "Sprache"
+        }
       }
     },
     "error": {
@@ -108,7 +122,9 @@
       "trunk_server_required": "Trunk-Server ist erforderlich.",
       "trunk_username_required": "Trunk-Benutzername ist erforderlich.",
       "trunk_password_required": "Trunk-Passwort ist erforderlich.",
-      "trunk_allowed_ips_invalid": "Mindestens eine gültige IP oder ein CIDR-Netz eingeben. Uneingeschränkte /0-Netze sind nicht erlaubt."
+      "trunk_allowed_ips_invalid": "Mindestens eine gültige IP oder ein CIDR-Netz eingeben. Uneingeschränkte /0-Netze sind nicht erlaubt.",
+      "voicemail_tts_unavailable": "Wählen Sie eine verfügbare TTS-Entität.",
+      "voicemail_language_unsupported": "Diese Sprache wird nicht von den Ansagen und dem gewählten TTS unterstützt."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",

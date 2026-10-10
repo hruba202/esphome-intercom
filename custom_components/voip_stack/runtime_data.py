@@ -71,6 +71,7 @@ class VoipStackRuntime:
     trunk_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     default_trunk_id: str = ""
     trunk_update_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    archive_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     preferred_phone_device_id: str = ""
     debug_mode: bool = False
     media_capture: bool = False

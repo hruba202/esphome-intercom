@@ -119,4 +119,6 @@ def test_hangup_fallback_is_explicit_and_does_not_dial_contact_named_hangup():
 
 def test_missing_mailbox_application_never_rings_ordinary_phone():
     result = resolve({"always": {"kind": "voicemail", "target": "second"}})
-    assert result.failure.decline_reason == "voicemail_unavailable"
+    assert result.decision.action is RouteAction.REJECT
+    assert result.decision.target == "voicemail.second"
+    assert result.endpoint is None

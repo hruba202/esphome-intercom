@@ -266,6 +266,21 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         vol.Optional("no_answer_to"): URI_TEXT,
         vol.Optional("outbound_trunk"): IDENTIFIER_TEXT,
     }, extra=vol.PREVENT_EXTRA)
+    voicemail_settings_schema = vol.Schema({
+        vol.Required("device_id"): IDENTIFIER_TEXT,
+        vol.Optional("enabled"): cv.boolean,
+        vol.Optional("pin"): PASSWORD_TEXT,
+        vol.Optional("max_seconds"): vol.All(vol.Coerce(int), vol.Range(min=1, max=3600)),
+        vol.Exclusive("greeting_media", "greeting"): MediaSelector({"accept": ["audio/*"]}),
+        vol.Exclusive("clear_greeting", "greeting"): cv.boolean,
+    }, extra=vol.PREVENT_EXTRA)
+    send_voicemail_schema = vol.Schema({
+        **phone_selector_fields,
+        vol.Optional("call_id", default=""): SHORT_TEXT,
+        vol.Optional("expected_generation"): SEQUENCE,
+        vol.Required("mailbox"): IDENTIFIER_TEXT,
+        vol.Optional("skip_greeting", default=False): cv.boolean,
+    }, extra=vol.PREVENT_EXTRA)
     sip_account_create_schema = vol.Schema(
         {
             vol.Required("username"): vol.All(cv.string, vol.Length(max=64)),
@@ -308,6 +323,7 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         "play_media",
         "wait_for_dtmf",
         "wait_unanswered",
+        "send_to_voicemail",
         "route",
         "select_inbound_destination",
         "set_deadline",
@@ -329,6 +345,8 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
 
     hass.services.async_register(DOMAIN, "purge_devices", handler_for("purge_devices"), schema=purge_schema)
     hass.services.async_register(DOMAIN, "set_phone_settings", handler_for("set_phone_settings"), schema=set_phone_settings_schema)
+    hass.services.async_register(DOMAIN, "set_voicemail_settings", handler_for("set_voicemail_settings"), schema=voicemail_settings_schema)
+    hass.services.async_register(DOMAIN, "send_to_voicemail", handler_for("send_to_voicemail"), schema=send_voicemail_schema)
     hass.services.async_register(DOMAIN, "answer", handler_for("answer"), schema=sip_answer_schema)
     hass.services.async_register(DOMAIN, "decline", handler_for("decline"), schema=sip_decline_schema)
     hass.services.async_register(DOMAIN, "hangup", handler_for("hangup"), schema=sip_hangup_schema)

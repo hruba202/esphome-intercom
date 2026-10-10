@@ -88,6 +88,7 @@ class SipInvite:
     initial_response_sent: bool = False
     trunk_id: str = ""
     outbound_trunk_id: str = ""
+    identified_source_endpoint_id: str = ""
 
     @property
     def selected_format(self) -> sdp.RtpPcmFormat:

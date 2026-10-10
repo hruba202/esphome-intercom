@@ -49,6 +49,8 @@ TO_REDACT = {
     "offline_forward_target",
     "outbound_proxy",
     "password",
+    "pin",
+    "pin_hash",
     "peer",
     "peer_name",
     "phonebook_contacts",

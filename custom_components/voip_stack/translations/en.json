@@ -14,7 +14,8 @@
           "media_capture": "Record private call audio for diagnostics",
           "experimental_sip_video": "Enable SIP video for the Home Assistant softphone",
           "sip_registrar_enabled": "Enable local SIP accounts",
-          "trunk_enabled": "Enable optional SIP trunk"
+          "trunk_enabled": "Enable optional SIP trunk",
+          "voicemail_enabled": "Enable voicemail"
         },
         "data_description": {
           "sip_port": "Listen port for the HA SIP endpoint. HA accepts SIP signaling over both UDP and TCP on this port.",
@@ -99,6 +100,19 @@
         "data": {
           "trunk_register": "Register the trunk"
         }
+      },
+      "voicemail": {
+        "title": "Voicemail voice",
+        "description": "Choose the Home Assistant TTS entity used by the shared telephone menu.",
+        "data": {
+          "tts_entity_id": "TTS entity"
+        }
+      },
+      "voicemail_language": {
+        "title": "Voicemail language",
+        "data": {
+          "language": "Language"
+        }
       }
     },
     "error": {
@@ -108,7 +122,9 @@
       "trunk_server_required": "Trunk server is required.",
       "trunk_username_required": "Trunk username is required.",
       "trunk_password_required": "Trunk password is required.",
-      "trunk_allowed_ips_invalid": "Enter at least one valid IP or CIDR network. An unrestricted /0 network is not allowed."
+      "trunk_allowed_ips_invalid": "Enter at least one valid IP or CIDR network. An unrestricted /0 network is not allowed.",
+      "voicemail_tts_unavailable": "Select an available TTS entity.",
+      "voicemail_language_unsupported": "This language is not supported by both the voicemail prompts and the selected TTS engine."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",

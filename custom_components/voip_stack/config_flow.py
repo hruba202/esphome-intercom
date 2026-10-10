@@ -15,6 +15,8 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     AssistPipelineSelector,
     NumberSelector,
     NumberSelectorConfig,
@@ -26,7 +28,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, trusted_networks
-from .config_validation import extension_conflicts, route_namespace_conflicts
+from .config_validation import extension_conflicts, route_namespace_conflicts, mailbox_route_aliases
 from .phone_config import (
     CONF_PHONE_AUTO_ANSWER,
     CONF_PHONE_CONFERENCE_GROUP,
@@ -496,6 +498,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_REGISTRAR_ENABLED, default=defaults[CONF_REGISTRAR_ENABLED]
                 ): BooleanSelector(),
+                vol.Optional("voicemail_enabled", default=bool(existing.get("voicemail", {}).get("enabled", False))): BooleanSelector(),
             }
         )
         errors: dict[str, str] = {}
@@ -531,7 +534,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 if current_entry is None:
                     await self.async_set_unique_id(DOMAIN)
                     self._abort_if_unique_id_configured()
-                return self._store_entry(data)
+                return await self._finish_optional_features(data)
 
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
@@ -575,7 +578,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             if current_entry is None:
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()
-            return self._store_entry(data)
+            return await self._finish_optional_features(data)
         return self.async_show_form(step_id="video", data_schema=schema)
 
     async def async_step_assist(self, user_input=None):
@@ -641,8 +644,64 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 if current_entry is None:
                     await self.async_set_unique_id(DOMAIN)
                     self._abort_if_unique_id_configured()
-                return self._store_entry(data)
+                return await self._finish_optional_features(data)
         return self.async_show_form(step_id="assist", data_schema=schema, errors=errors)
+
+
+    async def _finish_optional_features(self, data):
+        self._base_input = data
+        _entry, existing = self._current_entry_data()
+        enabled = data.pop("voicemail_enabled", bool(existing.get("voicemail", {}).get("enabled", False)))
+        if enabled:
+            return await self.async_step_voicemail()
+        data["voicemail"] = {**existing.get("voicemail", {}), "enabled": False}
+        return self._store_entry(data)
+
+    async def async_step_voicemail(self, user_input=None):
+        """Choose the shared IVR voice before enabling any mailbox service."""
+        from .voicemail_config import voice_engine, prompt_languages
+
+        _entry, existing = self._current_entry_data()
+        current = existing.get("voicemail", {})
+        errors = {}
+        if user_input is not None:
+            identity = str(user_input.get("tts_entity_id") or "")
+            entity = voice_engine(self.hass, identity)
+            if entity is None or not entity.available:
+                errors["tts_entity_id"] = "voicemail_tts_unavailable"
+            elif not prompt_languages(entity):
+                errors["tts_entity_id"] = "voicemail_language_unsupported"
+            else:
+                self._voicemail_tts = identity
+                return await self.async_step_voicemail_language()
+        return self.async_show_form(step_id="voicemail", errors=errors, data_schema=vol.Schema({
+            vol.Required("tts_entity_id", default=current.get("tts_entity_id", "")):
+                EntitySelector(EntitySelectorConfig(domain="tts")),
+        }))
+
+    async def async_step_voicemail_language(self, user_input=None):
+        from .voicemail_config import voice_engine, prompt_languages
+
+        entity = voice_engine(self.hass, self._voicemail_tts)
+        if entity is None or not entity.available:
+            return await self.async_step_voicemail({"tts_entity_id": self._voicemail_tts})
+        languages = prompt_languages(entity)
+        _entry, existing = self._current_entry_data()
+        previous = existing.get("voicemail", {}).get("language")
+        default = previous if previous in languages else entity.default_language
+        errors = {}
+        if user_input is not None:
+            language = str(user_input.get("language") or "")
+            if language not in languages:
+                errors["language"] = "voicemail_language_unsupported"
+            else:
+                self._base_input["voicemail"] = {"enabled": True, "tts_entity_id": self._voicemail_tts,
+                                                  "language": language}
+                return self._store_entry(dict(self._base_input))
+        return self.async_show_form(step_id="voicemail_language", errors=errors, data_schema=vol.Schema({
+            vol.Required("language", default=default or ""):
+                SelectSelector(SelectSelectorConfig(options=languages, mode="dropdown")),
+        }))
 
 
 
@@ -769,7 +828,9 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
         )
         entry = self._get_entry()
         return not route_namespace_conflicts(
-            candidate_routes=(name, extension, username),
+            candidate_routes=(name, extension, username, *mailbox_route_aliases({
+                **self._current_data(), "name": name, "extension": extension, "username": username,
+            })),
             candidate_groups=_group_route_values(
                 ring_group,
                 conference_group,
@@ -832,6 +893,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
             elif CONF_PHONE_USERNAME not in errors:
                 endpoint_id = new_sip_account_endpoint_id()
         data = {
+            **current,
             CONF_PHONE_ENDPOINT_ID: endpoint_id,
             CONF_PHONE_KIND: kind.value,
             CONF_PHONE_NAME: name,

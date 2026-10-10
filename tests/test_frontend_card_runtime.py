@@ -1236,6 +1236,59 @@ rejectedHangup._loadSoftphoneState = async () => {{}};
 await rejectedHangup._hangup();
 assert.equal(engine.ownsSoftphoneSession("hangup-rejected", "default"), true);
 assert.match(rejectedHangup._errorMsg, /hangup denied/i);
+
+// Mailbox shortcuts use the existing phone call and DTMF. A retained Call-ID
+// in idle history must not be mistaken for a live call owned by someone else.
+const mailbox = makeCard();
+mailbox._render = () => {{}};
+mailbox._renderMailbox = () => {{}};
+mailbox._loadMailbox = async () => {{}};
+mailbox._softphoneSnapshot = {{endpoint_id: "default", state: "in_call", call_id: "ordinary-call"}};
+let mailboxStarts = 0;
+mailbox._startCall = async (destination) => {{
+  mailboxStarts++;
+  assert.equal(destination, "*97");
+  mailbox._softphoneSnapshot = {{endpoint_id: "default", state: "in_call", call_id: "mailbox-call"}};
+  engine.callId = "mailbox-call";
+  return {{state: "in_call", call_id: "mailbox-call"}};
+}};
+await mailbox._mailboxMessage("message-id", false);
+assert.equal(mailboxStarts, 0);
+assert.match(mailbox._errorMsg, /current call/);
+mailbox._softphoneSnapshot = {{endpoint_id: "default", state: "idle", call_id: "old-finished-call"}};
+mailbox._softphoneManualTarget = "Desk";
+mailbox._hass.callWS = async (request) => {{
+  assert.equal(request.type, "voip_stack/voicemail/list");
+  assert.equal(request.call_id, "mailbox-call");
+  return {{messages: [{{id: "message-id"}}], selections: {{"message-id": "02#"}}}};
+}};
+const mailboxDigits = [];
+let mailboxNotification;
+let mailboxUnsubscribed = false;
+let mailboxHungUp = false;
+engine.sendDtmf = (digit) => {{
+  mailboxDigits.push(digit);
+  if (mailboxDigits.join("").endsWith("02#2") && mailboxNotification) mailboxNotification({{data: {{
+    call_id: "mailbox-call", mailbox_id: "default", message_id: "message-id", operation: "deleted",
+  }}}});
+  return true;
+}};
+await mailbox._mailboxMessage("message-id", false);
+assert.equal(mailboxStarts, 1);
+assert.equal(mailboxDigits.join(""), "02#");
+assert.equal(mailbox._softphoneManualTarget, "Desk");
+mailbox._hass.connection = {{subscribeEvents: async (cb, type) => {{
+  assert.equal(type, "voip_stack_voicemail_operation");
+  mailboxNotification = cb;
+  return () => {{mailboxUnsubscribed = true;}};
+}}}};
+mailbox._hangup = async () => {{mailboxHungUp = true;}};
+await mailbox._mailboxMessage("message-id", true);
+assert.equal(mailboxStarts, 1);
+assert.equal(mailboxDigits.join(""), "02#02#2");
+assert.equal(mailboxHungUp, true);
+assert.equal(mailboxUnsubscribed, true);
+assert.equal(mailbox._mailboxBusy, false);
 """
     completed = subprocess.run(
         [

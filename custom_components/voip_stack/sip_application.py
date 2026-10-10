@@ -9,7 +9,7 @@ import secrets
 import time
 from xml.etree import ElementTree
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .const import EVENT_SIP_MESSAGE, EVENT_SIP_PRESENCE
 from .core import sip
@@ -28,6 +28,8 @@ class SipApplicationMethods:
     tasks: set[asyncio.Task[object]] | None = None
     publication_timers: dict[str, asyncio.Task[object]] | None = None
     subscription_timers: dict[str, asyncio.Task[object]] | None = None
+    mailbox_archive: object | None = None
+    mailbox_unsubscribe: Callable[[], None] | None = None
 
     def __post_init__(self) -> None:
         self.publications = {}
@@ -51,11 +53,33 @@ class SipApplicationMethods:
         if request.method == "PUBLISH":
             return self._publish(request, account.username)
         if request.method == "SUBSCRIBE":
+            mailbox_id = ""
+            event = request.header("Event").partition(";")[0].strip().lower()
+            if event == "message-summary":
+                from .mailbox import get_archive, mailbox_settings, EVENT_VOICEMAIL_CHANGED
+                from .runtime_data import endpoint_directory
+                from .voicemail_config import voicemail_config
+
+                try:
+                    target = sip.parse_sip_uri(request.uri).user
+                except (ValueError, sip.SipError):
+                    return SipRequestResult(400, "Bad Request")
+                if target.casefold() != account.username.casefold():
+                    return SipRequestResult(403, "Forbidden")
+                endpoint = endpoint_directory(self.hass).by_username(account.username)
+                if (endpoint is None or not voicemail_config(self.hass).get("enabled")
+                        or not mailbox_settings(self.hass, endpoint.endpoint_id).get("enabled")):
+                    return SipRequestResult(404, "Not Found")
+                self.mailbox_archive = await get_archive(self.hass)
+                mailbox_id = endpoint.endpoint_id
+                if self.mailbox_unsubscribe is None:
+                    self.mailbox_unsubscribe = self.hass.bus.async_listen(EVENT_VOICEMAIL_CHANGED, self._mailbox_changed)
             return self._subscribe(
                 request,
                 addr,
                 account.username,
                 follow_up_sender,
+                mailbox_id=mailbox_id,
             )
         return SipRequestResult(405, "Method Not Allowed")
 
@@ -147,11 +171,18 @@ class SipApplicationMethods:
         addr: tuple[str, int],
         subscriber: str,
         follow_up_sender: "SipFollowUpSender | None",
+        *, mailbox_id: str = "",
     ) -> SipRequestResult:
         """Create, refresh or terminate one RFC 6665 presence subscription."""
 
-        if request.header("Event").strip().lower() != "presence":
+        event = request.header("Event").partition(";")[0].strip().lower()
+        if event not in {"presence", "message-summary"}:
             return SipRequestResult(489, "Bad Event")
+        content_type = "application/simple-message-summary" if event == "message-summary" else "application/pidf+xml"
+        accepted = request.header("Accept")
+        if accepted and not any(item.split(";", 1)[0].strip().lower() in {content_type, "application/*", "*/*"}
+                                for item in accepted.split(",")):
+            return SipRequestResult(406, "Not Acceptable", headers=(("Accept", content_type),))
         if follow_up_sender is None or not request.header("Contact"):
             return SipRequestResult(400, "Bad Request")
         try:
@@ -168,7 +199,7 @@ class SipApplicationMethods:
         if target_account is None or not target_account.enabled:
             return SipRequestResult(404, "Not Found")
 
-        key = f"{request.header('Call-ID')}:{sip.extract_tag(request.header('From'))}"
+        key = f"{request.header('Call-ID')}:{sip.extract_tag(request.header('From'))}:{request.header('Event')}"
         subscriptions = self.subscriptions
         assert subscriptions is not None
         current = subscriptions.get(key)
@@ -178,6 +209,8 @@ class SipApplicationMethods:
         to_tag = current.to_tag if current is not None else secrets.token_hex(8)
         subscription = SipPresenceSubscription(
             key=key,
+            event=event,
+            mailbox_id=mailbox_id,
             target=target,
             subscriber=subscriber,
             to_tag=to_tag,
@@ -211,12 +244,22 @@ class SipApplicationMethods:
         *,
         expires: int,
         terminated: bool = False,
+        termination_reason: str = "timeout",
     ) -> SipRequestResult:
-        publication = self._publication(subscription.target)
-        body = publication.body if publication is not None else _closed_pidf(
-            subscription.target
-        )
-        state = "terminated;reason=timeout" if terminated else f"active;expires={expires}"
+        if subscription.event == "message-summary":
+            from dataclasses import replace
+
+            new, old = self.mailbox_archive.counts(subscription.mailbox_id)
+            account_uri = replace(sip.parse_sip_uri(subscription.request.uri), user=f"mailbox.{subscription.target}")
+            body = (f"Messages-Waiting: {'yes' if new else 'no'}\r\n"
+                    f"Message-Account: {account_uri}\r\n"
+                    f"Voice-Message: {min(new, 4294967295)}/{min(old, 4294967295)} (0/0)\r\n").encode()
+            content_type = "application/simple-message-summary"
+        else:
+            publication = self._publication(subscription.target)
+            body = publication.body if publication is not None else _closed_pidf(subscription.target)
+            content_type = "application/pidf+xml"
+        state = f"terminated;reason={termination_reason}" if terminated else f"active;expires={expires}"
         cseq = subscription.next_cseq
         subscription.next_cseq += 1
         return SipRequestResult(
@@ -224,9 +267,9 @@ class SipApplicationMethods:
             to_tag=subscription.to_tag,
             follow_up=SipFollowUpRequest(
                 method="NOTIFY",
-                headers=(("Event", "presence"), ("Subscription-State", state)),
+                headers=(("Event", subscription.request.header("Event")), ("Subscription-State", state)),
                 body=body,
-                content_type="application/pidf+xml",
+                content_type=content_type,
                 cseq=cseq,
             ),
             follow_up_lock=subscription.notify_lock,
@@ -242,7 +285,27 @@ class SipApplicationMethods:
             return None
         return publication
 
-    def _notify_subscribers(self, target: str) -> None:
+    @callback
+    def _mailbox_changed(self, event) -> None:
+        if self.mailbox_archive is None:
+            return
+        for subscription in tuple((self.subscriptions or {}).values()):
+            if subscription.event == "message-summary" and subscription.mailbox_id == event.data.get("endpoint_id"):
+                if event.data.get("removed"):
+                    self.subscriptions.pop(subscription.key, None)
+                    self._cancel_timer(self.subscription_timers, subscription.key)
+                    result = self._notification_result(
+                        subscription, expires=0, terminated=True, termination_reason="noresource",
+                    )
+                    self._track(
+                        subscription.sender(subscription.request, subscription.addr, result),
+                        f"voip-sip-notify-{subscription.key}",
+                    )
+                    continue
+                self._notify_subscribers(subscription.target, event="message-summary")
+                break
+
+    def _notify_subscribers(self, target: str, *, event="presence") -> None:
         subscriptions = self.subscriptions
         assert subscriptions is not None
         now = time.time()
@@ -251,7 +314,7 @@ class SipApplicationMethods:
                 subscriptions.pop(key, None)
                 self._cancel_timer(self.subscription_timers, key)
                 continue
-            if subscription.target.lower() != target.lower():
+            if subscription.event != event or subscription.target.lower() != target.lower():
                 continue
             result = self._notification_result(
                 subscription,
@@ -337,6 +400,10 @@ class SipApplicationMethods:
     async def stop(self) -> None:
         """Cancel application transactions and discard expiring state."""
 
+        if self.mailbox_unsubscribe is not None:
+            self.mailbox_unsubscribe()
+            self.mailbox_unsubscribe = None
+        self.mailbox_archive = None
         tasks = self.tasks
         if tasks:
             for task in tuple(tasks):
@@ -382,6 +449,8 @@ class SipPresenceSubscription:
     sender: SipFollowUpSender
     next_cseq: int
     notify_lock: asyncio.Lock
+    event: str = "presence"
+    mailbox_id: str = ""
 
 
 def _publication_expires(value: str) -> int:
