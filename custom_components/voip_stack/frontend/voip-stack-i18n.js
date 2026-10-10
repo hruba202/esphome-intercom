@@ -1,6 +1,7 @@
 const PT_BR = {
   "Voicemail": "Correio de voz",
   "No messages": "Nenhuma mensagem",
+  "Older messages": "Mensagens anteriores",
   "Listen": "Ouvir",
   "Delete": "Excluir",
   "End the current call before opening voicemail.": "Encerre a chamada atual antes de abrir o correio de voz.",
@@ -132,6 +133,7 @@ const PT_BR = {
 const DE = {
   "Voicemail": "Anrufbeantworter",
   "No messages": "Keine Nachrichten",
+  "Older messages": "Ältere Nachrichten",
   "Listen": "Anhören",
   "Delete": "Löschen",
   "End the current call before opening voicemail.": "Beenden Sie den aktuellen Anruf, bevor Sie den Anrufbeantworter öffnen.",

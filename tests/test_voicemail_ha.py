@@ -118,6 +118,32 @@ async def test_message_reference_uses_existing_ha_media_file(mailbox_lab, tmp_pa
     assert not resolved.path.exists()
 
 
+async def test_message_metadata_selection_reaches_older_pages(mailbox_lab, hass_admin_user):
+    from inspect import unwrap
+    from types import SimpleNamespace
+    from custom_components.voip_stack.mailbox_api import websocket_list
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    lab.runtime.endpoints.update("kitchen", entity_ids=frozenset({"sensor.kitchen"}))
+    archive = await get_archive(lab.hass)
+    identities = []
+    for _ in range(3):
+        writer = await archive.begin("kitchen")
+        assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+        identities.append((await writer.finish())["id"])
+    results, errors = [], []
+    connection = SimpleNamespace(user=hass_admin_user,
+                                 send_result=lambda _id, data: results.append(data),
+                                 send_error=lambda *args: errors.append(args))
+    request = {"id": 1, "endpoint_id": "kitchen", "offset": 0, "limit": 1}
+    await unwrap(websocket_list)(lab.hass, connection, request)
+    assert results[-1]["messages"][0]["id"] == identities[-1]
+    await unwrap(websocket_list)(lab.hass, connection, {**request, "message_id": identities[0]})
+    assert results[-1]["messages"][0]["id"] == identities[0]
+    assert not errors
+
+
 @pytest.mark.parametrize("failure", ["language", "provider", "timeout", "cancel"])
 async def test_transcription_errors_leave_mailbox_reusable(mailbox_lab, speech_entity, failure):
     from homeassistant.exceptions import ServiceValidationError

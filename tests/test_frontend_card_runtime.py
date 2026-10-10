@@ -1289,6 +1289,19 @@ assert.equal(mailboxDigits.join(""), "02#02#2");
 assert.equal(mailboxHungUp, true);
 assert.equal(mailboxUnsubscribed, true);
 assert.equal(mailbox._mailboxBusy, false);
+
+const pagedMailbox = makeCard();
+pagedMailbox._renderMailbox = () => {{}};
+const offsets = [];
+pagedMailbox._hass.callWS = async (request) => {{
+  offsets.push(request.offset);
+  return {{total: 3, messages: request.offset === 0 ? [{{id: "one"}}, {{id: "two"}}] : [{{id: "two"}}, {{id: "three"}}]}};
+}};
+await pagedMailbox._loadMailbox();
+await pagedMailbox._loadMailbox(true);
+assert.deepEqual(offsets, [0, 2]);
+assert.equal(pagedMailbox._mailboxMessages.map((item) => item.id).join(","), "one,two,three");
+assert.equal(pagedMailbox._mailboxOffset, 4);
 """
     completed = subprocess.run(
         [

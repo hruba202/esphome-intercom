@@ -50,6 +50,7 @@ async def _call_selections(hass, call_id, endpoint_id):
     vol.Optional("offset", default=0): vol.All(int, vol.Range(min=0)),
     vol.Optional("limit", default=50): vol.All(int, vol.Range(min=1, max=100)),
     vol.Optional("call_id"): str,
+    vol.Optional("message_id"): str,
 })
 @websocket_api.async_response
 async def websocket_list(hass, connection, msg):
@@ -61,11 +62,12 @@ async def websocket_list(hass, connection, msg):
         if call_id := msg.get("call_id"):
             selections = await _call_selections(hass, call_id, endpoint.endpoint_id)
         unread, read = archive.counts(endpoint.endpoint_id)
+        messages = ([archive.message(msg["message_id"], endpoint.endpoint_id)] if msg.get("message_id")
+                    else archive.list(endpoint.endpoint_id, offset=msg["offset"], limit=msg["limit"]))
         connection.send_result(msg["id"], {
             "unread": unread, "total": unread + read,
             "selections": selections,
-            "messages": [_metadata(item) for item in archive.list(endpoint.endpoint_id,
-                        offset=msg["offset"], limit=msg["limit"])],
+            "messages": [_metadata(item) for item in messages],
         })
     except (ValueError, ArchiveError, TimeoutError, ServiceValidationError) as err:
         connection.send_error(msg["id"], "mailbox_unavailable", str(err))

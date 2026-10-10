@@ -93,6 +93,9 @@ class VoipStackCard extends HTMLElement {
     this._mailboxMessages = [];
     this._mailboxBusy = false;
     this._mailboxCallId = "";
+    this._mailboxOffset = 0;
+    this._mailboxTotal = 0;
+    this._mailboxRequest = 0;
     this._activeSessionDeviceId = null;
     this._softphoneDnd = false;
     this._softphoneExtension = "";
@@ -533,6 +536,9 @@ class VoipStackCard extends HTMLElement {
     const current = this._softphoneSnapshot;
     if (!softphoneSnapshotSupersedes(current, snapshot)) return false;
     this._softphoneSnapshot = snapshot;
+    if (this._mailboxOpen && !this._mailboxBusy &&
+        (current?.voicemail?.new !== snapshot.voicemail?.new ||
+         current?.voicemail?.old !== snapshot.voicemail?.old)) void this._loadMailbox();
     this._softphoneDnd = !!snapshot.dnd;
     this._autoAnswer = !!snapshot.auto_answer;
     this._softphoneExtension = snapshot.extension;
@@ -696,6 +702,8 @@ class VoipStackCard extends HTMLElement {
       this._mailboxOpen = false;
       this._mailboxMessages = [];
       this._mailboxCallId = "";
+      this._mailboxOffset = this._mailboxTotal = 0;
+      this._mailboxRequest++;
       this._activeSessionDeviceId = null;
     }
     if (this._isPhonebookMode()) {
@@ -2370,14 +2378,22 @@ class VoipStackCard extends HTMLElement {
     return reply;
   }
 
-  async _loadMailbox() {
+  async _loadMailbox(more = false) {
+    const request = ++this._mailboxRequest;
     try {
       const endpointId = this._getSoftphoneEndpointId();
-      const result = await this._hass.callWS({ type: "voip_stack/voicemail/list", endpoint_id: endpointId });
-      if (endpointId !== this._getSoftphoneEndpointId()) return;
-      this._mailboxMessages = result.messages || [];
+      const offset = more ? this._mailboxOffset : 0;
+      const result = await this._hass.callWS({ type: "voip_stack/voicemail/list", endpoint_id: endpointId, offset });
+      if (request !== this._mailboxRequest || endpointId !== this._getSoftphoneEndpointId()) return;
+      const messages = result.messages || [];
+      this._mailboxMessages = [...new Map([...(more ? this._mailboxMessages : []), ...messages]
+        .map((message) => [message.id, message])).values()];
+      this._mailboxOffset = offset + messages.length;
+      this._mailboxTotal = result.total || 0;
       this._renderMailbox();
-    } catch (err) { this._showError(err.message || String(err)); }
+    } catch (err) {
+      if (request === this._mailboxRequest) this._showError(err.message || String(err));
+    }
   }
 
   _renderMailbox() {
@@ -2408,6 +2424,15 @@ class VoipStackCard extends HTMLElement {
       row.append(play, remove);
       panel.appendChild(row);
     }
+    if (this._mailboxOffset < this._mailboxTotal) {
+      const older = document.createElement("button");
+      older.type = "button";
+      older.className = "settings-btn";
+      older.textContent = this._t("Older messages");
+      older.disabled = this._mailboxBusy;
+      older.onclick = () => this._loadMailbox(true);
+      panel.appendChild(older);
+    }
   }
 
   async _mailboxMessage(messageId, remove) {
@@ -2432,7 +2457,7 @@ class VoipStackCard extends HTMLElement {
         this._mailboxCallId = callId;
       }
       const snapshot = await this._hass.callWS({
-        type: "voip_stack/voicemail/list", endpoint_id: endpointId, call_id: callId,
+        type: "voip_stack/voicemail/list", endpoint_id: endpointId, call_id: callId, message_id: messageId,
       });
       const digits = snapshot.selections?.[messageId];
       if (!digits || !snapshot.messages.some((item) => item.id === messageId)) {
