@@ -310,6 +310,23 @@ A SIP phone can originate a consultation while already in an established call.
 It still appears busy to unrelated incoming calls. Browser and ESP phone controls
 retain their existing single-call behavior.
 
+## Busy lamps on SIP phones
+
+A registered SIP phone can monitor another phone with a normal BLF key. Choose
+BLF in the handset's key settings and use the monitored phone's username or
+extension as the destination, through its VoIP Stack account.
+
+VoIP Stack supports `Event: dialog` subscriptions and sends versioned
+`application/dialog-info+xml` notifications. They reflect HA-owned calls:
+ringing, established conversations and return to idle. A phone with two active
+dialogs stays busy until both end. The state comes from the same call registry
+used by the backend and card; no periodic status polling is added.
+
+This is separate from the voicemail MWI indicator, which uses `message-summary`,
+and online presence, which uses `presence`. Removing the monitored phone ends
+its BLF subscription with `noresource`. Subscriptions can request up to one hour
+and must refresh before expiry.
+
 ## Audio and video calls
 
 Browser phones negotiate supported audio codecs and can send or receive video.

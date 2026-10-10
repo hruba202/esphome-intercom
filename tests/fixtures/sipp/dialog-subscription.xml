@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="Authenticated dialog subscription">
+  <send retrans="500"><![CDATA[
+REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+Via: SIP/2.0/UDP [local_ip]:[local_port];branch=[branch]
+From: <sip:blfwatch@[remote_ip]>;tag=watcher
+To: <sip:blfwatch@[remote_ip]>
+Call-ID: [call_id]
+CSeq: 1 REGISTER
+Contact: <sip:blfwatch@[local_ip]:[local_port]>
+Expires: 60
+Max-Forwards: 70
+Content-Length: 0
+
+]]></send>
+  <recv response="401" auth="true"/>
+  <send retrans="500"><![CDATA[
+REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+Via: SIP/2.0/UDP [local_ip]:[local_port];branch=[branch]
+From: <sip:blfwatch@[remote_ip]>;tag=watcher
+To: <sip:blfwatch@[remote_ip]>
+Call-ID: [call_id]
+CSeq: 2 REGISTER
+Contact: <sip:blfwatch@[local_ip]:[local_port]>
+Expires: 60
+Max-Forwards: 70
+[authentication username=blfwatch password=isolated-test-only]
+Content-Length: 0
+
+]]></send>
+  <recv response="200"/>
+  <send retrans="500"><![CDATA[
+SUBSCRIBE sip:101@[remote_ip]:[remote_port] SIP/2.0
+Via: SIP/2.0/UDP [local_ip]:[local_port];branch=[branch]
+From: <sip:blfwatch@[remote_ip]>;tag=subscriber
+To: <sip:101@[remote_ip]>
+Call-ID: [call_id]
+CSeq: 3 SUBSCRIBE
+Contact: <sip:blfwatch@[local_ip]:[local_port]>
+Event: dialog
+Accept: application/dialog-info+xml
+Expires: 60
+Max-Forwards: 70
+Content-Length: 0
+
+]]></send>
+  <recv response="200"/>
+  <label id="receive"/>
+  <recv request="NOTIFY" timeout="5000">
+    <action>
+      <ereg regexp="application/dialog-info\+xml" search_in="hdr" header="Content-Type:" check_it="true" assign_to="2"/>
+      <ereg regexp="terminated" search_in="hdr" header="Subscription-State:" assign_to="1"/>
+      <log message="[$2]"/>
+    </action>
+  </recv>
+  <send><![CDATA[
+SIP/2.0 200 OK
+[last_Via:]
+[last_From:]
+[last_To:]
+[last_Call-ID:]
+[last_CSeq:]
+Content-Length: 0
+
+]]></send>
+  <nop next="done" test="1"/>
+  <nop next="receive"/>
+  <label id="done"/>
+</scenario>

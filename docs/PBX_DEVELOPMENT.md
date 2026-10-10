@@ -520,3 +520,28 @@ The resulting HA suite passes 463 tests. The six real-baresip scenarios include
 both hangup sides, immediate redial and unauthorized Replaces on the wire.
 Recorded audio is inspected after the independent peer finalizes its WAV files;
 an HA idle state alone is not a file-flush barrier for the peer's capture filter.
+
+### Dialog notifications for BLF
+
+The existing SIP application subscription owner now serves RFC 4235 `dialog`
+notifications alongside presence and MWI. Full documents use the call registry's
+actual claims, optional SIP identities and a per-subscription version. Changes
+are event-driven; identical state does not enqueue another notification. Native
+HA softphone and configured ESP endpoints can be monitored for HA-owned calls.
+Firmware-side subscriptions on ESP remain outside this backend increment.
+
+Qualification includes a real SIPp REGISTER/Digest and SUBSCRIBE exchange while
+baresip phones ring, answer and hang up. SIPp acknowledges every NOTIFY; the
+captured XML verifies versions and state transitions, including final noresource
+after endpoint removal. These tests do not claim a physical handset's BLF LED
+was inspected.
+
+Initial claim publication now exposes the session's claim before notifying
+registry observers. A failed busy claim rolls back its staged resource and
+revision. This avoids an observer seeing a busy endpoint whose authoritative
+session does not yet own it.
+
+The complete HA run at this checkpoint passed 471 tests. The final observer
+cleanup passed the 15-test BLF/presence/MWI subset, including the independent
+SIPp client. Dialog listeners are removed when the last dialog subscription
+ends, so unused BLF does not retain call-event observers.

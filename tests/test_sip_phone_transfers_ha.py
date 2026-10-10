@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.ha, pytest.mark.skipif(shutil.which("baresip") is None
 
 
 @pytest.fixture
-async def registered_phones(trunks, tmp_path):
+async def registered_phones(trunks, tmp_path, request):
     lab = trunks
     await async_stop_sip_trunk(lab.hass)
     lab.runtime.trunk_configs = {}
@@ -57,9 +57,10 @@ module sndfile.so
 module_app account.so
 """)
             accounts = config / "accounts"
+            answer_mode = "manual" if name == getattr(request, "param", {}).get("manual") else "auto"
             accounts.write_text(
                 f'<sip:{name}@127.0.0.1:{lab.runtime.transport_config["sip_port"]}>'
-                f';auth_user={name};auth_pass=isolated-test-only;regint=60;answermode=auto\n'
+                f';auth_user={name};auth_pass=isolated-test-only;regint=60;answermode={answer_mode}\n'
             )
             accounts.chmod(0o600)
             peers.append(await asyncio.to_thread(BareSip, config))

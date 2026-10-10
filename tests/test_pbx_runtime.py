@@ -48,6 +48,29 @@ def _registry_runtime():
 
 
 class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_claim_is_owned_before_notification_and_busy_refusal_rolls_back(self):
+        endpoints_module = _load_module("endpoint_registry")
+        phones_module = _load_module("phone_endpoint")
+        endpoints = endpoints_module.EndpointRegistry()
+        endpoints.register(phones_module.PhoneEndpoint(endpoint_id="desk", name="Desk", kind="sip_account"))
+        runtime = SipEndpointRuntime()
+        runtime.activate()
+        runtime.bind_endpoint_registry(endpoints)
+        first = runtime.upsert("first", state="ringing", owner="router")
+        observed = []
+        endpoints.subscribe(lambda event: observed.append((event.endpoint.active_call_id, dict(first.endpoint_claims))))
+        runtime.claim_endpoint("first", "desk", role="destination")
+        self.assertEqual(observed, [("first", {"desk": "destination"})])
+        other = runtime.upsert("other", state="connecting", owner="router")
+        revision = other.revision
+        with self.assertRaises(endpoints_module.EndpointBusyError):
+            runtime.claim_endpoint("other", "desk", role="destination")
+        self.assertFalse(other.endpoint_claims)
+        self.assertFalse(other.resources)
+        self.assertEqual(other.revision, revision)
+        self.assertEqual(endpoints.get("desk").active_call_id, "first")
+        await runtime.shutdown()
+
     async def test_transferred_claim_is_never_published_idle_or_owned_twice(self):
         endpoints_module = _load_module("endpoint_registry")
         phones_module = _load_module("phone_endpoint")

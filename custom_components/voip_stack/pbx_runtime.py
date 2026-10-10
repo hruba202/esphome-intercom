@@ -425,19 +425,26 @@ class SipEndpointRuntime(CallRuntimeApi):
             and clean_endpoint_id in active.endpoint_claims
             and active.phase in {SessionPhase.ESTABLISHED, SessionPhase.HELD}
         )
-        if consultation:
-            # The sessions own both dialogs. Keep the existing busy projection
-            # until that call closes, then expose the remaining session below.
-            pass
-        elif adopt_transport and hasattr(registry, "adopt_transport_call"):
-            self.adopt_event_observation(
-                f"physical:{clean_endpoint_id}",
-                session.call_id,
-            )
-            registry.adopt_transport_call(clean_endpoint_id, session.call_id)
-        else:
-            registry.claim_call(clean_endpoint_id, session.call_id)
+        previous = session.endpoint_claims.get(clean_endpoint_id)
+        revision = session.revision
         self._own_endpoint_claim(session, clean_endpoint_id, role)
+        try:
+            if consultation:
+                # Keep the established busy projection until it closes.
+                pass
+            elif adopt_transport and hasattr(registry, "adopt_transport_call"):
+                self.adopt_event_observation(f"physical:{clean_endpoint_id}", session.call_id)
+                registry.adopt_transport_call(clean_endpoint_id, session.call_id)
+            else:
+                registry.claim_call(clean_endpoint_id, session.call_id)
+        except Exception:
+            if previous is None:
+                session.endpoint_claims.pop(clean_endpoint_id, None)
+                session.release_resource(f"endpoint_claim:{clean_endpoint_id}", value=registry)
+            else:
+                session.endpoint_claims[clean_endpoint_id] = previous
+            session.revision = revision
+            raise
         return True
 
     def _own_endpoint_claim(self, session: EndpointCallSession, clean_endpoint_id: str, role: str) -> None:

@@ -17,6 +17,7 @@ from .core.codec_capabilities import supports_dahua_pcm
 from .const import VOIP_STACK_RTP_PORT
 from .core import sdp, sip, sip_transfer
 from .core.sip_dialog import (
+    DialogKey,
     DialogSignalingState,
     apply_remote_offer_media,
     build_dialog_request,
@@ -3098,6 +3099,10 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 or sip.extract_tag(dialog.request.header("From")) != replaces.from_tag):
             return None
         return dialog.invite
+
+    def dialog_key(self, call_id: str) -> DialogKey | None:
+        dialog = self.active_dialogs.get(call_id)
+        return DialogKey.for_uas_dialog(dialog.request, local_tag=dialog.to_tag) if dialog is not None else None
 
     def remote_uri_for_call(self, call_id: str) -> str:
         dialog = self.active_dialogs.get(call_id)

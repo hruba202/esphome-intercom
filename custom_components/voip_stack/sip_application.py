@@ -30,6 +30,8 @@ class SipApplicationMethods:
     subscription_timers: dict[str, asyncio.Task[object]] | None = None
     mailbox_archive: object | None = None
     mailbox_unsubscribe: Callable[[], None] | None = None
+    dialog_unsubscribe: Callable[[], None] | None = None
+    endpoint_unsubscribe: Callable[[], None] | None = None
 
     def __post_init__(self) -> None:
         self.publications = {}
@@ -54,7 +56,20 @@ class SipApplicationMethods:
             return self._publish(request, account.username)
         if request.method == "SUBSCRIBE":
             mailbox_id = ""
+            dialog_endpoint_id = ""
             event = request.header("Event").partition(";")[0].strip().lower()
+            if event == "dialog":
+                from .runtime_data import endpoint_directory
+
+                try:
+                    endpoint = endpoint_directory(self.hass).resolve(sip.parse_sip_uri(request.uri).user)
+                except (ValueError, sip.SipError):
+                    return SipRequestResult(400, "Bad Request")
+                if endpoint is None:
+                    return SipRequestResult(404, "Not Found")
+                if request.body:
+                    return SipRequestResult(415, "Unsupported Media Type")
+                dialog_endpoint_id = endpoint.endpoint_id
             if event == "message-summary":
                 from .mailbox import get_archive, mailbox_settings, EVENT_VOICEMAIL_CHANGED
                 from .runtime_data import endpoint_directory
@@ -74,13 +89,22 @@ class SipApplicationMethods:
                 mailbox_id = endpoint.endpoint_id
                 if self.mailbox_unsubscribe is None:
                     self.mailbox_unsubscribe = self.hass.bus.async_listen(EVENT_VOICEMAIL_CHANGED, self._mailbox_changed)
-            return self._subscribe(
+            result = self._subscribe(
                 request,
                 addr,
                 account.username,
                 follow_up_sender,
                 mailbox_id=mailbox_id,
+                dialog_endpoint_id=dialog_endpoint_id,
             )
+            if (event == "dialog" and result.status == 200 and self.dialog_unsubscribe is None
+                    and any(item.event == "dialog" for item in self.subscriptions.values())):
+                from .websocket_api import CALL_EVENT
+                from .runtime_data import endpoint_directory
+
+                self.dialog_unsubscribe = self.hass.bus.async_listen(CALL_EVENT, self._dialog_changed)
+                self.endpoint_unsubscribe = endpoint_directory(self.hass).subscribe(self._dialog_endpoint_changed)
+            return result
         return SipRequestResult(405, "Method Not Allowed")
 
     def _message(self, request: sip.SipMessage, sender: str) -> SipRequestResult:
@@ -171,14 +195,15 @@ class SipApplicationMethods:
         addr: tuple[str, int],
         subscriber: str,
         follow_up_sender: "SipFollowUpSender | None",
-        *, mailbox_id: str = "",
+        *, mailbox_id: str = "", dialog_endpoint_id: str = "",
     ) -> SipRequestResult:
         """Create, refresh or terminate one RFC 6665 presence subscription."""
 
         event = request.header("Event").partition(";")[0].strip().lower()
-        if event not in {"presence", "message-summary"}:
+        if event not in {"presence", "message-summary", "dialog"}:
             return SipRequestResult(489, "Bad Event")
-        content_type = "application/simple-message-summary" if event == "message-summary" else "application/pidf+xml"
+        content_type = {"presence": "application/pidf+xml", "message-summary": "application/simple-message-summary",
+                        "dialog": "application/dialog-info+xml"}[event]
         accepted = request.header("Accept")
         if accepted and not any(item.split(";", 1)[0].strip().lower() in {content_type, "application/*", "*/*"}
                                 for item in accepted.split(",")):
@@ -191,26 +216,34 @@ class SipApplicationMethods:
                 _uri_from_header(request.header("From"))
             ).user
             expires = _publication_expires(request.header("Expires"))
+            from .dialog_info import subscription_filter
+
+            dialog_filter = subscription_filter(request.header("Event")) if event == "dialog" else ("", "", "")
         except (TypeError, ValueError, sip.SipError):
             return SipRequestResult(400, "Bad Request")
         if from_user.lower() != subscriber.lower():
             return SipRequestResult(403, "Forbidden")
         target_account = self.registrar.accounts.get(target.lower())
-        if target_account is None or not target_account.enabled:
+        if event != "dialog" and (target_account is None or not target_account.enabled):
             return SipRequestResult(404, "Not Found")
 
-        key = f"{request.header('Call-ID')}:{sip.extract_tag(request.header('From'))}:{request.header('Event')}"
+        _package, parameters = sip._split_semicolon_params(request.header("Event"))
+        event_id = dict(parameters).get("id") or ""
+        key = f"{request.header('Call-ID')}:{sip.extract_tag(request.header('From'))}:{event}:{event_id}"
         subscriptions = self.subscriptions
         assert subscriptions is not None
         current = subscriptions.get(key)
         request_to_tag = sip.extract_tag(request.header("To"))
-        if current is not None and request_to_tag != current.to_tag:
+        if (current is not None and request_to_tag != current.to_tag) or (current is None and request_to_tag):
             return SipRequestResult(481, "Call/Transaction Does Not Exist")
         to_tag = current.to_tag if current is not None else secrets.token_hex(8)
         subscription = SipPresenceSubscription(
             key=key,
             event=event,
             mailbox_id=mailbox_id,
+            dialog_endpoint_id=dialog_endpoint_id,
+            dialog_filter=dialog_filter,
+            dialog_version=current.dialog_version if current is not None else 0,
             target=target,
             subscriber=subscriber,
             to_tag=to_tag,
@@ -232,6 +265,7 @@ class SipApplicationMethods:
         else:
             subscriptions.pop(key, None)
             self._cancel_timer(self.subscription_timers, key)
+            self._release_dialog_observers_if_unused()
         return self._notification_result(
             subscription,
             expires=expires,
@@ -246,7 +280,16 @@ class SipApplicationMethods:
         terminated: bool = False,
         termination_reason: str = "timeout",
     ) -> SipRequestResult:
-        if subscription.event == "message-summary":
+        if subscription.event == "dialog":
+            from .dialog_info import document, snapshot
+            from .runtime_data import require_runtime_data
+
+            states = snapshot(require_runtime_data(self.hass), subscription.dialog_endpoint_id, subscription.dialog_filter)
+            body = document(subscription.request.uri, subscription.dialog_version, states)
+            subscription.dialog_version = (subscription.dialog_version + 1) & 0xFFFFFFFF
+            subscription.dialog_snapshot = states
+            content_type = "application/dialog-info+xml"
+        elif subscription.event == "message-summary":
             from dataclasses import replace
 
             new, old = self.mailbox_archive.counts(subscription.mailbox_id)
@@ -284,6 +327,46 @@ class SipApplicationMethods:
             self._cancel_timer(self.publication_timers, target.lower())
             return None
         return publication
+
+    @callback
+    def _dialog_changed(self, _event) -> None:
+        self._notify_dialog_changes()
+
+    @callback
+    def _dialog_endpoint_changed(self, event) -> None:
+        self._notify_dialog_changes(event.endpoint.endpoint_id)
+
+    def _notify_dialog_changes(self, endpoint_id=""):
+        if self.dialog_unsubscribe is None or not self.subscriptions:
+            return
+        from .dialog_info import snapshot
+        from .runtime_data import require_runtime_data
+
+        runtime = require_runtime_data(self.hass)
+        for subscription in tuple((self.subscriptions or {}).values()):
+            if subscription.event != "dialog" or (endpoint_id and endpoint_id != subscription.dialog_endpoint_id):
+                continue
+            removed = runtime.endpoints.get(subscription.dialog_endpoint_id) is None
+            if not removed and snapshot(runtime, subscription.dialog_endpoint_id, subscription.dialog_filter) == subscription.dialog_snapshot:
+                continue
+            if removed:
+                self.subscriptions.pop(subscription.key, None)
+                self._cancel_timer(self.subscription_timers, subscription.key)
+            result = self._notification_result(
+                subscription, expires=0 if removed else max(0, int(subscription.expires_at - time.time())),
+                terminated=removed, termination_reason="noresource",
+            )
+            self._track(subscription.sender(subscription.request, subscription.addr, result),
+                        f"voip-sip-notify-{subscription.key}")
+        self._release_dialog_observers_if_unused()
+
+    def _release_dialog_observers_if_unused(self):
+        if any(item.event == "dialog" for item in (self.subscriptions or {}).values()):
+            return
+        for name in ("dialog_unsubscribe", "endpoint_unsubscribe"):
+            if (unsubscribe := getattr(self, name)) is not None:
+                unsubscribe()
+                setattr(self, name, None)
 
     @callback
     def _mailbox_changed(self, event) -> None:
@@ -353,6 +436,7 @@ class SipApplicationMethods:
         if current.expires_at > time.time():
             return
         subscriptions.pop(key, None)
+        self._release_dialog_observers_if_unused()
         result = self._notification_result(current, expires=0, terminated=True)
         await current.sender(current.request, current.addr, result)
 
@@ -404,6 +488,10 @@ class SipApplicationMethods:
             self.mailbox_unsubscribe()
             self.mailbox_unsubscribe = None
         self.mailbox_archive = None
+        for name in ("dialog_unsubscribe", "endpoint_unsubscribe"):
+            if (unsubscribe := getattr(self, name)) is not None:
+                unsubscribe()
+                setattr(self, name, None)
         tasks = self.tasks
         if tasks:
             for task in tuple(tasks):
@@ -451,13 +539,17 @@ class SipPresenceSubscription:
     notify_lock: asyncio.Lock
     event: str = "presence"
     mailbox_id: str = ""
+    dialog_endpoint_id: str = ""
+    dialog_filter: tuple[str, str, str] = ("", "", "")
+    dialog_version: int = 0
+    dialog_snapshot: tuple = ()
 
 
 def _publication_expires(value: str) -> int:
     expires = 3600 if not value.strip() else int(value)
-    if not 0 <= expires <= 3600:
+    if expires < 0:
         raise ValueError("invalid presence expiry")
-    return expires
+    return min(expires, 3600)
 
 
 def _valid_pidf(body: bytes, target: str) -> bool:
