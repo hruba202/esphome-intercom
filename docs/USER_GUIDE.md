@@ -299,6 +299,17 @@ data:
 Secure SIP identities such as `sips:desk@pbx.example:5061;transport=tls` are
 preserved across direct routing, outbound proxies and REFER targets.
 
+On a registered SIP telephone, use its normal attended-transfer controls: hold
+the caller, dial the other extension, speak to that person, then complete the
+transfer. The telephone must support REFER with Replaces. VoIP Stack keeps the
+destination's existing dialog and audio relay, so that person does not receive
+a second ringing call. If the transfer is rejected, the existing calls remain
+available to the telephone's normal resume or hangup controls.
+
+A SIP phone can originate a consultation while already in an established call.
+It still appears busy to unrelated incoming calls. Browser and ESP phone controls
+retain their existing single-call behavior.
+
 ## Audio and video calls
 
 Browser phones negotiate supported audio codecs and can send or receive video.

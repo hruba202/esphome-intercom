@@ -135,6 +135,22 @@ class SipProtocolBugFixTest(unittest.TestCase):
                 "<sip:desk@example.test?Replaces=call%3Bto-tag%3Dremote>"
             )
 
+    def test_replaces_preserves_literal_percent_sequences_and_validates_parameters(self):
+        target = sip_transfer.SipReferTarget(
+            "sip:desk@example.test",
+            sip_transfer.SipReplaces("call%2F+id@example.test", "tag%41", "peer%42"),
+        )
+        self.assertEqual(sip_transfer.parse_refer_to(target.as_header()), target)
+        self.assertEqual(sip_transfer.parse_replaces(str(target.replaces)), target.replaces)
+        for value in (
+            "call;to-tag=a;from-tag=b;to-tag=c",
+            "call;to-tag=a;from-tag=b;early-only;early-only",
+            "call;to-tag=a;from-tag=b;early-only=yes",
+            "call;to-tag=a b;from-tag=c",
+        ):
+            with self.subTest(value=value), self.assertRaises(sip.SipError):
+                sip_transfer.parse_replaces(value)
+
     def test_session_timer_headers_are_strict_and_typed(self) -> None:
         self.assertEqual(
             sip.parse_session_expires("1800;refresher=uas"),
@@ -2605,6 +2621,47 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         responses = [sip.parse_message(raw) for raw, _addr in transport.sent]
         self.assertEqual([response.status_code for response in responses], [481, 488, 200])
         self.assertIn("Session renegotiation is not supported", responses[1].header("Warning"))
+
+    async def test_cancelling_dialog_reader_during_child_cleanup_releases_writer_lock(self):
+        client, _current, _sent, _negotiated = self._confirmed_audio_client()
+        reading, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def read(_timeout):
+            try:
+                reading.set()
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+
+        client._read_response = read
+        watcher = asyncio.create_task(client.wait_for_dialog_termination())
+        requested = False
+        try:
+            await asyncio.wait_for(reading.wait(), 1)
+            client._request_dialog_writer()
+            requested = True
+            await asyncio.wait_for(cleaning.wait(), 1)
+            watcher.cancel()
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await watcher
+            self.assertFalse(client._dialog_read_lock.locked())
+            async with asyncio.timeout(1):
+                async with client._dialog_writer():
+                    pass
+        finally:
+            release.set()
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
+            if requested:
+                client._release_dialog_writer()
+            # Also clean up the intentionally failing pre-fix witness.
+            if client._dialog_read_lock.locked():
+                client._dialog_read_lock.release()
+            client.dialog = None
+            client.transport = None
+            await client.close()
 
     async def test_local_reinvite_adds_video_without_stealing_dialog_reader(self) -> None:
         client, current, sent, negotiated = self._confirmed_audio_client()

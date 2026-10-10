@@ -36,7 +36,7 @@ Direct calls to a device IP remain outside HA routing control.
   endpoint, default; an unavailable selected trunk never silently fails over.
   Extend existing Automation origination to external calls. Correlate explicit
   ESP action overrides through a session-owned Call-ID, not a next-call flag.
-- [ ] Mailboxes, recording application, card playback/delete, SIP access menu and
+- [x] Mailboxes, recording application, card playback/delete, SIP access menu and
   RFC 3842 MWI through the existing RFC 6665 subscription owner. Proposed aliases:
   `*97` own access, `*98` PIN-protected other access, `*60<extension>` deposit,
   `voicemail.<phone>` deposit and `mailbox.<phone>` authenticated access.
@@ -489,3 +489,34 @@ Protocol references: RFC 3891 and Asterisk's res_pjsip remote-attended-transfer
 documentation. Asterisk distinguishes replacement of locally owned dialogs
 from delegation to another server; the replacement must retain existing media
 and ownership rather than ring the busy destination again.
+
+The next increment now receives INVITE/Replaces and matches Call-ID plus both
+dialog tags. A live REFER grants only its opposite identified endpoint access
+to the consultation. The same identified user can also replace its own dialog.
+Wrong tags, missing authorization, early-only against a confirmed dialog and
+concurrent replacement attempts receive distinct SIP failures. The grant belongs
+to the existing session and is released after the REFER or call terminates.
+
+Media preparation uses the existing re-INVITE code. After the successful SIP
+response, the established destination client, relay and endpoint claim move to
+the new source session together. Destination re-offers, DTMF, BYE watching and
+cleanup are rebound to that session. No second destination INVITE or parallel
+media path is created for the transfer.
+
+Real baresip tests verify both received audio tones, hangup from either remaining
+phone, immediate redial and rejection of unauthorized replacement requests. Other
+tests hold a prepared replacement while the destination hangs up, or cancel it
+before commit, and verify that the original call remains independently usable.
+Video uses the shared media preparation but still needs a dedicated transfer
+witness before being called qualified.
+
+This test series also exposed a cancellation bug in the existing SIP dialog
+reader. Cancellation during its child-task cleanup could bypass lock release,
+leaving BYE blocked without an active reader. A deterministic regression fails
+on that exact schedule before the fix. Lock release is now in its own finally
+block; no timeout or retry policy changes are involved.
+
+The resulting HA suite passes 463 tests. The six real-baresip scenarios include
+both hangup sides, immediate redial and unauthorized Replaces on the wire.
+Recorded audio is inspected after the independent peer finalizes its WAV files;
+an HA idle state alone is not a file-flush barrier for the peer's capture filter.

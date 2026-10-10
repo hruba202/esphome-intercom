@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from urllib.parse import parse_qsl, quote, unquote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode
 
 from . import sip
 
@@ -86,7 +86,9 @@ class SipReferTarget:
 def parse_replaces(value: str) -> SipReplaces:
     """Parse a Replaces value with mandatory dialog tags."""
 
-    parts = [part.strip() for part in unquote(value or "").split(";")]
+    # A SIP header is already decoded. URI decoding belongs to Refer-To only;
+    # decoding again changes valid percent sequences in the dialog identity.
+    parts = [part.strip() for part in (value or "").split(";")]
     call_id = parts[0] if parts else ""
     params: dict[str, str] = {}
     flags: set[str] = set()
@@ -95,10 +97,18 @@ def parse_replaces(value: str) -> SipReplaces:
             continue
         if "=" in part:
             key, item = part.split("=", 1)
-            params[key.strip().lower()] = item.strip()
+            key, item = key.strip().lower(), item.strip()
+            if key in params or key in flags:
+                raise sip.SipError("duplicate Replaces parameter")
+            params[key] = item
         else:
-            flags.add(part.lower())
-    if not call_id or not params.get("to-tag") or not params.get("from-tag"):
+            key = part.lower()
+            if key in params or key in flags:
+                raise sip.SipError("duplicate Replaces parameter")
+            flags.add(key)
+    if not call_id or any(char.isspace() for char in call_id) or not all(
+        sip.is_sip_token(params.get(key, "")) for key in ("to-tag", "from-tag")
+    ) or "early-only" in params:
         raise sip.SipError("Replaces requires call-id, to-tag and from-tag")
     return SipReplaces(
         call_id=call_id,
@@ -106,6 +116,16 @@ def parse_replaces(value: str) -> SipReplaces:
         from_tag=params["from-tag"],
         early_only="early-only" in flags,
     )
+
+
+def request_replaces(request: sip.SipMessage) -> SipReplaces | None:
+    """Read the single INVITE-only RFC 3891 header without URI decoding."""
+    values = request.header_values("Replaces")
+    if not values:
+        return None
+    if request.method != "INVITE" or len(values) != 1:
+        raise sip.SipError("Replaces is allowed once, on INVITE only")
+    return parse_replaces(values[0])
 
 
 def parse_refer_to(value: str) -> SipReferTarget:

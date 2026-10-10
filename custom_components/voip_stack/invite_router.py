@@ -234,6 +234,10 @@ async def route_invite(
             identified_source = str(local_session.metadata.get("source_endpoint_id") or "")
     if identified_source:
         invite = replace(invite, identified_source_endpoint_id=identified_source)
+    if invite.replaces is not None:
+        from .call_replaces import prepare_replacement
+
+        return await prepare_replacement(hass, invite, local_ip)
     route_bucket = _pending_routes(hass)
     pending = dict(registry.artifact_items("pending_invite"))
     if invite.call_id in route_bucket:

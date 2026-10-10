@@ -457,6 +457,11 @@ class SipEndpointManager:
             return bool(callable(send) and await send(call_id, digit))
         return False
 
+    def invite_for_replaces(self, replaces):
+        matches = [invite for endpoint in self._dialog_endpoints()
+                   if (invite := endpoint.invite_for_replaces(replaces)) is not None]
+        return matches[0] if len(matches) == 1 else None
+
     def remote_uri_for_call(self, call_id: str) -> str:
         for endpoint in self._dialog_endpoints():
             if uri := endpoint.remote_uri_for_call(call_id):

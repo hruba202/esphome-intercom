@@ -242,6 +242,16 @@ async def async_transfer_target(
         runtime, call_id, target, remote_uri, local_uri
     ):
         return SipTransferResult(False, 403, "external_calls_disabled")
-    if server is not None:
-        return await server.async_refer(call_id, target) or SipTransferResult(False, 0, "call_not_found")
-    return await client.refer(target)
+    from .call_replaces import prepare_replacement_grant, ReplacementRejected
+
+    try:
+        grant = prepare_replacement_grant(runtime, call_id, target, source_client)
+    except ReplacementRejected as err:
+        return SipTransferResult(False, err.status, "replacement_rejected")
+    try:
+        if server is not None:
+            return await server.async_refer(call_id, target) or SipTransferResult(False, 0, "call_not_found")
+        return await client.refer(target)
+    finally:
+        if grant is not None:
+            grant.release()

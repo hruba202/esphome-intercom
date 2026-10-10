@@ -48,6 +48,32 @@ def _registry_runtime():
 
 
 class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_transferred_claim_is_never_published_idle_or_owned_twice(self):
+        endpoints_module = _load_module("endpoint_registry")
+        phones_module = _load_module("phone_endpoint")
+        endpoints = endpoints_module.EndpointRegistry()
+        endpoints.register(phones_module.PhoneEndpoint(endpoint_id="desk", name="Desk", kind="sip_account"))
+        runtime = SipEndpointRuntime()
+        runtime.activate()
+        runtime.bind_endpoint_registry(endpoints)
+        old = runtime.upsert("old", state="in_call", owner="bridge")
+        new = runtime.upsert("new", state="connecting", owner="bridge")
+        runtime.claim_endpoint("old", "desk", role="destination")
+        observed = []
+        endpoints.subscribe(lambda event: observed.append((
+            event.endpoint.active_call_id, "desk" in old.endpoint_claims, "desk" in new.endpoint_claims,
+        )))
+        runtime.transfer_endpoint_claim("old", "new", "desk")
+        self.assertEqual(observed, [("new", False, True)])
+        with self.assertRaises(ValueError):
+            runtime.transfer_endpoint_claim("old", "new", "desk")
+        await runtime.terminate_call_wait("old", reason="forwarded")
+        self.assertEqual(endpoints.get("desk").active_call_id, "new")
+        await runtime.terminate_call_wait("new", reason="remote_hangup")
+        self.assertEqual(endpoints.get("desk").active_call_id, "")
+        self.assertFalse(runtime.endpoint_claims_snapshot())
+        await runtime.shutdown()
+
     async def test_sip_consultation_retains_each_claim_until_its_own_cleanup(self):
         endpoints_module = _load_module("endpoint_registry")
         phones_module = _load_module("phone_endpoint")

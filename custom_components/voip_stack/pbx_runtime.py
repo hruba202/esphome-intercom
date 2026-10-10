@@ -437,6 +437,11 @@ class SipEndpointRuntime(CallRuntimeApi):
             registry.adopt_transport_call(clean_endpoint_id, session.call_id)
         else:
             registry.claim_call(clean_endpoint_id, session.call_id)
+        self._own_endpoint_claim(session, clean_endpoint_id, role)
+        return True
+
+    def _own_endpoint_claim(self, session: EndpointCallSession, clean_endpoint_id: str, role: str) -> None:
+        registry = self._endpoint_registry
         previous = session.endpoint_claims.get(clean_endpoint_id)
         session.endpoint_claims[clean_endpoint_id] = str(role or "endpoint")
         resource_name = f"endpoint_claim:{clean_endpoint_id}"
@@ -458,7 +463,6 @@ class SipEndpointRuntime(CallRuntimeApi):
             )
         if previous != session.endpoint_claims[clean_endpoint_id]:
             session.revision += 1
-        return True
 
     def _release_endpoint_projection(self, endpoint_id: str, call_id: str) -> bool:
         """Keep a SIP phone busy while another owned dialog remains."""
@@ -472,6 +476,24 @@ class SipEndpointRuntime(CallRuntimeApi):
                 endpoint_id, call_id, remaining_call_id=remaining,
             ))
         return bool(self._endpoint_registry.release_call(endpoint_id, call_id))
+
+    def transfer_endpoint_claim(self, source_id: str, destination_id: str, endpoint_id: str) -> None:
+        """Move a live claim without briefly publishing the phone as idle."""
+        source, destination = self.get_session(source_id), self.get_session(destination_id)
+        if source is None or destination is None or source is destination:
+            raise ValueError("claim transfer requires two distinct sessions")
+        source.ensure_live()
+        destination.ensure_live()
+        endpoint = self._endpoint_registry.require(endpoint_id)
+        if endpoint.active_call_id != source_id or endpoint_id not in source.endpoint_claims:
+            raise ValueError("source no longer owns the phone claim")
+        if endpoint_id in destination.endpoint_claims:
+            raise ValueError("destination already owns the phone claim")
+        role = source.endpoint_claims.pop(endpoint_id)
+        source.release_resource(f"endpoint_claim:{endpoint_id}", value=self._endpoint_registry)
+        self._own_endpoint_claim(destination, endpoint_id, role)
+        self._endpoint_registry.release_call(endpoint_id, source_id, remaining_call_id=destination_id)
+        source.revision += 1
 
     def release_endpoint_claim(
         self,

@@ -89,6 +89,7 @@ class SipInvite:
     trunk_id: str = ""
     outbound_trunk_id: str = ""
     identified_source_endpoint_id: str = ""
+    replaces: sip_transfer.SipReplaces | None = None
 
     @property
     def selected_format(self) -> sdp.RtpPcmFormat:
@@ -137,6 +138,7 @@ class SipInitialInvite:
     caller_route: str = ""
     target_route: str = ""
     trunk_id: str = ""
+    replaces: sip_transfer.SipReplaces | None = None
 
     @property
     def routing_caller(self) -> str:
@@ -1931,6 +1933,11 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         if request_cseq.method != request.method:
             self._send_response(request, addr, 400, "Bad Request")
             return
+        try:
+            sip_transfer.request_replaces(request)
+        except sip.SipError:
+            self._send_response(request, addr, 400, "Bad Request")
+            return
         if request.method in {"INVITE", "UPDATE"}:
             try:
                 sip.negotiate_uas_session_timer(request)
@@ -2815,6 +2822,8 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         if self.pending_invites.get(call_id) is not pending:
             # A CANCEL/final decision won while routing awaited. Clean up any
             # resources the completed policy path may just have published.
+            if result.rollback is not None:
+                await result.rollback()
             if pending.cancelled and self.on_terminated is not None:
                 await self.on_terminated(call_id, "cancelled")
             if delayed_plan is not None and delayed_plan.rollback is not None:
@@ -2893,7 +2902,11 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 str(result.reason),
                 answer_sdp,
             )
+            if not await apply_remote_offer_media(result.commit, result.rollback):
+                await self._terminate_dialog(call_id, "media_update_failed")
         elif sent and int(result.status) >= 300:
+            if result.rollback is not None:
+                await result.rollback()
             self._remember_completed(self.completed_invites, call_id, pending)
             self._arm_invite_non2xx(call_id, pending)
             # The server transaction remains cached until ACK or Timer H, but
@@ -2905,6 +2918,16 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                     call_id,
                     result.decline_reason or "declined",
                 )
+        elif not sent and (result.commit is not None or result.rollback is not None):
+            if result.rollback is not None:
+                await result.rollback()
+            # A retransmission must not accept a prepared result whose
+            # resources have already been rolled back.
+            pending.status = 500
+            pending.reason = "Server Internal Error"
+            pending.answer_sdp = ""
+            if self.on_terminated is not None:
+                await self.on_terminated(call_id, "transport_unreachable")
 
     def send_final_response(
         self,
@@ -3067,6 +3090,14 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             response is not None
             and 200 <= int(response.status_code or 0) < 300
         )
+
+    def invite_for_replaces(self, replaces: sip_transfer.SipReplaces) -> SipInvite | None:
+        """Match all three dialog identifiers in their UAS orientation."""
+        dialog = self.active_dialogs.get(replaces.call_id)
+        if (dialog is None or dialog.to_tag != replaces.to_tag
+                or sip.extract_tag(dialog.request.header("From")) != replaces.from_tag):
+            return None
+        return dialog.invite
 
     def remote_uri_for_call(self, call_id: str) -> str:
         dialog = self.active_dialogs.get(call_id)
@@ -3238,6 +3269,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 received_via_trunk=self.trusted_trunk,
                 trunk_id=self.trusted_trunk_id if self.trusted_trunk else "",
                 peer_profile=profile,
+                replaces=sip_transfer.request_replaces(request),
                 caller_route=caller_route,
                 target_route=target_route,
             )
@@ -3389,6 +3421,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 received_via_trunk=initial.received_via_trunk,
                 trunk_id=initial.trunk_id,
                 peer_profile=peer_profile,
+                replaces=initial.replaces,
                 **remote_video_target.as_remote_video_fields(),
             )
         except Exception as err:

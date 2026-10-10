@@ -3081,11 +3081,16 @@ class SipCallClient:
                 for task in child_tasks:
                     if not task.done():
                         task.cancel()
-                if child_tasks:
-                    cleanup = asyncio.gather(*child_tasks, return_exceptions=True)
-                    await async_wait_for_cleanup(cleanup)
-                if reader_acquired:
-                    self._dialog_read_lock.release()
+                try:
+                    if child_tasks:
+                        cleanup = asyncio.gather(*child_tasks, return_exceptions=True)
+                        await async_wait_for_cleanup(cleanup)
+                finally:
+                    # The cleanup barrier preserves child cleanup, then
+                    # re-raises caller cancellation. The reader must release
+                    # its lock even in that case so BYE can acquire it.
+                    if reader_acquired:
+                        self._dialog_read_lock.release()
             if received is None:
                 if (
                     deadline is not None
