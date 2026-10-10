@@ -1102,6 +1102,26 @@ async def test_cancelled_removal_waits_for_message_deletion(mailbox_lab):
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def test_removing_integration_deletes_its_mailboxes_after_shutdown(mailbox_lab):
+    from custom_components import voip_stack
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    paths = {}
+    for kind in ("voicemail", "recording"):
+        writer = await archive.begin("kitchen", kind=kind)
+        assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+        message = await writer.finish()
+        paths[kind] = archive.segment_path(message["id"], "kitchen")
+    await voip_stack.async_remove_entry(lab.hass, config_entry(lab.hass))
+    assert lab.calls.phase.value == "stopped"
+    assert not paths["voicemail"].exists()
+    assert paths["recording"].exists()
+    await archive.load()
+    assert not archive.list("kitchen")
+
+
 async def test_permanent_esphome_device_removal_purges_mailbox(mailbox_lab):
     from homeassistant.helpers import device_registry as dr
     from custom_components.voip_stack.mailbox import async_setup_mailboxes, EVENT_VOICEMAIL_CHANGED

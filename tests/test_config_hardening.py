@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import ast
-import asyncio
 import json
 from pathlib import Path
 import string
-from types import SimpleNamespace
 
 import pytest
 import voluptuous as vol
@@ -106,44 +104,6 @@ def _load_disabled_trunk_data():
         namespace,
     )
     return namespace["_disabled_trunk_data"], namespace
-
-
-def _load_remove_entry_hook():
-    """Load the pure final-removal hook without importing Home Assistant."""
-
-    tree = ast.parse(INIT.read_text())
-    nodes = [
-        node
-        for node in tree.body
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name)
-                and target.id == "_REMOVED_ENTRY_RUNTIME_KEYS"
-                for target in node.targets
-            )
-        )
-        or (
-            isinstance(node, ast.AsyncFunctionDef)
-            and node.name == "async_remove_entry"
-        )
-    ]
-    namespace = {
-        "HomeAssistant": object,
-        "ConfigEntry": object,
-        "DOMAIN": "voip_stack",
-        "CONF_DEBUG_MODE": "debug_mode",
-        "CONF_MEDIA_CAPTURE": "media_capture",
-    }
-    exec(
-        compile(
-            ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
-            str(INIT),
-            "exec",
-        ),
-        namespace,
-    )
-    return namespace["async_remove_entry"]
 
 
 @pytest.mark.parametrize("legacy_value", [None, ""])
@@ -300,27 +260,6 @@ def test_phone_actions_have_one_device_selector() -> None:
         for removed_selector in ("endpoint_id", "entity_id"):
             with pytest.raises(vol.Invalid):
                 schemas[service]({**required, removed_selector: "kitchen"})
-
-
-def test_final_entry_removal_forgets_runtime_but_preserves_global_views() -> None:
-    hook = _load_remove_entry_hook()
-    registration = object()
-    bucket = {
-        "registration": registration,
-        "media_shutdown": object(),
-        "debug_capture_tasks": {"finishing-write"},
-        "manual_roster_entries": [{"name": "Kitchen"}],
-        "entry-id": {"legacy": True},
-    }
-    hass = SimpleNamespace(data={"voip_stack": bucket})
-    entry = SimpleNamespace(entry_id="entry-id")
-
-    asyncio.run(hook(hass, entry))
-
-    assert "manual_roster_entries" not in bucket
-    assert "entry-id" not in bucket
-    assert bucket["registration"] is registration
-    assert bucket["debug_capture_tasks"] == {"finishing-write"}
 
 
 @pytest.mark.parametrize(

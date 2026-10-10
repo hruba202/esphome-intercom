@@ -771,6 +771,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) -
     the view-registration sentinels therefore remain in the domain bucket so
     adding the integration again cannot attempt duplicate registrations.
     """
+    from .mailbox import async_remove_entry_mailboxes
+
+    await async_remove_entry_mailboxes(hass, entry)
     bucket = hass.data.get(DOMAIN)
     if not isinstance(bucket, dict):
         return

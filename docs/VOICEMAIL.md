@@ -168,3 +168,7 @@ Permanently removing a phone removes its mailbox, PIN, settings and messages,
 including a recording in progress. Temporary loss of connectivity, registration
 expiry, a reboot or integration reload does not delete its mailbox. Renaming a
 phone preserves the mailbox's identity.
+
+Permanently removing the VoIP Stack integration also deletes its voicemail
+messages after its calls have stopped. Unrelated files in HA media and separate
+conversation recordings are preserved.

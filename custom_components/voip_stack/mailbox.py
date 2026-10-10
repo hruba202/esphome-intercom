@@ -22,6 +22,12 @@ EVENT_VOICEMAIL_RECEIVED = "voip_stack_voicemail_received"
 EVENT_VOICEMAIL_CHANGED = "voip_stack_voicemail_changed"
 
 
+def archive_path(hass):
+    directories = hass.config.media_dirs
+    directory = directories.get("local") or next(iter(directories.values()), None)
+    return Path(directory) / "voip_stack" if directory else None
+
+
 def mailbox_settings(hass, endpoint_id: str) -> dict:
     entry = config_entry(hass)
     if entry is None:
@@ -57,11 +63,10 @@ async def get_archive(hass) -> MediaArchive:
             raise ServiceValidationError("VoIP Stack is not ready")
         archive = owner.component("media_archive")
         if archive is None:
-            directories = hass.config.media_dirs
-            directory = directories.get("local") or next(iter(directories.values()), None)
-            if not directory:
+            path = archive_path(hass)
+            if path is None:
                 raise ServiceValidationError("Configure a Home Assistant media directory before enabling voicemail")
-            archive = MediaArchive(Path(directory) / "voip_stack", hass.async_add_executor_job)
+            archive = MediaArchive(path, hass.async_add_executor_job)
             await archive.load()
             if runtime.sip is not owner or owner.phase.value != "active":
                 await archive.close()
@@ -259,6 +264,35 @@ async def async_setup_mailboxes(hass, entry):
     entry.async_on_unload(hass.bus.async_listen(EVENT_VOICEMAIL_CHANGED, changed))
     entry.async_on_unload(hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, device_removed))
     await async_refresh_mailbox_state(hass)
+
+
+async def async_remove_entry_mailboxes(hass, entry):
+    """Remove this entry's mailboxes after normal integration shutdown."""
+    from .phone_config import phone_subentries
+    from .session_cleanup import async_wait_for_cleanup
+
+    path = archive_path(hass)
+    identities = {str(item.data.get("endpoint_id") or "") for item in phone_subentries(entry)}
+    identities.update(entry.data.get(CONF_ESPHOME_MAILBOXES, {}))
+    identities.discard("")
+    if path is None or not identities:
+        return
+
+    async def remove():
+        owner = getattr(getattr(entry, "runtime_data", None), "sip", None)
+        if owner is not None:
+            from .voicemail import VoicemailCall
+
+            for _call_id, application in owner.resource_items("voicemail"):
+                if isinstance(application, VoicemailCall):
+                    application.removed = True
+            await owner.shutdown()
+        archive = MediaArchive(path, hass.async_add_executor_job)
+        await archive.load()
+        for identity in identities:
+            await archive.remove_mailbox(identity)
+
+    await async_wait_for_cleanup(asyncio.create_task(remove(), name="voip-mailboxes-remove-entry"))
 
 
 async def async_refresh_mailbox_state(hass):

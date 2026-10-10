@@ -26,6 +26,26 @@ INTEGRATION_DEPENDENCIES = {
 pytestmark = pytest.mark.ha
 
 
+async def test_final_entry_removal_forgets_runtime_but_preserves_global_views(hass):
+    from custom_components.voip_stack import async_remove_entry
+
+    registration = object()
+    bucket = {
+        "registration": registration,
+        "media_shutdown": object(),
+        "debug_capture_tasks": {"finishing-write"},
+        "manual_roster_entries": [{"name": "Kitchen"}],
+        "entry-id": {"legacy": True},
+    }
+    hass.data[DOMAIN] = bucket
+    entry = SimpleNamespace(entry_id="entry-id", data={}, subentries={})
+    await async_remove_entry(hass, entry)
+    assert "manual_roster_entries" not in bucket
+    assert "entry-id" not in bucket
+    assert bucket["registration"] is registration
+    assert bucket["debug_capture_tasks"] == {"finishing-write"}
+
+
 async def test_phonebook_duplicate_name_notification(hass, caplog):
     from homeassistant.components import persistent_notification as notifications
     from homeassistant.core import callback
