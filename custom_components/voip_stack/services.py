@@ -347,6 +347,25 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
     hass.services.async_register(DOMAIN, "set_phone_settings", handler_for("set_phone_settings"), schema=set_phone_settings_schema)
     hass.services.async_register(DOMAIN, "set_voicemail_settings", handler_for("set_voicemail_settings"), schema=voicemail_settings_schema)
     hass.services.async_register(DOMAIN, "send_to_voicemail", handler_for("send_to_voicemail"), schema=send_voicemail_schema)
+    hass.services.async_register(
+        DOMAIN, "transcribe_voicemail", handler_for("transcribe_voicemail"),
+        schema=vol.Schema({
+            vol.Optional("mailbox"): IDENTIFIER_TEXT,
+            vol.Optional("message_id"): IDENTIFIER_TEXT,
+            vol.Required("stt_entity_id"): cv.entity_id,
+            vol.Required("language"): SHORT_TEXT,
+            vol.Optional("timeout", default=120): vol.All(vol.Coerce(float), vol.Range(min=1, max=600)),
+        }, extra=vol.PREVENT_EXTRA),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN, "get_voicemail", handler_for("get_voicemail"),
+        schema=vol.Schema({
+            vol.Optional("mailbox"): IDENTIFIER_TEXT,
+            vol.Optional("message_id"): IDENTIFIER_TEXT,
+        }, extra=vol.PREVENT_EXTRA),
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(DOMAIN, "answer", handler_for("answer"), schema=sip_answer_schema)
     hass.services.async_register(DOMAIN, "decline", handler_for("decline"), schema=sip_decline_schema)
     hass.services.async_register(DOMAIN, "hangup", handler_for("hangup"), schema=sip_hangup_schema)

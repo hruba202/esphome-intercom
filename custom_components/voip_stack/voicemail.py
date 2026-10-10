@@ -20,7 +20,7 @@ from .endpoint_lifecycle import call_registry
 from .endpoint_session import CleanupStage, TerminationIntent
 from .local_application import LocalCallApplication, attach_local_application
 from .mailbox import (EVENT_VOICEMAIL_CHANGED, EVENT_VOICEMAIL_RECEIVED, get_archive,
-                      mailbox_settings, selected_mailbox)
+                      mailbox_settings, selected_mailbox, message_audio_reference)
 from .roster import RosterEntry
 from .session_cleanup import async_wait_for_cleanup
 
@@ -104,10 +104,12 @@ class VoicemailCall(LocalCallApplication):
             return
         entry = await self.writer.finish()
         if entry is not None and not self.removed:
+            archive = await get_archive(self.hass)
             duration = max(segment["start"] + segment["frames"] / segment["sample_rate"] for segment in entry["segments"])
             self.hass.bus.async_fire(EVENT_VOICEMAIL_RECEIVED, {
                 "mailbox_id": self.mailbox_id, "message_id": entry["id"], "caller": entry["caller"],
                 "duration": duration, "partial": entry["status"] == "partial",
+                **message_audio_reference(self.hass, archive, entry),
             })
             self.hass.bus.async_fire(EVENT_VOICEMAIL_CHANGED, {"endpoint_id": self.mailbox_id})
 

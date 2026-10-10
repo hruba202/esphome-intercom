@@ -1,0 +1,161 @@
+# Voicemail
+
+This guide describes the implementation on the `feature/ha-pbx` development
+branch. It is not available in the current stable release.
+
+A mailbox belongs to a phone, not to a dashboard card. SIP phones and the HA
+softphone call the same voicemail application. The card displays message
+metadata; listening and deleting use the ordinary call and keypad commands.
+
+## Enable voicemail
+
+In VoIP Stack's configuration, enable voicemail and choose an existing Home
+Assistant TTS entity and its prompt language. The voice is shared by the
+telephone menus. English, Italian, German and Portuguese are supported when the
+selected TTS engine supports that language.
+
+Use **VoIP Stack: Set voicemail settings** and select a phone with the device
+picker. Enable its mailbox. The recording limit defaults to 180 seconds. You
+can choose a greeting through HA's media picker. Without a greeting, the caller
+hears a recording tone.
+
+Enabling a mailbox does not enable forwarding. In the phone card's options,
+enable a ringing timeout and select the voicemail destination if unanswered
+calls should go there. Leaving the timeout unset keeps the existing unlimited
+application-level ringing behavior. An accepted call-control action from an
+automation takes precedence over the phone's configured fallback.
+
+## Access from a telephone
+
+Configure a SIP handset's voicemail button to dial `*97`. This opens that
+identified phone's own mailbox without a PIN. The same number works from the
+HA softphone keypad. `mailbox` is an equivalent named destination.
+
+To access another mailbox, dial `*98` and enter its extension, or call
+`mailbox.<phone>` directly. That mailbox must have a configured PIN. No PIN
+means access from other phones is disabled. These are PBX feature-code choices,
+not numbers mandated by SIP.
+
+| Key | Operation |
+| --- | --- |
+| `1` | Next message |
+| `2` | Delete the selected message |
+| `3` | Repeat the selected message |
+| `0`, message number, `#` | Select a message, for example `01#` |
+| `*` | Message count and menu |
+| `#` outside number entry | Hang up |
+
+A key immediately interrupts the spoken prompt and remains available to the
+menu. Numbers stay fixed for the duration of a call. If another call deletes
+message 1, selecting 1 does not silently play or delete the next message.
+
+The HA softphone card shows **Voicemail** when messages exist. Each row shows
+the caller and date. Selecting a row calls `*97` and selects that message.
+**Delete** uses the same call, waits for confirmation, then hangs up while
+keeping the list open. It refuses to replace an unrelated active call.
+
+Registered SIP phones can subscribe to `message-summary`. RFC 3842 MWI reports
+new and old message counts through the existing SIP SUBSCRIBE/NOTIFY dialogs.
+MWI does not carry a message catalog, recordings or transcriptions.
+
+## Send a call to voicemail
+
+Call `voicemail.<phone>` or `*60<extension>` to leave a message directly.
+Automation dialplans can use `voip_stack.send_to_voicemail`, selecting the
+destination phone with the **Mailbox** picker. It uses the current call from
+the native VoIP trigger or the preceding Automation `call` action.
+
+For example, a call automation can speak with `tts_say`, then invoke
+`send_to_voicemail` with `skip_greeting: true`. Do not append `hangup`: the
+voicemail application now owns recording and termination. It saves the message
+when the caller hangs up or the recording limit is reached. Empty recordings
+do not create messages.
+
+## Process a received message in an automation
+
+The native **Voicemail received** trigger runs after the recording is saved.
+Its optional **Mailbox** device picker limits it to one phone. With no filter,
+it matches all mailboxes. `trigger.voicemail` contains the caller, mailbox ID,
+message ID, duration and partial-recording indicator.
+
+Actions in that execution select the received message automatically, including
+when two callers leave messages at the same time. An action run independently
+must supply both `mailbox` and `message_id`. These identify a saved message,
+not an active call.
+
+### Optional transcription
+
+Choose an existing HA STT entity, such as a configured Wyoming Whisper entity,
+and a language it supports. No STT provider is enabled automatically. This
+example uses a normal HA notification so it needs no email or messaging account:
+
+```yaml
+alias: Transcribe incoming voicemail
+mode: parallel
+triggers:
+  - trigger: voip_stack.voicemail_received
+actions:
+  - action: voip_stack.transcribe_voicemail
+    data:
+      stt_entity_id: stt.whisper
+      language: en
+    response_variable: transcript
+  - action: persistent_notification.create
+    data:
+      title: "Voicemail from {{ transcript.caller }}"
+      message: "{{ transcript.text }}"
+```
+
+Replace `stt.whisper` with your installed entity. The action streams 16 kHz mono
+PCM through HA's STT API and returns `text`, `language`, `caller`, `mailbox_id`
+and `message_id`. It leaves the original recording and unread status unchanged.
+Its timeout defaults to 120 seconds. An unavailable provider, unsupported
+language, provider error or timeout fails the action without deleting the
+message. Cancelling the automation releases the reader and transcription.
+
+### Use the recorded file in another action
+
+The trigger already supplies `trigger.voicemail.file_path` and
+`trigger.voicemail.media_source_id` for the saved WAV in HA's media directory.
+Pass these to an email, Telegram or notification action that accepts local files
+or media-source items. No export or copy is necessary.
+
+For an independently selected message, `voip_stack.get_voicemail` returns the
+same references. In a voicemail-triggered automation it can omit both selectors:
+
+```yaml
+alias: New voicemail details
+mode: parallel
+triggers:
+  - trigger: voip_stack.voicemail_received
+actions:
+  - action: voip_stack.get_voicemail
+    response_variable: recording
+  - action: persistent_notification.create
+    data:
+      title: "Voicemail from {{ recording.caller }}"
+      message: "Recorded audio: {{ recording.media_source_id }}"
+```
+
+Messages are stored directly under `voip_stack/` in HA's `local` media directory
+(or its first configured media directory when `local` is absent). The normal HA
+media source resolves these files using its existing authentication. VoIP Stack
+does not add a separate download server or a second audio player to the card.
+
+If a call changes audio format while recording, finalization combines its
+working fragments into one WAV, preserving gaps and the highest recorded sample
+rate, channel count and bit depth. The working fragments are then removed.
+Listening, transcription and notification actions all use that same saved file.
+Deleting the message or permanently removing its phone removes the file.
+
+## Storage and deletion
+
+The archive in HA media has a combined 1 GiB quota, including active recordings.
+Disk writes use a bounded queue. A storage failure ends the deposit through the
+existing call cleanup; interrupted recordings are recovered as partial messages
+where possible. There is no automatic deletion of old messages.
+
+Permanently removing a phone removes its mailbox, PIN, settings and messages,
+including a recording in progress. Temporary loss of connectivity, registration
+expiry, a reboot or integration reload does not delete its mailbox. Renaming a
+phone preserves the mailbox's identity.

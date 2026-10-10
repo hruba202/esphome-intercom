@@ -231,5 +231,42 @@ class VoipCallTrigger(Trigger):
         return detach
 
 
+class VoicemailReceivedTrigger(Trigger):
+    """Run ordinary HA actions after the complete message has been saved."""
+
+    def __init__(self, hass, config: TriggerConfig):
+        super().__init__(hass, config)
+        self._options = config.options or {}
+
+    @classmethod
+    async def async_validate_config(cls, hass, config):
+        return vol.Schema({vol.Optional("options", default=dict): vol.Schema({
+            vol.Optional("mailbox"): cv.string,
+        })})(config)
+
+    async def async_attach_runner(self, run_action, did_not_trigger=None):
+        from .mailbox import EVENT_VOICEMAIL_RECEIVED
+        from .mailbox_actions import current_message
+        from .runtime_data import endpoint_directory
+
+        selector = self._options.get("mailbox")
+
+        @callback
+        def receive(event):
+            data = dict(event.data)
+            if selector:
+                endpoints = endpoint_directory(self._hass)
+                endpoint = endpoints.by_device_id(selector) or endpoints.resolve(selector)
+                if endpoint is None or endpoint.endpoint_id != data.get("mailbox_id"):
+                    return
+            binding = current_message.set((data["mailbox_id"], data["message_id"]))
+            try:
+                run_action({"voicemail": data}, "Voicemail received", event.context)
+            finally:
+                current_message.reset(binding)
+
+        return self._hass.bus.async_listen(EVENT_VOICEMAIL_RECEIVED, receive)
+
+
 async def async_get_triggers(hass):
-    return dict.fromkeys(TRIGGER_EVENTS, VoipCallTrigger)
+    return {**dict.fromkeys(TRIGGER_EVENTS, VoipCallTrigger), "voicemail_received": VoicemailReceivedTrigger}

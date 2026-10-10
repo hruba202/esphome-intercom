@@ -752,6 +752,16 @@
           "description": "Contado a partir do início do toque neste destino."
         }
       }
+    },
+    "voicemail_received": {
+      "name": "Mensagem de voz recebida",
+      "description": "Acionado após salvar a mensagem. As ações usam automaticamente esta gravação.",
+      "fields": {
+        "mailbox": {
+          "name": "Caixa postal",
+          "description": "Filtro de telefone opcional. Deixe vazio para todas as caixas."
+        }
+      }
     }
   },
   "conditions": {

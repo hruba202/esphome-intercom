@@ -639,7 +639,7 @@ current values, and renaming the phone preserves the mailbox identity.
 `greeting_media` uses Home Assistant's Media picker and must identify a
 `media-source://` item. `clear_greeting: true` removes that selection. A missing
 or unavailable greeting falls back to the recording tone. Messages are stored
-privately on the HA host, with a combined archive quota of 1 GiB and no automatic
+in HA's media directory, with a combined archive quota of 1 GiB and no automatic
 deletion. An empty recording creates no message.
 
 `pin` accepts 4 to 10 digits, or an empty value to disable access from another
@@ -696,3 +696,23 @@ owns the mailbox call.
 opaque `message_id`, caller, duration and whether it is partial. It contains no
 public download URL. A recording or storage failure ends the mailbox deposit
 and uses the existing call cleanup; it does not leave a hidden media session.
+
+### `voip_stack.transcribe_voicemail` and `voip_stack.get_voicemail`
+
+Both actions select the message associated with the native
+`voip_stack.voicemail_received` trigger. Outside that execution, supply both
+`mailbox` (the phone's device picker) and `message_id`. Both return response
+data, so set `response_variable` in an automation.
+
+`transcribe_voicemail` requires `stt_entity_id` and `language`. It sends a bounded
+PCM stream to the existing HA STT entity and returns text and message identity.
+`timeout` defaults to 120 seconds. It does not mark the message read or change
+its recorded format.
+
+`get_voicemail` returns `file_path` and `media_source_id` for the saved message
+in HA's media directory. It creates no copy and does not mark the message read.
+The native trigger already supplies these same references in `trigger.voicemail`.
+Deleting a message or its phone removes this same audio file.
+
+See [Voicemail](VOICEMAIL.md#process-a-received-message-in-an-automation) for
+complete examples, supported STT input and attachment handling.

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import ClassVar
-import wave
+from contextlib import aclosing
 
 from .call_ivr import CallIVR
 from .call_projection import publish_bridge_projection
@@ -88,25 +88,15 @@ class VoicemailMenu(LocalCallApplication):
         for index, segment in enumerate(entry["segments"]):
             if not self.ivr.digits.empty():
                 break
-            path = await self.hass.async_add_executor_job(archive.segment_path, identity, self.mailbox_id, index)
             fmt = AudioFormat(segment["sample_rate"], {2: "s16le", 3: "s24le", 4: "s32le"}[segment["sample_width"]],
                               segment["channels"], 20)
 
             async def chunks():
                 nonlocal played
-                opening = self.hass.async_add_executor_job(wave.open, str(path), "rb")
-                try:
-                    handle = await asyncio.shield(opening)
-                except asyncio.CancelledError:
-                    handle = await opening
-                    await self.hass.async_add_executor_job(handle.close)
-                    raise
-                try:
-                    while pcm := await self.hass.async_add_executor_job(handle.readframes, fmt.nominal_frame_samples):
+                async with aclosing(archive.pcm_frames(identity, self.mailbox_id, index)) as frames:
+                    async for pcm in frames:
                         played = True
                         yield pcm
-                finally:
-                    await self.hass.async_add_executor_job(handle.close)
 
             if not await self.ivr.play(chunks(), source_format=fmt):
                 break

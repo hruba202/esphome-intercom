@@ -484,6 +484,12 @@ See [service fields](SERVICES.md#voip_stackplay_media) and the
   saves the message on remote hangup or its recording limit, independently of
   the completed script.
 
+The native `voip_stack.voicemail_received` trigger binds the saved message to
+subsequent `voip_stack.transcribe_voicemail` and `voip_stack.get_voicemail`
+actions. STT uses an existing HA entity; the message action returns its existing
+WAV file and HA media-source identifier. See the [voicemail guide](VOICEMAIL.md)
+for complete automation examples.
+
 See [mailbox configuration](SERVICES.md#voip_stackset_voicemail_settings) and
 [call handoff](SERVICES.md#voip_stacksend_to_voicemail) for limits and the current
 implementation boundary. SIP mailbox access and MWI use the common PBX call

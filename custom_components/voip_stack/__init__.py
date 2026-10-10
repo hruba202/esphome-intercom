@@ -505,6 +505,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     from .external_call_access import async_set_external_call_access
     from .mailbox import async_set_voicemail_settings
     from .voicemail import async_send_to_voicemail
+    from .mailbox_actions import async_transcribe_voicemail, async_get_voicemail
 
     await async_register_services(
         hass,
@@ -522,6 +523,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "set_phone_settings": _handle_set_phone_settings_service,
             "set_voicemail_settings": async_set_voicemail_settings,
             "send_to_voicemail": async_send_to_voicemail,
+            "transcribe_voicemail": async_transcribe_voicemail,
+            "get_voicemail": async_get_voicemail,
             "call": _handle_sip_call_target_service,
             "forward": _handle_sip_forward_service,
             "tts_say": async_tts_say,

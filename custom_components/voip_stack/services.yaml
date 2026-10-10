@@ -1265,6 +1265,74 @@ set_voicemail_settings:
         text:
           type: password
 
+get_voicemail:
+  name: Get voicemail message
+  description: >-
+    Return the existing message file and HA media-source ID. Uses the message
+    from a Voicemail received trigger, or an explicitly selected mailbox and
+    message ID. Does not copy, move or mark the message as read.
+  fields:
+    mailbox:
+      name: Mailbox
+      description: Optional when triggered by Voicemail received. Otherwise also provide the message ID.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: Home Assistant softphone
+            - integration: voip_stack
+              model: SIP account
+            - integration: esphome
+    message_id:
+      name: Message ID
+      description: Optional when triggered by Voicemail received.
+      selector:
+        text:
+
+transcribe_voicemail:
+  name: Transcribe voicemail
+  description: >-
+    Transcribe the saved message from a Voicemail received trigger, or select
+    a mailbox and message ID explicitly. Choose an existing HA speech-to-text
+    entity. Returns text without changing the recording or marking it as read.
+  fields:
+    mailbox:
+      name: Mailbox
+      description: Optional when triggered by Voicemail received. Otherwise also provide the message ID.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: Home Assistant softphone
+            - integration: voip_stack
+              model: SIP account
+            - integration: esphome
+    message_id:
+      name: Message ID
+      description: Optional when triggered by Voicemail received. Select a saved message, not a call ID.
+      selector:
+        text:
+    stt_entity_id:
+      name: Speech-to-text entity
+      required: true
+      selector:
+        entity:
+          domain: stt
+    language:
+      name: Language
+      description: A language code supported by the selected speech-to-text provider, for example en or it.
+      required: true
+      selector:
+        text:
+    timeout:
+      name: Transcription timeout
+      default: 120
+      selector:
+        number:
+          min: 1
+          max: 600
+          unit_of_measurement: seconds
+
 send_to_voicemail:
   name: Send call to voicemail
   description: >-

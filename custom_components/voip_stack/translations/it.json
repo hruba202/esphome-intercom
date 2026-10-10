@@ -752,6 +752,16 @@
           "description": "Contata dall'inizio dello squillo di questo destinatario."
         }
       }
+    },
+    "voicemail_received": {
+      "name": "Messaggio vocale ricevuto",
+      "description": "Si attiva dopo il salvataggio. Le azioni sui messaggi usano automaticamente questa registrazione.",
+      "fields": {
+        "mailbox": {
+          "name": "Casella vocale",
+          "description": "Filtro telefono facoltativo. Lascia vuoto per tutte le caselle."
+        }
+      }
     }
   },
   "conditions": {

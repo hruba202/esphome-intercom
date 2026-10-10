@@ -752,6 +752,16 @@
           "description": "Omit to use the phone's configured ringing timeout. Set a duration for an independent automation wait."
         }
       }
+    },
+    "voicemail_received": {
+      "name": "Voicemail received",
+      "description": "Runs after the message is saved. Message actions select this recording automatically.",
+      "fields": {
+        "mailbox": {
+          "name": "Mailbox",
+          "description": "Optional phone filter. Leave empty for all mailboxes."
+        }
+      }
     }
   },
   "conditions": {

@@ -24,6 +24,174 @@ pytestmark = pytest.mark.ha
 
 
 @pytest.fixture
+async def speech_entity(mailbox_lab):
+    import logging
+    from homeassistant.components import stt
+    from homeassistant.helpers.entity_component import EntityComponent
+
+    class Speech(stt.SpeechToTextEntity):
+        _attr_name = "Mailbox STT"
+        _attr_should_poll = False
+        supported_languages = ["en"]
+        supported_formats = [stt.AudioFormats.WAV]
+        supported_codecs = [stt.AudioCodecs.PCM]
+        supported_bit_rates = [stt.AudioBitRates.BITRATE_16]
+        supported_sample_rates = [stt.AudioSampleRates.SAMPLERATE_16000]
+        supported_channels = [stt.AudioChannels.CHANNEL_MONO]
+
+        def __init__(self):
+            self.received = []
+            self.wait = False
+            self.fail = False
+            self.started = asyncio.Event()
+            self.stopped = asyncio.Event()
+
+        async def async_process_audio_stream(self, metadata, stream):
+            pcm = bytearray()
+            try:
+                async for chunk in stream:
+                    self.started.set()
+                    pcm.extend(chunk)
+                    if self.wait:
+                        await asyncio.Event().wait()
+                self.received.append((metadata, bytes(pcm)))
+                return stt.SpeechResult("A package arrived", stt.SpeechResultState.ERROR if self.fail else stt.SpeechResultState.SUCCESS)
+            finally:
+                self.stopped.set()
+
+    hass = mailbox_lab.hass
+    component = EntityComponent(logging.getLogger(__name__), "stt", hass)
+    hass.data[stt.DATA_COMPONENT] = component
+    engine = Speech()
+    await component.async_add_entities([engine])
+    yield engine
+    await component.async_remove_entity(engine.entity_id)
+
+
+async def test_transcription_uses_native_stt_and_preserves_message(mailbox_lab, speech_entity):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen", caller="Delivery")
+    pcm = struct.pack("<640h", *range(640))
+    assert writer.offer(pcm, AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    result = await lab.hass.services.async_call("voip_stack", "transcribe_voicemail", {
+        "mailbox": "mailbox-device", "message_id": message["id"],
+        "stt_entity_id": speech_entity.entity_id, "language": "en",
+    }, blocking=True, return_response=True)
+    assert result == {"text": "A package arrived", "language": "en", "mailbox_id": "kitchen",
+                      "message_id": message["id"], "caller": "Delivery"}
+    assert speech_entity.received[0][1] == pcm
+    assert speech_entity.received[0][0].sample_rate == 16000
+    assert archive.counts("kitchen") == (1, 0)
+    assert archive.message(message["id"], "kitchen") == message
+
+
+async def test_message_reference_uses_existing_ha_media_file(mailbox_lab, tmp_path):
+    from homeassistant.components import media_source
+    from homeassistant.setup import async_setup_component
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
+    assert await async_setup_component(lab.hass, "media_source", {"media_source": {}})
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen", caller="Delivery")
+    pcm = struct.pack("<640h", *range(640))
+    assert writer.offer(pcm, AudioFormat(16000, frame_ms=20), offset=0)
+    message = await writer.finish()
+    result = await lab.hass.services.async_call("voip_stack", "get_voicemail", {
+        "mailbox": "mailbox-device", "message_id": message["id"],
+    }, blocking=True, return_response=True)
+    resolved = await media_source.async_resolve_media(lab.hass, result["media_source_id"], None)
+    assert resolved.path == Path(result["file_path"])
+    assert resolved.path == archive.segment_path(message["id"], "kitchen")
+    assert resolved.mime_type.startswith("audio/")
+    with wave.open(result["file_path"], "rb") as audio:
+        assert audio.readframes(audio.getnframes()) == pcm
+    assert archive.counts("kitchen") == (1, 0)
+    assert archive.message(message["id"], "kitchen") == message
+    assert list(archive.root.glob("*.wav")) == [resolved.path]
+    await archive.delete(message["id"], "kitchen")
+    assert not resolved.path.exists()
+
+
+@pytest.mark.parametrize("failure", ["language", "provider", "timeout", "cancel"])
+async def test_transcription_errors_leave_mailbox_reusable(mailbox_lab, speech_entity, failure):
+    from homeassistant.exceptions import ServiceValidationError
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    data = {"mailbox": "mailbox-device", "message_id": message["id"],
+            "stt_entity_id": speech_entity.entity_id, "language": "xx" if failure == "language" else "en", "timeout": 1}
+    speech_entity.fail = failure == "provider"
+    speech_entity.wait = failure in {"timeout", "cancel"}
+    task = asyncio.create_task(lab.hass.services.async_call("voip_stack", "transcribe_voicemail", data,
+                                                         blocking=True, return_response=True))
+    if failure == "cancel":
+        await asyncio.wait_for(speech_entity.started.wait(), 2)
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError if failure == "cancel" else ServiceValidationError):
+        await task
+    assert archive.counts("kitchen") == (1, 0)
+    assert not archive._active and not archive._reserved
+    speech_entity.wait = speech_entity.fail = False
+    result = await lab.hass.services.async_call("voip_stack", "transcribe_voicemail", {**data, "language": "en"},
+                                              blocking=True, return_response=True)
+    assert result["message_id"] == message["id"] and result["text"] == "A package arrived"
+
+
+async def test_voicemail_trigger_binds_concurrent_messages_without_call_state(mailbox_lab, speech_entity):
+    from homeassistant.helpers.trigger import TriggerConfig
+    from custom_components.voip_stack.trigger import VoicemailReceivedTrigger
+    from custom_components.voip_stack.mailbox_actions import current_message
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    messages = []
+    for caller in ("First", "Second"):
+        writer = await archive.begin("kitchen", caller=caller)
+        assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+        messages.append(await writer.finish())
+    release = asyncio.Event()
+    tasks = []
+
+    async def transcribe():
+        await release.wait()
+        return await lab.hass.services.async_call("voip_stack", "transcribe_voicemail", {
+            "stt_entity_id": speech_entity.entity_id, "language": "en",
+        }, blocking=True, return_response=True)
+
+    def runner(payload, description, context):
+        tasks.append(asyncio.create_task(transcribe()))
+        return tasks[-1]
+
+    subject = VoicemailReceivedTrigger(lab.hass, TriggerConfig("voip_stack.voicemail_received", options={"mailbox": "mailbox-device"}))
+    detach = await subject.async_attach_runner(runner)
+    try:
+        for message in messages:
+            lab.hass.bus.async_fire(EVENT_VOICEMAIL_RECEIVED, {"mailbox_id": "kitchen", "message_id": message["id"]})
+        await lab.hass.async_block_till_done()
+        assert len(tasks) == 2
+        release.set()
+        results = await asyncio.gather(*tasks)
+        assert {item["message_id"] for item in results} == {item["id"] for item in messages}
+        assert current_message.get() is None
+        assert not lab.calls.sessions
+    finally:
+        release.set()
+        detach()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.fixture
 def custom_integrations(enable_custom_integrations):
     import custom_components
     previous = custom_components.__path__
@@ -35,6 +203,7 @@ def custom_integrations(enable_custom_integrations):
 @pytest.fixture
 def mailbox_lab(lab, tmp_path):
     lab.hass.config.config_dir = str(tmp_path)
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {
         "enabled": True, "tts_entity_id": "tts.test", "language": "en",
@@ -207,10 +376,12 @@ async def test_reinvite_during_voicemail_keeps_recording_at_each_native_rate(mai
         await asyncio.wait_for(saved.wait(), 3)
         archive = await get_archive(lab.hass)
         entry = archive.list("kitchen")[0]
-        assert [item["sample_rate"] for item in entry["segments"]] == [16000, 8000]
-        for index, count, value in ((0, 320, 2100), (1, 160, 3100)):
-            with wave.open(str(archive.segment_path(entry["id"], "kitchen", index)), "rb") as wav:
-                assert wav.readframes(wav.getnframes()) == struct.pack(f"<{count}h", *([value] * count))
+        assert [item["sample_rate"] for item in entry["segments"]] == [16000]
+        with wave.open(str(archive.segment_path(entry["id"], "kitchen")), "rb") as wav:
+            samples = struct.unpack(f"<{wav.getnframes()}h", wav.readframes(wav.getnframes()))
+        assert sum(value == 2100 for value in samples) >= 300
+        assert sum(3050 <= value <= 3150 for value in samples) >= 250
+        assert len(list(archive.root.glob("*.wav"))) == 1
     finally:
         unsub()
         unsub_saved()
@@ -248,6 +419,7 @@ async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(bro
 
     lab = browser_lab
     lab.hass.config.config_dir = str(tmp_path)
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {
         "enabled": True, "tts_entity_id": "tts.test", "language": "en",
@@ -324,6 +496,7 @@ async def test_sip_phone_deposits_through_real_listener_without_browser(trunks, 
 
     lab = trunks
     lab.hass.config.config_dir = str(tmp_path)
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {
         "enabled": True, "tts_entity_id": "tts.test", "language": "en",
@@ -447,6 +620,7 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
     lab.runtime.trunk_config = {}
     lab.runtime.default_trunk_id = ""
     lab.hass.config.config_dir = str(tmp_path)
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {
         "enabled": True, "tts_entity_id": "tts.test", "language": "en",
@@ -544,6 +718,7 @@ async def test_standard_phone_own_mailbox_play_delete_and_hangup(trunks, tmp_pat
     pin = "819273"
     lab = trunks
     lab.hass.config.config_dir = str(tmp_path)
+    lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={"voicemail": {
         "enabled": True, "tts_entity_id": "tts.test", "language": "en",

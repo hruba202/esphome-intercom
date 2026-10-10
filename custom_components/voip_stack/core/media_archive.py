@@ -49,7 +49,7 @@ def _atomic_json(path: Path, data: dict) -> None:
 
 
 def _segment_path(root: Path, identity: str, name: str) -> Path:
-    if not _IDENTITY.fullmatch(identity) or not re.fullmatch(re.escape(identity) + r"-\d{3}\.wav", name):
+    if not _IDENTITY.fullmatch(identity) or not re.fullmatch(re.escape(identity) + r"-(?:\d{3}|final)\.wav", name):
         raise ArchiveError("Invalid recording segment")
     path = root / name
     if path.is_symlink():
@@ -90,10 +90,25 @@ def _audio_bytes(root: Path, active: tuple[str, ...] = ()) -> int:
                if path.is_file() and not path.is_symlink() and path.name[:32] not in active) if root.exists() else 0
 
 
-def _load(root: Path) -> tuple[dict, int, int]:
+def _consolidate(root, entry):
+    """Commit one complete audio file before removing format-change fragments."""
+    from .mailbox_wave import write_wave
+
+    original = entry["segments"]
+    result = deepcopy(entry)
+    result["segments"] = [write_wave(root, entry, _segment_path(root, entry["id"], f'{entry["id"]}-final.wav'))]
+    _atomic_json(root / f'{entry["id"]}.json', result)
+    for segment in original:
+        _segment_path(root, entry["id"], segment["file"]).unlink(missing_ok=True)
+    return result
+
+
+def _load(root: Path, quota_bytes=1024 ** 3) -> tuple[dict, int, int]:
     entries, errors = {}, 0
     if not root.exists():
         return entries, 0, 0
+    for temporary in root.glob(".voicemail-*.tmp"):
+        temporary.unlink()
     for pending in root.glob("*.pending.json"):
         identity = pending.name.removesuffix(".pending.json")
         try:
@@ -146,6 +161,19 @@ def _load(root: Path) -> tuple[dict, int, int]:
             for segment in data["segments"]:
                 if not _segment_path(root, identity, segment["file"]).is_file():
                     raise ArchiveError("Missing recording segment")
+            if data["kind"] == "voicemail" and len(data["segments"]) > 1:
+                from .mailbox_wave import wave_format
+
+                _segment_path(root, identity, f"{identity}-final.wav").unlink(missing_ok=True)
+                fmt, frames = wave_format(data)
+                if _audio_bytes(root) + frames * fmt.channels * fmt.container_bytes_per_sample + 44 > quota_bytes:
+                    raise ArchiveError("Insufficient quota to finalize the recovered voicemail")
+                data = _consolidate(root, data)
+            elif data["kind"] == "voicemail" and data["segments"][0]["file"].endswith("-final.wav"):
+                # A crash after the atomic manifest commit can leave only old
+                # fragments to remove. The final WAV is already authoritative.
+                for fragment in root.glob(f"{identity}-[0-9][0-9][0-9].wav"):
+                    fragment.unlink()
             entries[identity] = data
         except (OSError, ValueError, KeyError, TypeError, ArchiveError):
             errors += 1
@@ -326,7 +354,7 @@ class MediaArchive:
             if self._active:
                 raise ArchiveError("Cannot reload an active archive")
             async def read():
-                return await self.run_io(_load, self.root)
+                return await self.run_io(_load, self.root, self.quota_bytes)
             loading = asyncio.create_task(read(), name="voip-archive-load")
             self._entries, self._used, self.recovery_errors = await async_wait_for_cleanup(loading)
 
@@ -367,6 +395,19 @@ class MediaArchive:
 
     async def _finished(self, writer):
         async with self._lock:
+            if writer.result is not None and writer.result["kind"] == "voicemail" and len(writer.result["segments"]) > 1:
+                from .mailbox_wave import wave_format
+
+                try:
+                    fmt, frames = wave_format(writer.result)
+                    extra = frames * fmt.channels * fmt.container_bytes_per_sample + 44
+                    if not self._reserve(extra):
+                        raise ArchiveError("Insufficient quota to finalize voicemail")
+                    writer.reserved += extra
+                    writer.result = await self.run_io(_consolidate, self.root, writer.result)
+                except (ArchiveError, OSError, ValueError):
+                    writer._fail("finalization_failed")
+                    writer.result = None
             used = await self.run_io(_audio_bytes, self.root, tuple(identity for identity in self._active if identity != writer.identity))
             self._active.pop(writer.identity, None)
             self._reserved -= writer.reserved
@@ -407,6 +448,25 @@ class MediaArchive:
         if not 0 <= index < len(entry["segments"]):
             raise ArchiveError("Recording segment does not exist")
         return _segment_path(self.root, identity, entry["segments"][index]["file"])
+
+    async def pcm_frames(self, identity, mailbox_id, index=0):
+        """Read one stored native format in bounded chunks outside the loop."""
+        path = self.segment_path(identity, mailbox_id, index)
+        opening = asyncio.ensure_future(self.run_io(wave.open, str(path), "rb"))
+        try:
+            handle = await asyncio.shield(opening)
+        except asyncio.CancelledError:
+            async def release_opening():
+                handle = await opening
+                await self.run_io(handle.close)
+            await async_wait_for_cleanup(asyncio.create_task(release_opening()))
+            raise
+        try:
+            frame_samples = handle.getframerate() // 50
+            while pcm := await self.run_io(handle.readframes, frame_samples):
+                yield pcm
+        finally:
+            await async_wait_for_cleanup(asyncio.ensure_future(self.run_io(handle.close)))
 
     async def delete(self, identity: str, mailbox_id: str):
         async with self._lock:

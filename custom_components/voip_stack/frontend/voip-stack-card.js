@@ -1927,9 +1927,10 @@ class VoipStackCard extends HTMLElement {
     els.settingsPanel.hidden = !showSettingsPanel;
     els.settingsBtn.setAttribute("aria-expanded", String(showSettingsPanel));
     if (els.voicemailBtn) {
-      els.voicemailBtn.hidden = !softphoneMode || !(this._softphoneSnapshot?.voicemail?.total > 0 || this._mailboxOpen);
+      els.voicemailBtn.hidden = !softphoneMode || !this._softphoneSnapshot?.voicemail?.enabled ||
+        !(this._softphoneSnapshot.voicemail.total > 0 || this._mailboxOpen);
       els.voicemailBtn.setAttribute("aria-expanded", String(this._mailboxOpen));
-      els.voicemailPanel.hidden = !this._mailboxOpen;
+      els.voicemailPanel.hidden = !this._mailboxOpen || !this._softphoneSnapshot?.voicemail?.enabled;
     }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
     els.autoAnswerRow.hidden = !(showSettingsPanel && autoAnswerAvailable);

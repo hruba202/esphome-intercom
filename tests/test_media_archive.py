@@ -76,6 +76,68 @@ async def test_empty_calls_leave_no_message_or_reserved_quota(archive):
     assert not archive._active and archive._reserved == 0
 
 
+async def test_message_is_one_wav_after_native_format_changes(archive, module):
+    writer = await archive.begin("kitchen")
+    assert writer.offer(struct.pack("<320h", *([1000] * 320)), module.AudioFormat(16000, frame_ms=20), offset=0)
+    native = struct.pack("<1920i", *([500000, -500000] * 960))
+    assert writer.offer(native, module.AudioFormat(48000, "s24le_in_s32", 2, 20), offset=0.04)
+    entry = await writer.finish()
+    path = archive.segment_path(entry["id"], "kitchen")
+    assert path.stat().st_mode & 0o777 == 0o600
+    with wave.open(str(path), "rb") as wav:
+        assert (wav.getframerate(), wav.getnchannels(), wav.getsampwidth(), wav.getnframes()) == (48000, 2, 3, 2880)
+        data = wav.readframes(2880)
+    assert data[960 * 6:1920 * 6] == bytes(960 * 6)
+    assert data[1920 * 6:] == b"".join(native[index:index + 3] for index in range(0, len(native), 4))
+    assert archive.message(entry["id"], "kitchen") == entry
+    assert archive.counts("kitchen") == (1, 0)
+    assert len(entry["segments"]) == 1
+    assert list(archive.root.glob("*.wav")) == [path]
+    assert archive._reserved == 0
+
+
+async def test_short_message_uses_its_original_file_without_another_copy(archive, module):
+    writer = await archive.begin("kitchen")
+    pcm = b"\x01\x00" * 17
+    assert writer.offer(pcm, module.AudioFormat(16000, frame_ms=20), offset=0)
+    entry = await writer.finish()
+    path = archive.segment_path(entry["id"], "kitchen")
+    with wave.open(str(path), "rb") as wav:
+        assert wav.readframes(100) == pcm
+    assert list(archive.root.glob("*.wav")) == [path]
+    assert path.name.endswith("-000.wav")
+    assert archive.list("kitchen") == [entry]
+
+
+@pytest.mark.parametrize("failure", ["quota", "commit"])
+async def test_interrupted_finalization_recovers_one_message_without_duplicate_audio(archive, module, monkeypatch, failure):
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(320), module.AudioFormat(8000, frame_ms=20), offset=0)
+    assert writer.offer(bytes(640), module.AudioFormat(16000, frame_ms=20), offset=1)
+    original_commit = module._atomic_json
+    if failure == "quota":
+        archive.quota_bytes = module._METADATA_RESERVE + 960 + 32684 - 1
+    else:
+        def interrupted(path, data):
+            if any(item["file"].endswith("-final.wav") for item in data["segments"]):
+                raise OSError("Interrupted before the final manifest commit")
+            return original_commit(path, data)
+        monkeypatch.setattr(module, "_atomic_json", interrupted)
+    with pytest.raises(module.ArchiveError, match="finalized"):
+        await writer.finish()
+    assert not archive._active and archive._reserved == 0
+    assert not archive.list("kitchen")
+    monkeypatch.setattr(module, "_atomic_json", original_commit)
+    archive.quota_bytes = 1024 ** 2
+    await archive.load()
+    assert archive.recovery_errors == 0
+    entries = archive.list("kitchen")
+    assert len(entries) == len(list(archive.root.glob("*.wav"))) == 1
+    assert len(entries[0]["segments"]) == 1
+    with wave.open(str(archive.segment_path(entries[0]["id"], "kitchen")), "rb") as audio:
+        assert audio.getframerate() == 16000 and audio.getnframes() == 16320
+
+
 @pytest.mark.parametrize("operation", ["mark_read", "delete"])
 async def test_cancelled_mailbox_write_finishes_disk_and_memory_together(archive, module, operation):
     writer = await archive.begin("kitchen")

@@ -396,6 +396,34 @@ with the list still open. Runtime tests also cover an unrelated active call,
 an idle phone retaining its previous Call-ID, and the public schema-2 call
 response arriving before a separate phone-state event.
 
-Still unfinished: complete-file export, optional STT automation actions, and
-the remaining PBX checkpoints listed above. Nothing in this branch has been
-published or deployed to the user's home HA.
+### One stored message and optional HA processing
+
+Messages are now recorded directly in HA's media directory. A saved message has
+one canonical WAV. Format-change fragments are finalized before publishing the
+received event, then removed. The highest recorded rate, depth and channel count
+are retained. Interrupted finalization keeps recoverable source material; the
+archive checks quota for the finalization work and recovers one file on reload.
+
+There is no export-copy action. `get_voicemail` and the native
+`voicemail_received` trigger return the existing `file_path` and
+`media_source_id`. The normal HA media resolver opens that same file. Telephone
+playback, STT and automation attachments share it; deleting the message removes
+it. This supersedes the earlier private-storage foundation described above.
+
+`transcribe_voicemail` uses an existing HA STT entity, without a separate Whisper
+client. It is optional and runs only when invoked. Triggered executions bind
+their saved message independently, so concurrent messages cannot substitute for
+one another. Tests exercise the actual HA entity/service interfaces, streamed
+PCM, provider errors, timeout, cancellation, retries and unchanged unread state.
+
+The HA laboratory has also run a native automation through its normal config
+API: a baresip call records spoken test audio, `voicemail_received` selects the
+saved message implicitly, `get_voicemail` returns the existing media file,
+Wyoming Whisper transcribes it, and the automation creates an HA persistent
+notification. The temporary automation and notification are removed after the
+test. The saved audio contains the phrase "The package has arrived", also
+present in the provider's returned transcription. No external email or mobile
+notification is sent by this qualification.
+
+The remaining PBX checkpoints above still need completion. Nothing in this
+branch has been published or deployed to the user's home HA.

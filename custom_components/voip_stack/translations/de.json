@@ -752,6 +752,16 @@
           "description": "Gemessen ab dem Beginn des Klingelns an diesem Ziel."
         }
       }
+    },
+    "voicemail_received": {
+      "name": "Sprachnachricht empfangen",
+      "description": "Wird nach dem Speichern ausgelöst. Nachrichtenaktionen verwenden automatisch diese Aufnahme.",
+      "fields": {
+        "mailbox": {
+          "name": "Anrufbeantworter",
+          "description": "Optionaler Telefonfilter. Leer lassen für alle Postfächer."
+        }
+      }
     }
   },
   "conditions": {

@@ -4,6 +4,7 @@ from pathlib import Path
 import hashlib
 import hmac
 import secrets
+from urllib.parse import quote
 
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
@@ -55,13 +56,28 @@ async def get_archive(hass) -> MediaArchive:
             raise ServiceValidationError("VoIP Stack is not ready")
         archive = owner.component("media_archive")
         if archive is None:
-            archive = MediaArchive(Path(hass.config.path(".storage", "voip_stack_media")), hass.async_add_executor_job)
+            directories = hass.config.media_dirs
+            directory = directories.get("local") or next(iter(directories.values()), None)
+            if not directory:
+                raise ServiceValidationError("Configure a Home Assistant media directory before enabling voicemail")
+            archive = MediaArchive(Path(directory) / "voip_stack", hass.async_add_executor_job)
             await archive.load()
             if runtime.sip is not owner or owner.phase.value != "active":
                 await archive.close()
                 raise ServiceValidationError("VoIP Stack stopped while opening the media archive")
             owner.adopt_component("media_archive", archive, closer=archive.close)
         return archive
+
+
+def message_audio_reference(hass, archive, message):
+    """Expose the existing message file through HA's existing media source."""
+    directory = next((key for key, value in hass.config.media_dirs.items()
+                      if Path(value) / "voip_stack" == archive.root), None)
+    if directory is None or len(message["segments"]) != 1:
+        raise ServiceValidationError("The message's media directory is unavailable")
+    path = archive.segment_path(message["id"], message["mailbox_id"])
+    return {"file_path": str(path), "media_source_id":
+            f"media-source://media_source/{quote(directory, safe='')}/voip_stack/{path.name}"}
 
 
 async def selected_mailbox(call: ServiceCall, selector: str):

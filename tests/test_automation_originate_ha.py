@@ -112,7 +112,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     from custom_components import voip_stack
     from custom_components.voip_stack import automation_originate as module, services
     from custom_components.voip_stack import automation_call
-    from custom_components.voip_stack import voicemail, mailbox
+    from custom_components.voip_stack import voicemail, mailbox, mailbox_actions
     from custom_components.voip_stack.endpoint_registry import EndpointRegistry
     from custom_components.voip_stack.phone_control import PhoneAdapterRegistry
     from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpoint
@@ -167,6 +167,8 @@ async def lab(hass, monkeypatch, socket_enabled):
         "hangup": voip_stack._handle_sip_hangup_service,
         "send_to_voicemail": voicemail.async_send_to_voicemail,
         "set_voicemail_settings": mailbox.async_set_voicemail_settings,
+        "transcribe_voicemail": mailbox_actions.async_transcribe_voicemail,
+        "get_voicemail": mailbox_actions.async_get_voicemail,
     })
     obj = SimpleNamespace(hass=hass, phones=phones, calls=calls, runtime=runtime, roster=roster)
     yield obj

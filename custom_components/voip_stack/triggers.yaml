@@ -1,3 +1,14 @@
+voicemail_received:
+  fields:
+    mailbox:
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: Home Assistant softphone
+            - integration: voip_stack
+              model: SIP account
+            - integration: esphome
 call_started:
   fields:
     caller: &id001
