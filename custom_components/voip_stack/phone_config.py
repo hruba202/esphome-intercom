@@ -626,6 +626,8 @@ def validate_sip_account_namespace(
     from .contact_config import contact_dicts
 
     existing: list[Mapping[str, Any]] = contact_dicts(entry)
+    if entry.data.get("voicemail", {}).get("enabled"):
+        existing.append({"mailbox_feature_routes": True})
     existing.extend(
         subentry.data
         for subentry in phone_subentries(entry)
@@ -657,8 +659,8 @@ def validate_sip_account_namespace(
                 data.get(CONF_PHONE_NAME),
                 data.get(CONF_PHONE_EXTENSION),
                 data.get(CONF_PHONE_USERNAME),
-                *mailbox_route_aliases(data),
             ),
+            candidate_mailbox_routes=mailbox_route_aliases(data),
             candidate_groups=groups,
             existing=(*existing, *accepted),
         ):

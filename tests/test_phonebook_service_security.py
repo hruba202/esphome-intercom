@@ -57,6 +57,7 @@ def _load_phonebook_services(monkeypatch, route_conflicts=None):
     mailbox = types.ModuleType(f"{PACKAGE}.mailbox")
     mailbox.mailbox_settings = lambda _hass, _endpoint: {}
     store = types.ModuleType(f"{PACKAGE}.store")
+    store.config_entry = lambda _hass: None
     store.manual_roster_entries = lambda _hass: []
     store.store_manual_roster_entries = lambda _hass, _entries: None
     for dependency in (

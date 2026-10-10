@@ -122,7 +122,7 @@ async def async_set_voicemail_settings(call: ServiceCall) -> None:
         candidate = {"endpoint_id": endpoint.endpoint_id, "name": endpoint.name,
                      "extension": endpoint.extension, "username": endpoint.username,
                      "voicemail": settings}
-        if route_namespace_conflicts(candidate_routes=mailbox_route_aliases(candidate),
+        if route_namespace_conflicts(candidate_mailbox_routes=mailbox_route_aliases(candidate),
                                      existing=(*existing, *contact_dicts(entry))):
             raise ServiceValidationError("A mailbox address conflicts with an existing phone, contact or group")
     if endpoint.kind is EndpointKind.ESPHOME:
@@ -140,38 +140,28 @@ async def async_set_voicemail_settings(call: ServiceCall) -> None:
 def resolve_mailbox_route(hass, target: str, entries, *, source_endpoint_id=""):
     """Resolve mailbox access/deposit through the canonical PBX dial plan."""
     from .router import RouteAction, RouteDecision, RouteReason
-    from .roster import RosterEntry, find_entry
+    from .roster import RosterEntry
     from .runtime_data import runtime_data
     from .voicemail_config import voicemail_config
+    from .mailbox_address import parse_mailbox_address
 
     raw = str(target or "").strip()
-    lower = raw.casefold()
-    if "@" in raw or lower.startswith(("sip:", "sips:")):
+    address = parse_mailbox_address(raw)
+    if address is None or not voicemail_config(hass).get("enabled"):
         return None
     runtime = runtime_data(hass)
     if runtime is None:
         return None
-    mode = "deposit"
-    if lower in {"*97", "mailbox"}:
-        mode, selector = "own", source_endpoint_id
-    elif lower == "*98":
-        mode, selector = "login", ""
-    elif lower.startswith("mailbox."):
-        mode, selector = "access", raw[len("mailbox."):]
-    elif lower.startswith("voicemail."):
-        selector = raw[len("voicemail."):]
-    elif lower.startswith("*60") and raw[3:].isdigit():
-        selector = raw[3:]
-    else:
-        return None
-    if not voicemail_config(hass).get("enabled"):
-        return RouteDecision(RouteAction.REJECT, target=raw, status=480, reason=RouteReason.TARGET_DISABLED)
+    mode, selector = address
+    if mode == "own":
+        selector = source_endpoint_id
     endpoint = runtime.endpoints.resolve(selector) if selector else None
     if mode == "deposit" and (endpoint is None or not mailbox_settings(hass, endpoint.endpoint_id).get("enabled", False)):
         return RouteDecision(RouteAction.REJECT, target=raw, status=480, reason=RouteReason.TARGET_UNREACHABLE)
     if mode == "access" and endpoint is None:
         return RouteDecision(RouteAction.REJECT, target=raw, status=404, reason=RouteReason.ROUTE_NOT_FOUND)
-    if find_entry(entries, raw) is not None:
+    if any(str(value or "").strip().casefold() == raw.casefold()
+           for entry in entries for value in (entry.id, entry.name, entry.extension, entry.number)):
         return RouteDecision(RouteAction.REJECT, target=raw, status=403, reason=RouteReason.TARGET_DISABLED)
     entry = RosterEntry(raw, name=f"Voicemail: {endpoint.name}" if endpoint else "Voicemail",
                         metadata={"mailbox_endpoint_id": endpoint.endpoint_id if endpoint else "",
@@ -206,8 +196,9 @@ async def async_remove_mailbox(hass, endpoint_id):
             barrier = owner.request_termination(session.call_id, TerminationIntent("phone_removed"), generation=session.generation)
             if barrier is not None:
                 await barrier
-    archive = await get_archive(hass)
-    await archive.remove_mailbox(endpoint_id)
+    archive = owner.component("media_archive")
+    if archive is not None:
+        await archive.remove_mailbox(endpoint_id)
     entry = config_entry(hass)
     if entry is not None and endpoint_id in entry.data.get(CONF_ESPHOME_MAILBOXES, {}):
         settings = dict(entry.data[CONF_ESPHOME_MAILBOXES])

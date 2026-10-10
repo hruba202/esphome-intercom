@@ -14,6 +14,11 @@ Assistant TTS entity and its prompt language. The voice is shared by the
 telephone menus. English, Italian, German and Portuguese are supported when the
 selected TTS engine supports that language.
 
+Enabling voicemail checks that existing phones, contacts and groups do not use
+its feature codes or named address prefixes. HA reports conflicts before saving
+the configuration. Numeric extension `97` remains distinct from feature code
+`*97`.
+
 Use **VoIP Stack: Set voicemail settings** and select a phone with the device
 picker. Enable its mailbox. The recording limit defaults to 180 seconds. You
 can choose a greeting through HA's media picker. Without a greeting, the caller

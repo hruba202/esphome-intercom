@@ -28,7 +28,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, trusted_networks
-from .config_validation import extension_conflicts, route_namespace_conflicts, mailbox_route_aliases
+from .config_validation import extension_conflicts, route_namespace_conflicts, mailbox_route_aliases, mailbox_namespace_conflicts
 from .phone_config import (
     CONF_PHONE_AUTO_ANSWER,
     CONF_PHONE_CONFERENCE_GROUP,
@@ -116,6 +116,8 @@ def _entry_route_mappings(
     mappings: list[Mapping[str, Any]] = (
         contact_dicts(entry) if entry is not None else list(data.get(CONF_PHONEBOOK_CONTACTS, []) or [])
     )
+    if data.get("voicemail", {}).get("enabled"):
+        mappings.append({"mailbox_feature_routes": True})
     mappings.extend(
         item
         for item in data.get("sip_accounts", []) or []
@@ -694,6 +696,8 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             language = str(user_input.get("language") or "")
             if language not in languages:
                 errors["language"] = "voicemail_language_unsupported"
+            elif mailbox_namespace_conflicts(_entry_route_mappings(_entry, existing)):
+                errors["base"] = "voicemail_route_conflict"
             else:
                 self._base_input["voicemail"] = {"enabled": True, "tts_entity_id": self._voicemail_tts,
                                                   "language": language}
@@ -828,9 +832,10 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
         )
         entry = self._get_entry()
         return not route_namespace_conflicts(
-            candidate_routes=(name, extension, username, *mailbox_route_aliases({
+            candidate_routes=(name, extension, username),
+            candidate_mailbox_routes=mailbox_route_aliases({
                 **self._current_data(), "name": name, "extension": extension, "username": username,
-            })),
+            }),
             candidate_groups=_group_route_values(
                 ring_group,
                 conference_group,

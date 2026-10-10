@@ -671,13 +671,19 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
         unsubscribe()
 
 
-async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch):
+@pytest.mark.parametrize("conflict", [None, "*97", "mailbox.other", "*60101"])
+async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch, conflict):
     from types import SimpleNamespace
     from custom_components.voip_stack import voicemail_config as config_module
 
     lab = mailbox_lab
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={})
+    if conflict:
+        lab.hass.config_entries.async_add_subentry(entry, ConfigSubentry(
+            subentry_type="contact", title=conflict, unique_id="contact:feature-conflict",
+            data={"id": "feature-conflict", "name": conflict, "number": "12345"},
+        ))
     lab.hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
     monkeypatch.setattr(config_module, "voice_engine", lambda *_args: None)
     form = await lab.hass.config_entries.flow.async_init(
@@ -699,8 +705,46 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
         await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "xx"})
     assert not entry.data.get("voicemail")
     result = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "it"})
+    if conflict:
+        assert result["errors"] == {"base": "voicemail_route_conflict"}
+        assert not entry.data.get("voicemail")
+        contact = next(item for item in entry.subentries.values() if item.unique_id == "contact:feature-conflict")
+        lab.hass.config_entries.async_remove_subentry(entry, contact.subentry_id)
+        result = await lab.hass.config_entries.flow.async_configure(result["flow_id"], {"language": "it"})
     assert result["type"] == "abort"
     assert entry.data["voicemail"] == {"enabled": True, "tts_entity_id": "tts.test", "language": "it"}
+
+
+@pytest.mark.parametrize("address", ["*97", "*98", "mailbox", "mailbox.Other", "voicemail.Other", "*60101"])
+async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbox_lab, address):
+    from custom_components.voip_stack.mailbox import resolve_mailbox_route
+    from custom_components.voip_stack.phonebook_services import _validate_contact_namespace
+    from custom_components.voip_stack.roster import RosterEntry
+
+    lab = mailbox_lab
+    contact = RosterEntry("existing", name=address, number="12345")
+    with pytest.raises(ValueError, match="conflicts"):
+        _validate_contact_namespace(lab.hass, [contact])
+    entry = config_entry(lab.hass)
+    lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {"enabled": False}})
+    assert resolve_mailbox_route(lab.hass, address, [contact]) is None
+    _validate_contact_namespace(lab.hass, [contact])
+
+
+async def test_feature_code_does_not_shadow_plain_numeric_extension(mailbox_lab):
+    from custom_components.voip_stack.config_validation import route_namespace_conflicts
+    from custom_components.voip_stack.mailbox import resolve_mailbox_route
+    from custom_components.voip_stack.roster import RosterEntry
+    from custom_components.voip_stack.router import RouteAction
+
+    lab = mailbox_lab
+    ordinary = RosterEntry("Desk", extension="97")
+    assert resolve_mailbox_route(lab.hass, "*97", [ordinary], source_endpoint_id="kitchen").action is RouteAction.VOICEMAIL
+    assert resolve_mailbox_route(lab.hass, "97", [ordinary]) is None
+    assert not route_namespace_conflicts(candidate_routes=("60101",), existing=(
+        {"id": "kitchen", "extension": "101", "voicemail": {"enabled": True}},
+        {"mailbox_feature_routes": True},
+    ))
 
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
@@ -914,6 +958,15 @@ async def test_phone_removal_purges_mailbox_but_offline_does_not(mailbox_lab):
     assert not archive.list("kitchen")
     await archive.load()
     assert not archive.list("kitchen")
+
+
+async def test_removing_phone_without_voicemail_needs_no_media_directory(lab):
+    from custom_components.voip_stack.mailbox import async_remove_mailbox
+
+    lab.hass.config.media_dirs = {}
+    assert lab.calls.component("media_archive") is None
+    await async_remove_mailbox(lab.hass, "sip:bedroom0")
+    assert lab.calls.component("media_archive") is None
 
 
 async def test_permanent_esphome_device_removal_purges_mailbox(mailbox_lab):

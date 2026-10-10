@@ -124,7 +124,8 @@
       "trunk_password_required": "A senha do tronco é obrigatória.",
       "trunk_allowed_ips_invalid": "Insira pelo menos um IP ou uma rede CIDR válida. Redes /0 sem restrições não são permitidas.",
       "voicemail_tts_unavailable": "Selecione uma entidade TTS disponível.",
-      "voicemail_language_unsupported": "Este idioma não é compatível com os avisos e o mecanismo TTS selecionado."
+      "voicemail_language_unsupported": "Este idioma não é compatível com os avisos e o mecanismo TTS selecionado.",
+      "voicemail_route_conflict": "Um telefone, contato ou grupo usa um endereço de correio de voz (*97, *98, mailbox, mailbox.*, voicemail.* ou *60 seguido de um ramal). Renomeie esse destino antes de ativar o correio de voz."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
