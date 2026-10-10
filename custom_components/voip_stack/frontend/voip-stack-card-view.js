@@ -956,6 +956,42 @@ export function buildMainCardSkeleton(cardVersion) {
       routingPanel.appendChild(row);
       routingControls[field] = { input, options };
     }
+    const ringingControls = {};
+    for (const [field, label, type] of [
+      ["enabled", "Enable ringing timeout", "checkbox"],
+      ["seconds", "Seconds before no-answer action", "number"],
+      ["action", "When nobody answers", "select"],
+      ["destination", "No-answer destination", "text"],
+    ]) {
+      const row = document.createElement("label");
+      row.className = type === "checkbox" ? "auto-answer-row" : "softphone-group-row";
+      const title = document.createElement("span");
+      title.textContent = translate(label);
+      const input = document.createElement(type === "select" ? "select" : "input");
+      if (type === "select") {
+        for (const [value, text] of [["", "Choose an action"], ["hangup", "Hang up"], ["forward", "Forward"]]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = translate(text);
+          input.appendChild(option);
+        }
+      } else {
+        input.type = type;
+      }
+      if (type === "number") { input.min = "1"; input.max = "3600"; }
+      row.appendChild(title);
+      row.appendChild(input);
+      if (field === "destination") {
+        input.setAttribute("list", routingControls.forward_to.options.id);
+      }
+      routingPanel.appendChild(row);
+      ringingControls[field] = input;
+      ringingControls[`${field}Row`] = row;
+    }
+    ringingControls.save = document.createElement("button");
+    ringingControls.save.type = "button";
+    ringingControls.save.textContent = translate("Save ringing timeout");
+    routingPanel.appendChild(ringingControls.save);
     settingsPanel.appendChild(routingPanel);
     card.appendChild(settingsPanel);
 
@@ -983,7 +1019,7 @@ export function buildMainCardSkeleton(cardVersion) {
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
       runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel,
-      routingPanel, routingControls,
+      routingPanel, routingControls, ringingControls,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       microphoneAntiAliasRow, microphoneAntiAliasCheckbox,
       videoCameraRow, videoCameraCheckbox,

@@ -64,6 +64,8 @@ class VoipCallTrigger(Trigger):
         registration = registration_data(self._hass)
         if self._kind == "route_requested":
             registration.route_trigger_filters[self] = dict(self._options)
+        if self._kind == "call_unanswered":
+            registration.unanswered_trigger_filters[self] = dict(self._options)
 
         async def finish(task, execution):
             try:
@@ -153,6 +155,11 @@ class VoipCallTrigger(Trigger):
                 if event.event_type == SIP_DTMF_EVENT
                 else automation_event_type(payload)
             )
+            if payload.get("scope") == "phone_policy":
+                if (self._kind == "call_unanswered" and self._options.get("for") is None
+                        and matches_call(payload, self._options)):
+                    dispatch(event, payload)
+                return
             token = CallToken(
                 str(payload.get("call_id") or ""), int(payload.get("generation") or 0)
             )
@@ -176,6 +183,10 @@ class VoipCallTrigger(Trigger):
                     previous.cancel()
                 return
             if not matched:
+                return
+            if self._options.get("for") is None:
+                # A phone-configured deadline emits the native no-answer event.
+                # Explicit durations retain their independent automation timer.
                 return
             registry = call_registry(self._hass)
             session = registry.get_session(token.call_id)
@@ -201,7 +212,7 @@ class VoipCallTrigger(Trigger):
             duration = self._options.get("for")
             deadline.arm(
                 self._hass.loop,
-                duration.total_seconds() if duration is not None else 30,
+                duration.total_seconds(),
             )
 
         remove = self._hass.bus.async_listen(
@@ -212,6 +223,7 @@ class VoipCallTrigger(Trigger):
         def detach():
             remove()
             registration.route_trigger_filters.pop(self, None)
+            registration.unanswered_trigger_filters.pop(self, None)
             for deadline in tuple(deadlines.values()):
                 deadline.cancel()
             # HA owns running automations; their completion releases call control.

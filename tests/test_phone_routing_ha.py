@@ -49,6 +49,21 @@ def test_unconditional_forward_follows_stable_identity_after_rename():
     assert result.failure is None
     assert result.endpoint.endpoint_id == "second"
     assert result.decision.target == "Renamed bedroom"
+    assert result.forwarded_endpoint_ids == ("first",)
+
+
+def test_forwarded_identity_still_limits_later_trunk_legs():
+    from types import SimpleNamespace
+    from custom_components.voip_stack.trunk_policy import call_external_call_denied
+
+    result = resolve({"always": {"target": "second"}})
+    parent = SimpleNamespace(metadata={"policy_endpoint_ids": result.forwarded_endpoint_ids})
+    child = SimpleNamespace(metadata={"source_call_id": "parent"})
+    runtime = SimpleNamespace(
+        transport_config={"external_call_blocked_endpoints": ["first"]},
+        sip=SimpleNamespace(get_session={"parent": parent, "child": child}.get),
+    )
+    assert call_external_call_denied(runtime, "child") == "first"
 
 
 def test_forwarding_can_select_existing_automation_application():

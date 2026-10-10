@@ -82,6 +82,44 @@ No-answer execution, mailbox applications and subsequent checkpoints remain
 unfinished. Unavailable mailbox applications fail closed instead of dialing the
 ordinary phone or an external trunk.
 
+The next increment introduces session-owned no-answer timers, an optional native
+trigger duration and card controls for explicit timeout/outcome selection. A
+native notification leaves fallback enabled; an accepted owner/state change
+invalidates it. The initial timer test exposed an incorrect resource lookup
+name; timer ownership now follows the existing `kind:call_id` convention.
+
+Real SIP qualification also exposed missing provisional-state publication for
+Automation origination. That path now publishes remote ringing before waiting
+for final acceptance, so endpoint policies can observe it without treating
+early media as an answer. A one-second phone deadline cancels a real INVITE
+before the action's five-second limit, without starting TTS.
+
+Unconfigured normal SIP calls no longer acquire the old 60-second application
+ringing cap. Initial signaling, CANCEL, explicit action deadlines and other SIP
+transactions remain bounded. A real UDP peer answered successfully after 61
+seconds and completed BYE. Maintained YAML local 30-second guards are now
+commented examples, not enabled defaults. Group-specific routing limits still
+need qualification separately.
+
+Remaining before completing phone policies: native TTS takeover of a phone call,
+forwarding to applications and outgoing-call retargeting across every source type.
+Forwarded endpoint identities now stay in the existing session metadata, including
+local-browser and group origins, so later trunk legs retain their access limits.
+Do not promote this branch or claim the full six-phase plan is implemented.
+
+Further startup tests reproduced two boundaries: final SIP acceptance must end
+ringing before media preparation finishes, and remote BYE must cancel media
+preparation itself. Automation origination now updates its internal SIP state
+after final acceptance and owns media startup as a session task. Its public action
+still waits for media readiness before allowing TTS. Both controlled startup
+scenarios pass with a real UDP SIP peer.
+
+The second increment's protocol/frontend/documentation run passed 238 tests and
+21 subtests; the HA run passed 347 tests, including the 61-second SIP witness.
+Later focused runs cover the startup changes and forwarding provenance. The
+long-running witness and failure/recovery evidence are under the ignored
+`test_captures/ha-pbx/` directory.
+
 Executed so far:
 
 - Software suite: 1926 tests and 162 subtests passed (4 deselected).

@@ -244,13 +244,14 @@ async def async_originate_browser_call(
     if resolved.decision != route:
         target = resolved.decision.target
     route = resolved.decision
+    policy_endpoint_ids = getattr(resolved, "forwarded_endpoint_ids", ())
     route, target, browser_destination = await _async_resolve_browser_destination(
         hass,
         route=route,
         target=target,
         source_endpoint_id=endpoint_id,
     )
-    if external_call_denied(cfg, endpoint_id) and (
+    if external_call_denied(cfg, endpoint_id, *policy_endpoint_ids) and (
         route.action is RouteAction.TRUNK
         or is_trunk_uri(route.sip_uri, trunk_cfg, getattr(trunk, "active_registrar_target", None))
     ):
@@ -277,6 +278,7 @@ async def async_originate_browser_call(
                 ),
                 caller_owner_id=str(call.data.get("media_client_id") or ""),
                 context=getattr(call, "context", None),
+                **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids else {}),
             )
         except LocalBridgeError as err:
             raise _service_error(
@@ -359,6 +361,7 @@ async def async_originate_browser_call(
             await _async_prepare_ha_outbound_call(hass, endpoint_id)
             await start_ring_group(
                 route.entry,
+                **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids else {}),
                 context=getattr(call, "context", None),
                 endpoint_id=endpoint_id,
                 media_client_id=str(call.data.get("media_client_id") or ""),
@@ -408,6 +411,7 @@ async def async_originate_browser_call(
                 route_kind="conference",
                 endpoint_id=endpoint_id,
                 source_endpoint_id=endpoint_id,
+                policy_endpoint_ids=policy_endpoint_ids,
                 session_device_id=source_device_id,
                 media_client_id=str(call.data.get("media_client_id") or ""),
             )
@@ -801,6 +805,7 @@ async def async_originate_browser_call(
         direction="outgoing",
         endpoint_id=endpoint_id,
         source_endpoint_id=endpoint_id,
+        policy_endpoint_ids=policy_endpoint_ids,
         session_device_id=source_device_id,
         media_client_id=str(call.data.get("media_client_id") or ""),
         source_media_client_id=str(call.data.get("media_client_id") or ""),

@@ -90,6 +90,7 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             caller=source.display_name, callee=destination, route_kind='automation',
             origin='automation', source_automation=source.id,
             dest_endpoint_id=attempt.endpoint_id,
+            policy_endpoint_ids=resolved.forwarded_endpoint_ids,
         )
         registry.own_resource(
             call_id, f'automation_ports:{call_id}', attempt.ports,
@@ -115,10 +116,18 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                 request_uri=str(uri), timeout=timeout,
             )
             if result in ('ringing', 'calling', 'remote_ringing'):
+                registry.transition(call_id, state=CallState.REMOTE_RINGING.value, expected_generation=session.generation)
+                publish_bridge_projection(
+                    hass, session, event_type='remote_ringing', direction='outgoing',
+                    route_kind='automation',
+                )
                 result = await client.wait_for_final(timeout=timeout)
             if result != 'in_call' or client.dialog is None:
                 raise ServiceValidationError(f"The destination did not answer: {result}")
             application.require_current()
+            # Final SIP acceptance ends ringing even if media preparation
+            # needs another event-loop turn. TTS still waits for media.start().
+            registry.transition(call_id, state=CallState.IN_CALL.value, expected_generation=session.generation)
 
             async def complete(reason):
                 registry.request_termination(call_id, TerminationIntent(reason), generation=session.generation)
@@ -150,12 +159,14 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                     await registry.terminate_call_wait(call_id, reason='signaling_failed')
             watcher = hass.async_create_task(watch())
             registry.attach_client_watcher(call_id, watcher)
-            await media.start()
+            application.require_current()
+            # Teardown must cancel preparation before closing its media/ports.
+            # Otherwise a remote BYE can leave start() waiting outside the owner.
+            await session.create_task(media.start(), name="automation-media-start")
             application.require_current()
             if client.dialog is None:
                 raise ServiceValidationError("The destination ended before audio became ready")
             application.answered = True
-            registry.transition(call_id, state=CallState.IN_CALL.value, expected_generation=session.generation)
 
 
         application.arm_deadline()
@@ -170,4 +181,6 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             raise ServiceValidationError("The destination is already in another call") from err
         if isinstance(err, TimeoutError):
             raise ServiceValidationError("The destination did not answer before the answer timeout") from err
+        if isinstance(err, asyncio.CancelledError) and not asyncio.current_task().cancelling():
+            raise ServiceValidationError("The destination ended while preparing call audio") from err
         raise

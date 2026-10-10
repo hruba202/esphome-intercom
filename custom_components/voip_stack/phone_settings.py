@@ -37,7 +37,30 @@ async def async_set_phone_settings(call: ServiceCall) -> None:
                 raise ServiceValidationError("A phone cannot forward to itself")
             target = destination.endpoint_id
         updates[slot] = PhoneDestination(DestinationKind.CONTACT, target) if target else None
-    policy = replace(endpoint.policy, **updates)
+    if "ringing_timeout" in call.data:
+        timeout = float(call.data["ringing_timeout"])
+        updates["ringing_timeout"] = timeout or None
+    if call.data.get("ringing_timeout") == 0:
+        updates["no_answer"] = None
+    elif "no_answer_action" in call.data:
+        if call.data["no_answer_action"] == "hangup":
+            updates["no_answer"] = PhoneDestination(DestinationKind.HANGUP)
+        else:
+            target = str(call.data.get("no_answer_to") or "").strip()
+            if not target:
+                raise ServiceValidationError("Select a no-answer destination")
+            destination = registry.resolve(target)
+            if destination is not None:
+                if destination.endpoint_id == endpoint.endpoint_id:
+                    raise ServiceValidationError("A phone cannot forward to itself")
+                target = destination.endpoint_id
+            updates["no_answer"] = PhoneDestination(DestinationKind.CONTACT, target)
+    elif "no_answer_to" in call.data:
+        raise ServiceValidationError("Select the forward no-answer action with its destination")
+    try:
+        policy = replace(endpoint.policy, **updates)
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
     visited = {endpoint.endpoint_id}
     current = policy.always
     while current is not None and current.kind is DestinationKind.CONTACT:

@@ -417,6 +417,25 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests)), [["voip_stack", "s
   device_id: "device-kitchen", forward_to: "",
 }}]]);
 assert.equal(routingCard._routingSettingsBusy, false);
+// Enabling a timeout requires an explicit outcome; disabling sends only zero.
+routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: true,
+  seconds: "25", action: "", destination: "Renamed bedroom" }};
+await routingCard._saveRingingPolicy();
+assert.equal(routingRequests.length, 1);
+assert.match(routingCard._errorMsg, /no-answer action/);
+routingCard._ringingDraft.action = "forward";
+await routingCard._saveRingingPolicy();
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
+  "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen",
+    ringing_timeout: 25, no_answer_action: "forward", no_answer_to: "Renamed bedroom" }},
+]);
+assert.equal(routingCard._ringingDraft, null);
+routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: false,
+  seconds: "25", action: "forward", destination: "Renamed bedroom" }};
+await routingCard._saveRingingPolicy();
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
+  "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen", ringing_timeout: 0 }},
+]);
 const antiAliasPreference = makeCard();
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), true);
 antiAliasPreference._toggleMicrophoneAntiAlias();

@@ -141,3 +141,22 @@ async def test_read_only_user_cannot_change_phone_routing(hass, phones, hass_rea
         }, blocking=True, context=Context(user_id=hass_read_only_user.id))
     assert phones.registry.require("kitchen").policy == PhonePolicy()
     phones.push.assert_not_awaited()
+
+
+async def test_no_answer_requires_explicit_outcome_and_can_be_disabled(hass, phones):
+    with pytest.raises(ServiceValidationError, match="set together"):
+        await settings(hass, ringing_timeout=25)
+    assert phones.registry.require("kitchen").policy.ringing_timeout is None
+    await settings(hass, ringing_timeout=25, no_answer_action="forward", no_answer_to="Bedroom")
+    policy = phones.registry.require("kitchen").policy
+    assert policy.ringing_timeout == 25
+    assert policy.no_answer.target == "bedroom"
+    await settings(hass, ringing_timeout=0)
+    policy = phones.registry.require("kitchen").policy
+    assert policy.ringing_timeout is None
+    assert policy.no_answer is None
+
+
+async def test_no_answer_can_explicitly_terminate_without_a_destination(hass, phones):
+    await settings(hass, ringing_timeout=25, no_answer_action="hangup")
+    assert phones.registry.require("kitchen").policy.no_answer.kind.value == "hangup"

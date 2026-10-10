@@ -273,6 +273,127 @@ async def test_stopping_script_while_ringing_cancels_call(lab, monkeypatch):
     assert not any(session.live for session in lab.calls.sessions.values())
 
 
+async def test_phone_deadline_cancels_real_sip_invite_before_action_deadline(lab, monkeypatch):
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
+    from custom_components.voip_stack.store import config_entry
+
+    setup_phone_policy_events(lab.hass, config_entry(lab.hass))
+    lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
+        "ringing_timeout": 1, "no_answer": {"kind": "hangup"},
+    }))
+    stream = tts_fixture(monkeypatch, lab)
+    phone = lab.phones[0]
+    phone.auto_answer = False
+    script = Script(lab.hass, await async_validate_actions_config(lab.hass, cv.SCRIPT_SCHEMA(sequence())), "Wakeup", "automation")
+    async with asyncio.timeout(3):
+        with pytest.raises(ServiceValidationError):
+            await script.async_run(context=Context())
+    assert stream.calls == []
+    assert any(request.method == "CANCEL" for request in phone.requests)
+    assert not any(session.live for session in lab.calls.sessions.values())
+    assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(75)
+async def test_default_final_wait_accepts_real_answer_after_old_sixty_second_limit(lab):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.sip_client import SipCallClient
+
+    phone = lab.phones[0]
+    phone.auto_answer = False
+    client = SipCallClient(
+        local_ip="127.0.0.1", local_name="Caller", local_sip_port=0, local_rtp_port=42000,
+        supported_formats=[AudioFormat(16000, "s16le", 1, 20)],
+    )
+    answer = None
+    try:
+        result = await client.invite(
+            target="bedroom0", remote_host="127.0.0.1",
+            remote_sip_port=phone.transport.get_extra_info("sockname")[1], timeout=2,
+        )
+        assert result == "ringing"
+        started = lab.hass.loop.time()
+        answer = lab.hass.loop.call_later(61, phone.answer)
+        async with asyncio.timeout(65):
+            assert await client.wait_for_final() == "in_call"
+        assert lab.hass.loop.time() - started >= 60
+        await client.terminate()
+        await asyncio.wait_for(phone.bye.wait(), 2)
+    finally:
+        if answer is not None:
+            answer.cancel()
+        await client.close()
+
+
+@pytest.mark.parametrize("remote_hangup", [False, True])
+async def test_final_sip_answer_wins_timeout_while_media_is_starting(lab, monkeypatch, remote_hangup):
+    from homeassistant.core import callback
+    from custom_components.voip_stack.local_call_media import LocalCallMedia
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
+    from custom_components.voip_stack.store import config_entry
+    from custom_components.voip_stack.websocket_api import CALL_EVENT
+
+    setup_phone_policy_events(lab.hass, config_entry(lab.hass))
+    lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
+        "ringing_timeout": 1, "no_answer": {"kind": "hangup"},
+    }))
+    ringing, starting, release, stopped = asyncio.Event(), asyncio.Event(), asyncio.Event(), asyncio.Event()
+    original_start = LocalCallMedia.start
+
+    async def gated_start(media):
+        starting.set()
+        try:
+            await release.wait()
+            await original_start(media)
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(LocalCallMedia, "start", gated_start)
+    @callback
+    def observe_ringing(event):
+        if event.data.get("state") == "remote_ringing":
+            ringing.set()
+
+    unsubscribe = lab.hass.bus.async_listen(CALL_EVENT, observe_ringing)
+    stream = tts_fixture(monkeypatch, lab)
+    phone = lab.phones[0]
+    phone.auto_answer = False
+    script = Script(lab.hass, await async_validate_actions_config(lab.hass, cv.SCRIPT_SCHEMA(sequence())), "Wakeup", "automation")
+    task = asyncio.create_task(script.async_run(context=Context()))
+    try:
+        await asyncio.wait_for(ringing.wait(), 2)
+        phone.answer()
+        await asyncio.wait_for(starting.wait(), 2)
+        if remote_hangup:
+            phone.remote_hangup()
+            await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 2)
+            assert stopped.is_set()
+            assert not stream.calls
+            assert not any(session.live for session in lab.calls.sessions.values())
+            return
+        call_id = phone.last_request.header("Call-ID")
+        session = lab.calls.get_session(call_id)
+        deadline = lab.calls.resource_for(call_id, "deadline:phone_policy")
+        assert deadline is not None
+        deadline._expired()
+        fallback = next((item for item in session.tasks if item.get_name() == "phone-policy-fallback"), None)
+        if fallback is not None:
+            await fallback
+        assert session.live
+        assert session.termination_intent is None
+        release.set()
+        await asyncio.wait_for(task, 3)
+        await asyncio.wait_for(phone.bye.wait(), 2)
+    finally:
+        unsubscribe()
+        release.set()
+        await script.async_stop()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_stopping_script_during_tts_terminates_call(lab, monkeypatch):
     stream = tts_fixture(monkeypatch, lab, block=True)
     script = Script(lab.hass, await async_validate_actions_config(lab.hass, cv.SCRIPT_SCHEMA(sequence())), "Wakeup", "automation")

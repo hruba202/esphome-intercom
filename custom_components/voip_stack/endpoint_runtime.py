@@ -575,6 +575,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         media_client_id: str = "",
         request_video: bool = False,
         enable_caller_video_send: bool = False,
+        policy_endpoint_ids: tuple[str, ...] = (),
     ) -> str:
         browser_endpoint = browser_phone(hass, endpoint_id)
         if browser_endpoint is None:
@@ -627,6 +628,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             endpoint_id=endpoint_id,
             session_device_id=endpoint_device_id,
             source_endpoint_id=endpoint_id,
+            policy_endpoint_ids=policy_endpoint_ids,
             media_client_id=str(media_client_id or "").strip(),
         )
         try:

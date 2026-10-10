@@ -47,7 +47,6 @@ _MAX_SIP_UDP_TASKS = 32
 _MAX_SIP_INVITE_TASKS = 24
 _MAX_PENDING_INVITES = 64
 _MAX_COMPLETED_TRANSACTIONS = 256
-_DEFERRED_INVITE_TIMEOUT = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -532,7 +531,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         prefer_browser_video_send: bool = False,
         trusted_trunk: bool = False,
         max_pending_invites: int = _MAX_PENDING_INVITES,
-        deferred_invite_timeout: float = _DEFERRED_INVITE_TIMEOUT,
+        deferred_invite_timeout: float | None = None,
     ) -> None:
         self.local_ip = local_ip
         self.local_sip_port = int(local_sip_port or 5060)
@@ -555,7 +554,9 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         self.prefer_browser_video_send = bool(prefer_browser_video_send)
         self.trusted_trunk = bool(trusted_trunk)
         self.max_pending_invites = max(1, int(max_pending_invites))
-        self.deferred_invite_timeout = max(0.01, float(deferred_invite_timeout))
+        self.deferred_invite_timeout = (
+            None if deferred_invite_timeout is None else max(0.01, float(deferred_invite_timeout))
+        )
         self.transport: asyncio.DatagramTransport | None = None
         self._closed_waiter: asyncio.Future[None] | None = None
         self.pending_invites: dict[str, _PendingInvite] = {}
@@ -799,6 +800,8 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
 
     def _arm_pending_expiry(self, call_id: str, pending: _PendingInvite) -> None:
         self._cancel_pending_expiry(pending)
+        if self.deferred_invite_timeout is None:
+            return
 
         async def _expire() -> None:
             try:

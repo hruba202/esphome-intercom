@@ -259,6 +259,9 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         vol.Optional("forward_to"): URI_TEXT,
         vol.Optional("busy_to"): URI_TEXT,
         vol.Optional("unavailable_to"): URI_TEXT,
+        vol.Optional("ringing_timeout"): vol.All(vol.Coerce(float), vol.Range(min=0, max=3600)),
+        vol.Optional("no_answer_action"): vol.In(["hangup", "forward"]),
+        vol.Optional("no_answer_to"): URI_TEXT,
     }, extra=vol.PREVENT_EXTRA)
     sip_account_create_schema = vol.Schema(
         {

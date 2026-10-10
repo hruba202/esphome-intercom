@@ -515,7 +515,8 @@ voip_stack:
   #      frame_ms: 32
   microphone: mic_main
   speaker: voip_speaker_input
-  ringing_timeout: 30s
+  # Optional local call limits; leave unset for PBX-controlled ringing.
+  # ringing_timeout: 30s
   delete_contact_missing_from:
     updates_number: 1
   on_phonebook_update:

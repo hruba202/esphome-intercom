@@ -149,8 +149,9 @@ voip_stack:
   speaker: voip_resampling_speaker
   task_stacks_in_psram: true
   network_socket_headroom: 4
-  ringing_timeout: 30s
-  calling_timeout: 30s
+  # Optional local call limits; leave unset for PBX-controlled ringing.
+  # ringing_timeout: 30s
+  # calling_timeout: 30s
 
   on_ringing:
     - script.execute: voice_pe_claim_call_audio

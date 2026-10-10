@@ -1,4 +1,14 @@
 const PT_BR = {
+  "Enable ringing timeout": "Ativar tempo limite de toque",
+  "Seconds before no-answer action": "Segundos antes da ação sem resposta",
+  "When nobody answers": "Quando ninguém atende",
+  "No-answer destination": "Destino sem resposta",
+  "Choose an action": "Escolha uma ação",
+  "Hang up": "Desligar",
+  "Forward": "Encaminhar",
+  "Save ringing timeout": "Salvar tempo limite de toque",
+  "Choose a ringing duration and a no-answer action.": "Escolha uma duração de toque e uma ação sem resposta.",
+  "Select a no-answer destination.": "Selecione um destino sem resposta.",
   "Call routing": "Encaminhamento de chamadas",
   "Always forward to": "Sempre encaminhar para",
   "When busy or Do not disturb": "Quando ocupado ou Não perturbe",
@@ -108,6 +118,16 @@ const PT_BR = {
 };
 
 const DE = {
+  "Enable ringing timeout": "Klingelzeit begrenzen",
+  "Seconds before no-answer action": "Sekunden bis zur Aktion bei Nichtannahme",
+  "When nobody answers": "Wenn niemand abnimmt",
+  "No-answer destination": "Ziel bei Nichtannahme",
+  "Choose an action": "Aktion auswählen",
+  "Hang up": "Auflegen",
+  "Forward": "Weiterleiten",
+  "Save ringing timeout": "Klingelzeit speichern",
+  "Choose a ringing duration and a no-answer action.": "Wählen Sie eine Klingeldauer und eine Aktion bei Nichtannahme.",
+  "Select a no-answer destination.": "Wählen Sie ein Ziel bei Nichtannahme.",
   "Call routing": "Anrufweiterleitung",
   "Always forward to": "Immer weiterleiten an",
   "When busy or Do not disturb": "Bei besetzt oder Nicht stören",

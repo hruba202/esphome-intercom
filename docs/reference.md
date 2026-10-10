@@ -41,7 +41,7 @@ voip_stack:
 | `use_ha_as_first_contact` | Select the HA peer after the first roster population. |
 | `ha_phonebook_text_sensor_id` | Optional legacy sensor binding; normal HA sync uses the native JSON action. |
 | `delete_contact_missing_from` | Optional stale-contact pruning policy with `updates_number: 1..10`. |
-| `ringing_timeout` / `calling_timeout` | Optional guard timers. |
+| `ringing_timeout` / `calling_timeout` | Optional local guard timers, disabled when omitted. Maintained profiles leave these unset so the PBX can control ringing. SIP transaction timers remain active. |
 | `dc_offset_removal` | Remove DC bias from TX microphone samples. |
 | `buffers_in_psram` | Place VoIP-owned staging buffers in PSRAM. |
 | `task_stacks_in_psram` | Place supported VoIP task stacks in PSRAM. Requires PSRAM and is rejected on the original ESP32. |

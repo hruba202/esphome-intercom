@@ -29,7 +29,7 @@ def external_call_denied(config, *endpoint_ids, session=None) -> str:
     if not blocked:
         return ""
     metadata = getattr(session, "metadata", {}) or {}
-    candidates = (*endpoint_ids, *(metadata.get(key, "") for key in (
+    candidates = (*endpoint_ids, *(metadata.get("policy_endpoint_ids") or ()), *(metadata.get(key, "") for key in (
         "source_endpoint_id", "dest_endpoint_id", "endpoint_id",
     )))
     return next((str(value) for value in candidates if value and value in blocked), "")

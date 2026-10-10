@@ -82,8 +82,6 @@ call_unanswered:
     destination: *id002
     ingress: *id003
     for:
-      required: true
-      default:
-        seconds: 30
+      required: false
       selector:
         duration: {}

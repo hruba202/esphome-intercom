@@ -43,6 +43,7 @@ from .core.sip_transaction import (
     SIP_T1,
     SIP_T2,
     SIP_TIMER_B,
+    SIP_TIMER_F,
     SipClientTransaction,
     SipInvite2xxTransaction,
     SessionTimerDriver,
@@ -1636,17 +1637,17 @@ class SipCallClient:
 
     async def _read_response(
         self,
-        timeout: float,
+        timeout: float | None,
         *,
         network_only: bool = False,
     ) -> tuple[sip.SipMessage, tuple[str, int]] | None:
         if self._deferred_signaling and not network_only:
             return self._deferred_signaling.pop(0)
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + max(0.0, float(timeout))
+        deadline = None if timeout is None else loop.time() + max(0.0, float(timeout))
         while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
+            remaining = None if deadline is None else deadline - loop.time()
+            if remaining is not None and remaining <= 0:
                 return None
             try:
                 if self._reused_flow_responses is not None:
@@ -2300,7 +2301,9 @@ class SipCallClient:
                 if _is_invite_progress_response(msg.status_code):
                     if self._cancel_requested:
                         continue
-                    transaction.reset_deadline(60.0)
+                    # Proceeding is bounded by the caller/application policy,
+                    # not an implicit 60-second ringing limit (RFC 3261 17.1.1.2).
+                    transaction.reset_deadline(None)
                     progress = self._invite_progress
                     if progress is not None and not progress.done():
                         progress.set_result("ringing")
@@ -2380,7 +2383,7 @@ class SipCallClient:
                     return "cancelled"
                 return _sip_decline_reason(msg) or sip.sip_failure_reason(msg.status_code)
 
-    async def wait_for_final(self, timeout: float = 60.0) -> str:
+    async def wait_for_final(self, timeout: float | None = None) -> str:
         """Await the final result from the sole INVITE transaction owner."""
 
         if self._closing or self._closed:
@@ -2391,7 +2394,7 @@ class SipCallClient:
         if task is None:
             raise RuntimeError("no INVITE transaction owner is active")
         transaction = self._invite_transaction
-        if transaction is not None:
+        if transaction is not None and not self._cancel_requested:
             transaction.reset_deadline(timeout)
         try:
             return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
@@ -4523,6 +4526,8 @@ class SipCallClient:
             _LOGGER.warning("SIP TX CANCEL dropped: signaling path unavailable")
             return False
         self._cancel_sent = True
+        if self._invite_transaction is not None:
+            self._invite_transaction.reset_deadline(SIP_TIMER_F)
         sip.mark_sip_event(self, "CANCEL")
         _LOGGER.info("SIP TX CANCEL %s:%s", self._pending_remote_host, self._pending_remote_sip_port)
         return True

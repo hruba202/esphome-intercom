@@ -18,7 +18,7 @@ SIP_TIMER_H = 64 * SIP_T1
 
 _T = TypeVar("_T")
 _C = TypeVar("_C")
-ResponseReader = Callable[[float], Awaitable[_T | None]]
+ResponseReader = Callable[[float | None], Awaitable[_T | None]]
 AsyncSend = Callable[[], Awaitable[None]]
 SyncSend = Callable[[], bool | None]
 SessionRefreshSend = Callable[
@@ -165,24 +165,34 @@ class SipClientTransaction(Generic[_T]):
         self.interval = self.t1
         self.next_retransmit = loop.time() + self.interval
         self.retransmissions = 0
+        self._read_window: asyncio.Timeout | None = None
 
     @property
-    def remaining(self) -> float:
+    def remaining(self) -> float | None:
+        if self.deadline is None:
+            return None
         return max(0.0, self.deadline - asyncio.get_running_loop().time())
 
-    def reset_deadline(self, timeout: float) -> None:
-        """Start a new bounded wait window without changing transaction identity."""
+    def reset_deadline(self, timeout: float | None) -> None:
+        """Set an application wait, or remove it in INVITE proceeding state."""
 
-        if float(timeout) < 0:
-            raise ValueError("invalid SIP transaction timeout")
-        self.timeout = float(timeout)
-        self.deadline = asyncio.get_running_loop().time() + self.timeout
+        if timeout is None:
+            self.deadline = None
+        else:
+            if float(timeout) < 0:
+                raise ValueError("invalid SIP transaction timeout")
+            self.timeout = float(timeout)
+            self.deadline = asyncio.get_running_loop().time() + self.timeout
+        if self._read_window is not None and not self._read_window.expired():
+            self._read_window.reschedule(self.deadline)
 
     def restart_retransmissions(self) -> None:
         """Restart Timer A/E after an authenticated request is rebuilt."""
 
         self.interval = self.t1
         self.next_retransmit = asyncio.get_running_loop().time() + self.interval
+        if self.deadline is None:
+            self.reset_deadline(self.timeout)
 
     async def receive(
         self,
@@ -195,22 +205,28 @@ class SipClientTransaction(Generic[_T]):
 
         loop = asyncio.get_running_loop()
         while True:
-            remaining = self.deadline - loop.time()
-            if remaining <= 0:
+            remaining = self.remaining
+            if remaining is not None and remaining <= 0:
                 return None
             read_timeout = remaining
             if not self.reliable and retransmit_enabled:
                 read_timeout = min(
-                    read_timeout,
+                    read_timeout if read_timeout is not None else float("inf"),
                     max(0.0, self.next_retransmit - loop.time()),
                 )
             try:
-                response = await reader(read_timeout)
+                async with asyncio.timeout_at(
+                    None if read_timeout is None else loop.time() + read_timeout
+                ) as window:
+                    self._read_window = window
+                    response = await reader(read_timeout)
             except asyncio.TimeoutError:
                 response = None
+            finally:
+                self._read_window = None
             if response is not None:
                 return response
-            if self.reliable or not retransmit_enabled or loop.time() >= self.deadline:
+            if self.reliable or not retransmit_enabled or (self.deadline is not None and loop.time() >= self.deadline):
                 return None
             await retransmit()
             self.retransmissions += 1

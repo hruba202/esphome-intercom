@@ -337,6 +337,12 @@ async def route_invite(
         if target_resolution.failure is not None:
             return target_resolution.failure
         decision = target_resolution.decision
+        forwarded_ids = getattr(target_resolution, "forwarded_endpoint_ids", ())
+        if forwarded_ids:
+            policy_session = registry.ensure_session(invite.call_id, event_only=True)
+            policy_session.update_metadata(policy_endpoint_ids=tuple(sorted({
+                *policy_session.metadata.get("policy_endpoint_ids", ()), *forwarded_ids,
+            })))
         # Dispatch the selected destination after the automation window,
         # including a direct trunk's unchanged phonebook/fallback decision.
         if decision.action is RouteAction.AUTOMATION:

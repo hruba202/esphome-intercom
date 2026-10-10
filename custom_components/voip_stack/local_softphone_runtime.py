@@ -57,6 +57,7 @@ def start_local_softphone_call(
     caller_owner_id: str = "",
     context: object | None = None,
     preserve_controller: bool = False,
+    policy_endpoint_ids: tuple[str, ...] | None = None,
 ) -> LocalCallSnapshot:
     """Create one local call with HA provenance bound before its first event."""
     bridge = local_softphone_bridge(hass)
@@ -72,6 +73,7 @@ def start_local_softphone_call(
         source_endpoint_id=caller_endpoint_id,
         dest_endpoint_id=callee_endpoint_id,
         local_bridge=True,
+        **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids is not None else {}),
     )
     if not preserve_controller:
         registry.bind_controller(

@@ -659,6 +659,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) ->
     from .local_softphone_runtime import async_setup_local_softphone_bridge
 
     async_setup_local_softphone_bridge(hass)
+    from .phone_policy_runtime import setup_phone_policy_events
+
+    setup_phone_policy_events(hass, entry)
     from .repairs import async_sync_runtime_issues
 
     async_sync_runtime_issues(hass)

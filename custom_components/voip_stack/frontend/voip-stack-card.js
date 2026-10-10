@@ -2085,6 +2085,12 @@ class VoipStackCard extends HTMLElement {
     for (const [field, controls] of Object.entries(els.routingControls || {})) {
       controls.input.onchange = (event) => this._setPhoneRouting(field, event.target.value);
     }
+    if (els.ringingControls) {
+      for (const field of ["enabled", "seconds", "action", "destination"]) {
+        els.ringingControls[field].oninput = () => this._editRingingPolicy();
+      }
+      els.ringingControls.save.onclick = () => this._saveRingingPolicy();
+    }
     if (els.ringtoneCheckbox) els.ringtoneCheckbox.onchange = () => this._toggleRingtone();
     if (els.microphoneAntiAliasCheckbox) {
       els.microphoneAntiAliasCheckbox.onchange = () =>
@@ -2987,6 +2993,79 @@ class VoipStackCard extends HTMLElement {
       const target = policy[slot]?.target || "";
       const destination = entries.find((entry) => entry.metadata?.endpoint_id === target);
       this._populateGroupSuggestions(controls.input, controls.options, names, destination?.name || target);
+    }
+    this._renderRingingControls(deviceId, policy, entries);
+  }
+
+  _renderRingingControls(deviceId, policy, entries) {
+    const controls = this._els?.ringingControls;
+    if (!controls) return;
+    if (this._ringingDraft?.deviceId !== deviceId) this._ringingDraft = null;
+    const target = policy.no_answer?.target || "";
+    const destination = entries.find((entry) => entry.metadata?.endpoint_id === target);
+    const draft = this._ringingDraft || {
+      enabled: policy.ringing_timeout != null,
+      seconds: policy.ringing_timeout ?? "",
+      action: policy.no_answer?.kind === "contact" ? "forward" : (policy.no_answer?.kind || ""),
+      destination: destination?.name || target,
+    };
+    controls.enabled.checked = draft.enabled;
+    controls.seconds.value = draft.seconds;
+    controls.action.value = draft.action;
+    controls.destination.value = draft.destination;
+    controls.secondsRow.hidden = !draft.enabled;
+    controls.actionRow.hidden = !draft.enabled;
+    controls.destinationRow.hidden = !draft.enabled || draft.action !== "forward";
+    for (const field of ["enabled", "seconds", "action", "destination"]) {
+      controls[field].disabled = !!this._routingSettingsBusy;
+    }
+    controls.save.disabled = !!this._routingSettingsBusy || !this._ringingDraft;
+  }
+
+  _editRingingPolicy() {
+    const controls = this._els?.ringingControls;
+    if (!controls) return;
+    this._ringingDraft = {
+      deviceId: this._getConfigDeviceId() || this._softphoneSnapshot?.device_id,
+      enabled: controls.enabled.checked,
+      seconds: controls.seconds.value,
+      action: controls.action.value,
+      destination: controls.destination.value,
+    };
+    this._render();
+  }
+
+  async _saveRingingPolicy() {
+    const draft = this._ringingDraft;
+    if (!draft?.deviceId || this._routingSettingsBusy) return;
+    const data = { device_id: draft.deviceId, ringing_timeout: 0 };
+    if (draft.enabled) {
+      const seconds = Number(draft.seconds);
+      if (!Number.isFinite(seconds) || seconds < 1 || seconds > 3600 ||
+          !["hangup", "forward"].includes(draft.action)) {
+        this._showError("Choose a ringing duration and a no-answer action.");
+        return;
+      }
+      data.ringing_timeout = seconds;
+      data.no_answer_action = draft.action;
+      if (draft.action === "forward") {
+        data.no_answer_to = String(draft.destination || "").trim();
+        if (!data.no_answer_to) {
+          this._showError("Select a no-answer destination.");
+          return;
+        }
+      }
+    }
+    this._routingSettingsBusy = true;
+    this._render();
+    try {
+      await this._hass.callService("voip_stack", "set_phone_settings", data);
+      if (this._ringingDraft === draft) this._ringingDraft = null;
+    } catch (err) {
+      this._showError(err.message || String(err));
+    } finally {
+      this._routingSettingsBusy = false;
+      this._render();
     }
   }
 

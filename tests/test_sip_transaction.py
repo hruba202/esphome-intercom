@@ -48,6 +48,36 @@ sip_dialog = _load_module("sip_dialog")
 
 
 class SipTransactionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_unbounded_proceeding_wait_can_acquire_a_cancellation_deadline(self) -> None:
+        transaction = sip_transaction.SipClientTransaction(transport="UDP", timeout=1)
+        transaction.reset_deadline(None)
+        entered = asyncio.Event()
+
+        async def read(timeout):
+            self.assertIsNone(timeout)
+            entered.set()
+            await asyncio.Event().wait()
+
+        send = AsyncMock()
+        waiter = asyncio.create_task(transaction.receive(read, send, retransmit_enabled=False))
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            self.assertIsNone(transaction.remaining)
+            self.assertFalse(waiter.done())
+            transaction.reset_deadline(0.01)
+            self.assertIsNone(await asyncio.wait_for(waiter, 1))
+            send.assert_not_awaited()
+        finally:
+            waiter.cancel()
+            await asyncio.gather(waiter, return_exceptions=True)
+
+    async def test_authenticated_retry_restores_bounded_initial_transaction(self) -> None:
+        transaction = sip_transaction.SipClientTransaction(transport="UDP", timeout=1)
+        transaction.reset_deadline(None)
+        transaction.restart_retransmissions()
+        self.assertGreater(transaction.remaining, 0)
+        self.assertLessEqual(transaction.remaining, 1)
+
     async def test_dialog_transaction_stops_when_request_retires_dialog(self) -> None:
         active = True
         sends = 0

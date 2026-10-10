@@ -1,6 +1,6 @@
 # VoIP Stack for Home Assistant and ESPHome
 
-**An open-source SIP phone system for Home Assistant and ESPHome.**
+**An open-source SIP PBX integrated with Home Assistant.**
 
 Make and receive audio and video calls from your Home Assistant dashboard.
 Connect SIP phones, ESP32 intercoms and a provider or PBX trunk. Use ordinary
@@ -9,12 +9,14 @@ handle keypad input and forward unanswered calls.
 
 - **Home Assistant:** browser phones, video calls, a shared phonebook, ring
   groups and conferences.
-- **ESPHome:** turn supported ESP32 devices into SIP phones and intercoms.
 - **Automations as dialplan:** build your own call handling with native
   triggers, conditions and actions.
+- **Optional ESPHome endpoints:** turn supported ESP32 devices into SIP phones,
+  intercoms or complete voice satellites.
 
-Start with two dashboard phones, or connect an ESPHome device using a maintained
-firmware profile. Add the features you need as your system grows.
+ESP hardware is optional. Start with two dashboard phones or your existing SIP
+phones, then add the features you need. The ESP firmware also works with
+[conventional PBXs](#use-esp-firmware-with-an-existing-pbx).
 
 **[Install VoIP Stack](#installation) · [Choose an ESPHome device](#supported-hardware) · [Build call automations](docs/AUTOMATION_DIALPLAN.md)**
 
@@ -81,15 +83,27 @@ when installing the Home Assistant integration alone.
 1. Install **VoIP Stack** from HACS and restart Home Assistant.
 2. Add **VoIP Stack** from **Settings → Devices & services**.
 3. Keep SIP `5060` and RTP base `40000` unless they conflict with your network.
-4. Choose a maintained YAML under [`yamls/`](yamls/) and adapt only its
-   substitutions, pins and secrets.
-5. Add the flashed device through the normal ESPHome integration.
-6. Add the VoIP Stack card to a dashboard and select the intended phone Device.
-7. Call the phonebook name shown by the card or ESP.
+4. Use the Home Assistant phone created during setup and add a second browser
+   phone from the integration's phone configuration.
+5. Add a VoIP Stack card for each phone. Select its Phone in the visual editor;
+   you do not need to copy an internal device ID into YAML.
+6. Open the phones in separate browser tabs or devices, allow microphone access,
+   and call the other phone from the shared phonebook. Use HTTPS for browser audio.
 
-For one ESP intercom, that is enough. Local SIP accounts, multiple browser
-phones, callable Assist and a trunk are optional PBX layers. The full ESP
-experience is a separate firmware choice, not another PBX requirement.
+That first call requires Home Assistant and the cards. To connect a desk phone,
+softphone or ATA, [create a local SIP account](docs/SERVICES.md#local-sip-endpoint-account-services).
+Groups, Assist, automations and a provider trunk can be added independently.
+
+### Add an ESP phone when you need one
+
+1. Choose a maintained YAML under [`yamls/`](yamls/) and adapt only its
+   substitutions, pins and secrets.
+2. Add the flashed device through the normal ESPHome integration.
+3. Call its phonebook name from another endpoint. An optional ESP mirror card
+   controls that physical phone.
+
+The full ESP experience is a separate firmware choice that adds local voice
+and media features to an ESP endpoint.
 
 | Device goal | Maintained starting point |
 |---|---|
@@ -105,9 +119,9 @@ single-bus, dual-bus, lightweight AEC and full AFE profiles.
 
 ## How it works
 
-Turn ESPHome audio devices and Home Assistant into a local SIP phone system,
-or use the maintained full-experience firmware to combine VoIP with a complete
-ESPHome voice satellite.
+Home Assistant runs the PBX: phone identities, SIP registration, call routing,
+media bridges, groups, conferences and automation services. Dashboard phones
+and standard SIP equipment connect to that backend.
 
 ESP devices become standards-based SIP phones, with audio on every maintained
 VoIP profile and optional video on qualified ESP32-P4 profiles. Home Assistant
@@ -126,8 +140,8 @@ The project therefore has three cooperating, independently useful surfaces:
 
 | Surface | Runs on | Purpose |
 |---|---|---|
-| ESP VoIP endpoint | ESPHome device | A standards-based SIP/RTP phone, with audio and optional qualified P4 video. |
 | Home Assistant VoIP Stack | Home Assistant | Browser phones, PBX routing, registrar, bridges, groups, conferences, callable Assist and an optional trunk. |
+| ESP VoIP endpoint | ESPHome device | A standards-based SIP/RTP phone for VoIP Stack or a conventional PBX, with audio and optional qualified P4 video. |
 | Full ESP experience | ESPHome device | A local voice satellite with wake word, Voice Assistant, media, TTS, optional Sendspin, runtime UI and VoIP. |
 
 Install only the surfaces you need. A VoIP-only ESP does not require the local

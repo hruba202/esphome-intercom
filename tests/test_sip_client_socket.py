@@ -5319,6 +5319,21 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(terminated, [("deferred-one", "no_answer")])
         endpoint.cancel_request_tasks()
 
+        unlimited = sip_listener.SipUdpEndpoint(
+            local_ip="192.168.1.10", local_rtp_port=40000,
+            supported_formats=[pcm], on_invite=on_invite,
+            send_override=lambda data, _addr: sent.append(sip.parse_message(data)),
+        )
+        try:
+            await unlimited._handle_datagram(invite("unlimited", 3), ("192.168.1.48", 5060))
+            pending = unlimited.pending_invites["unlimited"]
+            self.assertIsNone(pending.expiry_task)
+            self.assertEqual(sent[-1].status_code, 180)
+            unlimited.send_final_response("unlimited", 480, "Temporarily Unavailable")
+            self.assertNotIn("unlimited", unlimited.pending_invites)
+        finally:
+            unlimited.cancel_request_tasks()
+
     async def test_listener_rejects_invite_sdp_with_wrong_content_type(self) -> None:
         sent: list[sip.SipMessage] = []
         pcm = audio_format.AudioFormat(16000, "s16le", 1, 20)

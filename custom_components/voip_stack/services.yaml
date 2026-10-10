@@ -762,6 +762,28 @@ set_phone_settings:
       description: Destination to try when this phone is offline. No rule is added unless configured.
       selector:
         text:
+    ringing_timeout:
+      name: Ringing timeout
+      description: Seconds before the no-answer action. Zero disables the limit. Omit to keep the current setting.
+      selector:
+        number:
+          min: 0
+          max: 3600
+          mode: box
+          unit_of_measurement: s
+    no_answer_action:
+      name: When nobody answers
+      description: Required when enabling a new ringing timeout. Choose hangup or forwarding.
+      selector:
+        select:
+          options:
+            - hangup
+            - forward
+    no_answer_to:
+      name: No-answer destination
+      description: Phonebook name, extension or SIP URI. Required with the forward action.
+      selector:
+        text:
 
 set_ha_softphone_settings:
   name: Configure Home Assistant phone

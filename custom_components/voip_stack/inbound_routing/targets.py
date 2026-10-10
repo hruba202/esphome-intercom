@@ -34,6 +34,7 @@ class TargetResolution:
     decision: RouteDecision
     endpoint: PhoneEndpoint | None
     failure: SipInviteResult | None = None
+    forwarded_endpoint_ids: tuple[str, ...] = ()
 
 
 def _decision_endpoint(
@@ -65,9 +66,9 @@ def resolve_phone_target(
     while True:
         candidate = _decision_endpoint(endpoint_registry, decision)
         if candidate is None or not apply_policy:
-            return TargetResolution(decision, candidate)
+            return TargetResolution(decision, candidate, forwarded_endpoint_ids=tuple(sorted(visited_endpoint_ids)))
         if decision.reason is RouteReason.TARGET_DISABLED:
-            return TargetResolution(decision, candidate)
+            return TargetResolution(decision, candidate, forwarded_endpoint_ids=tuple(sorted(visited_endpoint_ids)))
         fallback = candidate.policy.before_ringing(
             busy=bool(candidate.dnd or (candidate.active_call_id and candidate.active_call_id != call_id)),
             unavailable=candidate.availability is not EndpointAvailability.AVAILABLE,
@@ -87,7 +88,7 @@ def resolve_phone_target(
                 ))
             forward_target = fallback.target
         if not forward_target:
-            return TargetResolution(decision, candidate)
+            return TargetResolution(decision, candidate, forwarded_endpoint_ids=tuple(sorted(visited_endpoint_ids)))
         if candidate.endpoint_id in visited_endpoint_ids:
             _LOGGER.warning(
                 "Phone forward loop rejected call_id=%s endpoint=%s visited=%s",

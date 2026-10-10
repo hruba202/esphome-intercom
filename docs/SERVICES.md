@@ -191,12 +191,23 @@ phone. Select the Phone in the HA action editor; it supplies `device_id`.
 - `forward_to`: always forward future calls to this contact, extension or SIP URI.
 - `busy_to`: forward when busy or Do not disturb is enabled.
 - `unavailable_to`: forward when offline, including a browser with no attached card.
+- `ringing_timeout`: seconds before the no-answer action; zero disables the limit.
+- `no_answer_action`: `hangup` or `forward`, required when enabling a new timeout.
+- `no_answer_to`: destination required for the `forward` no-answer action.
 
 Omitted fields retain their current values. An empty string clears that rule.
 Known phone destinations are stored by identity, so renaming the destination
 does not break the rule. Self-forwarding and unconditional cycles are rejected.
 These settings do not move a call already in progress. Explicit automation
 routing decisions take precedence; external-call restrictions still apply.
+
+Ringing has no application timeout unless configured. A `call_unanswered`
+trigger without `for` follows this phone's timeout. With an explicit `for`, the
+automation retains its own duration. At the phone deadline, matching automations
+have the existing 1.5-second routing decision window before the configured
+fallback is committed. A notification alone leaves the fallback in effect;
+answering or handing the call to another owner supersedes it. SIP transaction
+timeouts and an outgoing action's answer deadline remain separate.
 
 The shared roster marks policy-controlled destinations for HA routing. Calls
 made directly to a physical phone's IP bypass Home Assistant and its policies.

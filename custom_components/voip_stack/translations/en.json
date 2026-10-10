@@ -639,7 +639,7 @@
     },
     "call_unanswered": {
       "name": "VoIP call unanswered",
-      "description": "The destination is still ringing after the chosen duration. Answering, forwarding or ending cancels this wait.",
+      "description": "The phone reaches its configured ringing timeout, or an explicitly chosen duration. Answering, forwarding or ending cancels this wait.",
       "fields": {
         "caller": {
           "name": "Caller",
@@ -655,7 +655,7 @@
         },
         "for": {
           "name": "Time without an answer",
-          "description": "Measured from when this destination starts ringing."
+          "description": "Omit to use the phone's configured ringing timeout. Set a duration for an independent automation wait."
         }
       }
     }
