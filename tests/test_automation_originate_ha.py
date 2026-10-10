@@ -214,9 +214,15 @@ def tts_fixture(monkeypatch, lab, *, block=False):
 
 
 @pytest.mark.parametrize("delayed", [False, True])
-async def test_ordinary_script_calls_then_speaks_and_hangs_up(lab, monkeypatch, delayed):
+@pytest.mark.parametrize("forwarded", [False, True])
+async def test_ordinary_script_calls_then_speaks_and_hangs_up(lab, monkeypatch, delayed, forwarded):
     stream = tts_fixture(monkeypatch, lab)
-    phone = lab.phones[0]
+    if forwarded:
+        from custom_components.voip_stack.phone_policy import PhonePolicy
+        lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
+            "always": {"kind": "contact", "target": "sip:bedroom1"},
+        }))
+    phone = lab.phones[int(forwarded)]
     phone.auto_answer = not delayed
     script = Script(lab.hass, await async_validate_actions_config(lab.hass, cv.SCRIPT_SCHEMA(sequence())), "Wakeup", "automation")
     task = asyncio.create_task(script.async_run(context=Context()))
@@ -243,6 +249,8 @@ async def test_ordinary_script_calls_then_speaks_and_hangs_up(lab, monkeypatch, 
         assert bytes(received) == stream.pcm
         assert phone.bye_at - last_audio_at >= 0.18
         assert len(stream.calls) == 1
+        if forwarded:
+            assert not lab.phones[0].invites
         assert not any(session.live for session in lab.calls.sessions.values())
         assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
         assert not lab.runtime.softphones

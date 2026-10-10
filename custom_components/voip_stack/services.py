@@ -254,6 +254,12 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         },
         extra=vol.PREVENT_EXTRA,
     )
+    set_phone_settings_schema = vol.Schema({
+        vol.Required("device_id"): IDENTIFIER_TEXT,
+        vol.Optional("forward_to"): URI_TEXT,
+        vol.Optional("busy_to"): URI_TEXT,
+        vol.Optional("unavailable_to"): URI_TEXT,
+    }, extra=vol.PREVENT_EXTRA)
     sip_account_create_schema = vol.Schema(
         {
             vol.Required("username"): vol.All(cv.string, vol.Length(max=64)),
@@ -316,6 +322,7 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         return _handle
 
     hass.services.async_register(DOMAIN, "purge_devices", handler_for("purge_devices"), schema=purge_schema)
+    hass.services.async_register(DOMAIN, "set_phone_settings", handler_for("set_phone_settings"), schema=set_phone_settings_schema)
     hass.services.async_register(DOMAIN, "answer", handler_for("answer"), schema=sip_answer_schema)
     hass.services.async_register(DOMAIN, "decline", handler_for("decline"), schema=sip_decline_schema)
     hass.services.async_register(DOMAIN, "hangup", handler_for("hangup"), schema=sip_hangup_schema)

@@ -36,7 +36,11 @@ class ServiceValidationError(ValueError):
 
 def _load_endpoint_kind():
     """Use the production endpoint contract instead of copying its enum."""
-    name = "_service_endpoint_kind_contract"
+    package_name = "_service_endpoint_kind_contract"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(PKG_DIR)]
+    sys.modules[package_name] = package
+    name = f"{package_name}.phone_endpoint"
     spec = importlib.util.spec_from_file_location(name, PKG_DIR / "phone_endpoint.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module

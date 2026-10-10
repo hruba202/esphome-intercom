@@ -732,6 +732,37 @@ set_send_video:
       selector:
         boolean:
 
+set_phone_settings:
+  name: Configure phone routing
+  description: >-
+    Set persistent defaults for future calls to a browser, SIP or ESPHome phone.
+    Omitted fields stay unchanged; an empty destination disables that rule.
+    Explicit call-routing automation commands take precedence.
+  fields:
+    device_id:
+      name: Phone
+      required: true
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    forward_to:
+      name: Always forward to
+      description: Phonebook name, extension or SIP address. Leave empty to disable forwarding.
+      selector:
+        text:
+    busy_to:
+      name: When busy or Do not disturb
+      description: Destination to try when this phone is busy or has Do not disturb enabled.
+      selector:
+        text:
+    unavailable_to:
+      name: When unavailable
+      description: Destination to try when this phone is offline. No rule is added unless configured.
+      selector:
+        text:
+
 set_ha_softphone_settings:
   name: Configure Home Assistant phone
   description: >-

@@ -12,6 +12,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from .const import CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS, DOMAIN
 from .endpoint_lifecycle import create_runtime_task
 from .phone_config import (
+    CONF_ESPHOME_PHONE_POLICIES,
     phone_subentries,
     sync_registry_from_entry,
 )
@@ -67,7 +68,10 @@ def entry_runtime_signature(entry: ConfigEntry) -> dict:
     return {
         key: value
         for key, value in entry.data.items()
-        if key not in {CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS, EXTERNAL_CALL_BLOCKED_ENDPOINTS}
+        if key not in {
+            CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS,
+            EXTERNAL_CALL_BLOCKED_ENDPOINTS, CONF_ESPHOME_PHONE_POLICIES,
+        }
     }
 
 

@@ -67,6 +67,44 @@ phone_endpoint = _load("phone_endpoint")
 endpoint_registry = _load("endpoint_registry")
 
 
+def test_phone_policy_survives_rename_and_config_roundtrip():
+    entry = types.SimpleNamespace(data={})
+    data = {
+        phone_config.CONF_PHONE_ENDPOINT_ID: "sip:stable",
+        phone_config.CONF_PHONE_KIND: "sip_account",
+        phone_config.CONF_PHONE_NAME: "Kitchen",
+        phone_config.CONF_PHONE_POLICY: {
+            "ringing_timeout": 25,
+            "no_answer": {"kind": "voicemail", "target": "sip:stable"},
+        },
+    }
+    original = phone_config.endpoint_from_data(entry, data)
+    data[phone_config.CONF_PHONE_NAME] = "Renamed kitchen"
+    renamed = phone_config.endpoint_from_data(entry, data)
+    assert renamed.endpoint_id == original.endpoint_id
+    assert renamed.policy == original.policy
+    assert renamed.policy.no_answer.target == renamed.endpoint_id
+
+
+def test_invalid_phone_policy_never_reaches_persistence():
+    subentry = types.SimpleNamespace(
+        subentry_type=phone_config.PHONE_SUBENTRY_TYPE,
+        title="Kitchen",
+        data={
+            phone_config.CONF_PHONE_ENDPOINT_ID: "sip:stable",
+            phone_config.CONF_PHONE_NAME: "Kitchen",
+            phone_config.CONF_PHONE_KIND: "sip_account",
+        },
+    )
+    entry = types.SimpleNamespace(data={}, subentries={"phone": subentry})
+    # No config_entries interface: validation must fail before any write.
+    with pytest.raises(ValueError, match="set together"):
+        phone_config.update_phone_subentry(types.SimpleNamespace(), entry, "sip:stable", {
+            phone_config.CONF_PHONE_POLICY: {"ringing_timeout": 25},
+        })
+    assert phone_config.CONF_PHONE_POLICY not in subentry.data
+
+
 def _bind_runtime(entry, registry) -> None:
     previous = getattr(entry, "runtime_data", None)
     entry.runtime_data = types.SimpleNamespace(

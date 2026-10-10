@@ -87,6 +87,8 @@ path_mode=$(
 
 pytest_args=(tests -q --tb=short)
 ha_tests=(
+  tests/test_phone_routing_ha.py
+  tests/test_phone_settings_ha.py
   tests/test_trunk_config_flow.py
   tests/test_contact_profile_ha.py
   tests/test_trunk_access_ha.py

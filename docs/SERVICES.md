@@ -183,6 +183,26 @@ its native **Send video** switch. Every card bound to the phone sees the same
 setting. Camera permission remains local to whichever browser wins media
 ownership for the call.
 
+### `voip_stack.set_phone_settings`
+
+Set persistent routing defaults for a selected browser, SIP-account or ESPHome
+phone. Select the Phone in the HA action editor; it supplies `device_id`.
+
+- `forward_to`: always forward future calls to this contact, extension or SIP URI.
+- `busy_to`: forward when busy or Do not disturb is enabled.
+- `unavailable_to`: forward when offline, including a browser with no attached card.
+
+Omitted fields retain their current values. An empty string clears that rule.
+Known phone destinations are stored by identity, so renaming the destination
+does not break the rule. Self-forwarding and unconditional cycles are rejected.
+These settings do not move a call already in progress. Explicit automation
+routing decisions take precedence; external-call restrictions still apply.
+
+The shared roster marks policy-controlled destinations for HA routing. Calls
+made directly to a physical phone's IP bypass Home Assistant and its policies.
+An unavailable forwarding destination produces the normal routing error; it
+does not silently fall back to another phone or operator.
+
 ### `voip_stack.set_ha_softphone_settings`
 
 Publish HA softphone identity and group membership.

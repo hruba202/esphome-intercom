@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from .phone_policy import PhonePolicy
+
 
 DEFAULT_ENDPOINT_ID = "default"
 class EndpointKind(StrEnum):
@@ -124,8 +126,11 @@ class PhoneEndpoint:
     conference_ring: bool = False
     offline_forward_target: str = ""
     active_call_id: str = ""
+    policy: PhonePolicy = field(default_factory=PhonePolicy)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.policy, PhonePolicy):
+            raise EndpointValidationError("policy must be a PhonePolicy")
         object.__setattr__(
             self, "endpoint_id", _required_text(self.endpoint_id, "endpoint_id")
         )

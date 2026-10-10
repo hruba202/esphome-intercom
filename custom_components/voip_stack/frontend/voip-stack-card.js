@@ -1965,6 +1965,7 @@ class VoipStackCard extends HTMLElement {
       idleMediaView.root.hidden = !(showSettingsPanel && softphoneMode);
     }
     this._renderMediaDeviceViews();
+    this._renderRoutingControls(showSettingsPanel);
     this._applyHangupAudioLevel(
       softphoneMode && showHangup && this._hasBrowserAudioPath()
         ? voipStackEngine.audioLevel
@@ -2081,6 +2082,9 @@ class VoipStackCard extends HTMLElement {
     }
     els.autoAnswerCheckbox.onchange = () => this._toggleAutoAnswer();
     if (els.dndCheckbox) els.dndCheckbox.onchange = () => this._toggleDnd();
+    for (const [field, controls] of Object.entries(els.routingControls || {})) {
+      controls.input.onchange = (event) => this._setPhoneRouting(field, event.target.value);
+    }
     if (els.ringtoneCheckbox) els.ringtoneCheckbox.onchange = () => this._toggleRingtone();
     if (els.microphoneAntiAliasCheckbox) {
       els.microphoneAntiAliasCheckbox.onchange = () =>
@@ -2959,6 +2963,48 @@ class VoipStackCard extends HTMLElement {
       datalist.dataset.options = wanted;
     }
     if (input.value !== current) input.value = current;
+  }
+
+  _renderRoutingControls(showSettingsPanel) {
+    const panel = this._els?.routingPanel;
+    if (!panel) return;
+    const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
+    panel.hidden = !(showSettingsPanel && deviceId &&
+      this._hass?.services?.voip_stack?.set_phone_settings);
+    if (panel.hidden) return;
+    const entries = this._rosterEntries || [];
+    const self = entries.find((entry) => entry.metadata?.device_id === deviceId);
+    const policy = self?.metadata?.call_policy || {};
+    const names = entries.filter((entry) => entry.enabled !== false && entry !== self)
+      .map((entry) => entry.name || entry.id);
+    for (const [field, slot] of [
+      ["forward_to", "always"], ["busy_to", "busy"], ["unavailable_to", "unavailable"],
+    ]) {
+      const controls = this._els.routingControls[field];
+      if (!controls) continue;
+      controls.input.disabled = !!this._routingSettingsBusy;
+      if (this.shadowRoot?.activeElement === controls.input) continue;
+      const target = policy[slot]?.target || "";
+      const destination = entries.find((entry) => entry.metadata?.endpoint_id === target);
+      this._populateGroupSuggestions(controls.input, controls.options, names, destination?.name || target);
+    }
+  }
+
+  async _setPhoneRouting(field, value) {
+    const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
+    if (!deviceId || this._routingSettingsBusy) return;
+    this._routingSettingsBusy = true;
+    this._render();
+    try {
+      await this._hass.callService("voip_stack", "set_phone_settings", {
+        device_id: deviceId, [field]: String(value || "").trim(),
+      });
+    } catch (err) {
+      this._showError(err.message || String(err));
+    } finally {
+      this._routingSettingsBusy = false;
+      this._render();
+    }
   }
 
   _renderGroupControls() {

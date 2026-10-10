@@ -78,6 +78,13 @@ def softphone_originate(monkeypatch):
     monkeypatch.setitem(sys.modules, "homeassistant.exceptions", exceptions)
 
     dependencies = {
+        "inbound_routing.targets": {
+            # This suite isolates origination; real registry/dial-plan policy
+            # decisions are exercised by test_phone_routing_ha.py.
+            "resolve_phone_target": lambda **kwargs: SimpleNamespace(
+                decision=kwargs["decision"], endpoint=None, failure=None,
+            ),
+        },
         "call_projection": {},
         "audio_format": {"HA_TRUNK_AUDIO_FORMATS": []},
         "authorization": {"async_require_service_admin": AsyncMock()},

@@ -37,6 +37,7 @@ from .phone_endpoint import (
 )
 from .sip_registrar import account_from_mapping, normalize_username
 from .runtime_data import runtime_data
+from .phone_policy import DestinationKind, PhoneDestination, PhonePolicy
 
 
 PHONE_SUBENTRY_TYPE = "phone"
@@ -56,6 +57,8 @@ CONF_PHONE_CONFERENCE_RING = "conference_ring"
 CONF_PHONE_VIDEO_ENABLED = "video_enabled"
 CONF_PHONE_OFFLINE_POLICY = "offline_policy"
 CONF_PHONE_OFFLINE_FORWARD_TARGET = "offline_forward_target"
+CONF_PHONE_POLICY = "call_policy"
+CONF_ESPHOME_PHONE_POLICIES = "esphome_phone_policies"
 LEGACY_HA_SOFTPHONE_STORE_KEY = f"{DOMAIN}_ha_softphone"
 LEGACY_HA_SOFTPHONE_STORE_VERSION = 1
 
@@ -362,6 +365,21 @@ def endpoint_from_subentry(
     )
 
 
+def persisted_phone_policy(data: Mapping[str, Any]) -> PhonePolicy:
+    """Normalize the legacy SIP offline fields at the persistence boundary."""
+    if CONF_PHONE_POLICY in data:
+        return PhonePolicy.from_data(data[CONF_PHONE_POLICY])
+    if (
+        data.get(CONF_PHONE_KIND) == EndpointKind.SIP_ACCOUNT.value
+        and _persisted_sip_offline_policy(data) is OfflinePolicy.FORWARD
+    ):
+        return PhonePolicy(unavailable=PhoneDestination(
+            DestinationKind.CONTACT,
+            str(data.get(CONF_PHONE_OFFLINE_FORWARD_TARGET) or ""),
+        ))
+    return PhonePolicy()
+
+
 def endpoint_from_data(
     entry: ConfigEntry,
     data: Mapping[str, Any],
@@ -375,6 +393,12 @@ def endpoint_from_data(
     enabled = bool(data.get(CONF_PHONE_ENABLED, True))
     if not enabled:
         availability = EndpointAvailability.UNAVAILABLE
+    policy = persisted_phone_policy(data)
+    offline_target = (
+        policy.unavailable.target
+        if kind is EndpointKind.SIP_ACCOUNT and policy.unavailable is not None
+        and policy.unavailable.kind is DestinationKind.CONTACT else ""
+    )
     return PhoneEndpoint(
         endpoint_id=str(data.get(CONF_PHONE_ENDPOINT_ID) or fallback_endpoint_id),
         name=str(data.get(CONF_PHONE_NAME) or fallback_name),
@@ -386,19 +410,12 @@ def endpoint_from_data(
         dnd=bool(data.get(CONF_PHONE_DND, False)),
         auto_answer=bool(data.get(CONF_PHONE_AUTO_ANSWER, False)),
         send_video=bool(data.get(CONF_PHONE_SEND_VIDEO, False)),
-        offline_policy=(
-            _persisted_sip_offline_policy(data)
-            if kind is EndpointKind.SIP_ACCOUNT
-            else OfflinePolicy.UNAVAILABLE.value
-        ),
+        policy=policy,
+        offline_policy=OfflinePolicy.FORWARD if offline_target else OfflinePolicy.UNAVAILABLE,
         ring_group=str(data.get(CONF_PHONE_RING_GROUP) or ""),
         conference_group=str(data.get(CONF_PHONE_CONFERENCE_GROUP) or ""),
         conference_ring=bool(data.get(CONF_PHONE_CONFERENCE_RING, False)),
-        offline_forward_target=(
-            str(data.get(CONF_PHONE_OFFLINE_FORWARD_TARGET) or "")
-            if kind is EndpointKind.SIP_ACCOUNT
-            else ""
-        ),
+        offline_forward_target=offline_target,
     )
 
 
@@ -685,6 +702,7 @@ def replace_sip_account_subentries(
                 CONF_PHONE_VIDEO_ENABLED,
                 CONF_PHONE_OFFLINE_POLICY,
                 CONF_PHONE_OFFLINE_FORWARD_TARGET,
+                CONF_PHONE_POLICY,
             ):
                 if key in previous.data:
                     data[key] = previous.data[key]
@@ -736,6 +754,11 @@ def update_phone_subentry(
         return False
     data = dict(subentry.data)
     data.update(updates)
+    if CONF_PHONE_POLICY in updates:
+        data.pop(CONF_PHONE_OFFLINE_POLICY, None)
+        data.pop(CONF_PHONE_OFFLINE_FORWARD_TARGET, None)
+    # Reject invalid changes before writing persisted state or notifying entities.
+    endpoint_from_data(entry, data)
     changed = hass.config_entries.async_update_subentry(
         entry=entry,
         subentry=subentry,
@@ -744,3 +767,31 @@ def update_phone_subentry(
     )
     sync_registry_from_entry(hass, entry)
     return changed
+
+
+def esphome_phone_policy(entry: ConfigEntry | None, endpoint_id: str) -> PhonePolicy:
+    """Load settings without claiming an ESPHome-owned HA device."""
+    data = entry.data if entry is not None else {}
+    return PhonePolicy.from_data(data.get(CONF_ESPHOME_PHONE_POLICIES, {}).get(endpoint_id))
+
+
+def update_phone_policy(
+    hass: HomeAssistant, entry: ConfigEntry, endpoint: PhoneEndpoint, policy: PhonePolicy,
+) -> None:
+    """Persist one validated policy and update its existing endpoint snapshot."""
+    if endpoint.kind is not EndpointKind.ESPHOME:
+        if phone_subentry_by_endpoint_id(entry, endpoint.endpoint_id) is None:
+            raise ValueError("phone configuration is unavailable")
+        update_phone_subentry(hass, entry, endpoint.endpoint_id, {
+            CONF_PHONE_POLICY: policy.as_data(),
+        })
+        return
+    data = dict(entry.data)
+    policies = dict(data.get(CONF_ESPHOME_PHONE_POLICIES, {}))
+    if policy.as_data():
+        policies[endpoint.endpoint_id] = policy.as_data()
+    else:
+        policies.pop(endpoint.endpoint_id, None)
+    data[CONF_ESPHOME_PHONE_POLICIES] = policies
+    hass.config_entries.async_update_entry(entry, data=data)
+    entry.runtime_data.endpoints.update(endpoint.endpoint_id, policy=policy)

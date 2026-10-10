@@ -46,6 +46,18 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
     if source is None or not source.enabled or source.metadata.get('virtual_endpoint') != 'automation':
         raise ServiceValidationError("Select an enabled Automation contact as the calling identity")
     destination = str(call.data['destination']).strip()
+    from .inbound_routing.targets import resolve_phone_target
+    from .router import resolve_ha_router
+
+    initial_route = resolve_ha_router(destination, entries)
+    resolved = resolve_phone_target(
+        decision=initial_route, endpoint_registry=runtime.endpoints,
+        roster_entries=entries, route_resolver=resolve_ha_router,
+    )
+    if resolved.failure is not None:
+        raise ServiceValidationError(f"Phone routing failed: {resolved.failure.decline_reason}")
+    if resolved.decision != initial_route:
+        destination = resolved.decision.target
     local_ip = await async_advertise_host(hass)
     resolver = EndpointRouteResolver(hass=hass, local_ip=local_ip, sip_port=int(runtime.transport_config['sip_port']))
     dialer = EndpointDialer(

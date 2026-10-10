@@ -333,6 +333,12 @@ async def _handle_set_ha_softphone_settings_service(call: ServiceCall) -> None:
     await _refresh_and_push_phonebook(hass)
 
 
+async def _handle_set_phone_settings_service(call: ServiceCall) -> None:
+    from .phone_settings import async_set_phone_settings
+
+    await async_set_phone_settings(call)
+
+
 async def _handle_sip_call_target_service(
     call: ServiceCall,
     *,
@@ -504,6 +510,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "set_auto_answer": _handle_set_auto_answer_service,
             "set_send_video": _handle_set_send_video_service,
             "set_ha_softphone_settings": _handle_set_ha_softphone_settings_service,
+            "set_phone_settings": _handle_set_phone_settings_service,
             "call": _handle_sip_call_target_service,
             "forward": _handle_sip_forward_service,
             "tts_say": async_tts_say,

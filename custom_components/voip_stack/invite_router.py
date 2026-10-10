@@ -326,6 +326,17 @@ async def route_invite(
         )
 
     if route_action != "answer_ha":
+        target_resolution = resolve_inbound_target(
+            invite=invite,
+            decision=decision,
+            endpoint_registry=endpoint_registry,
+            roster_entries=roster_entries,
+            route_resolver=_ha_router_decision,
+            apply_policy=not bool(route_action in {"forward", "bridge"} and route_destination),
+        )
+        if target_resolution.failure is not None:
+            return target_resolution.failure
+        decision = target_resolution.decision
         # Dispatch the selected destination after the automation window,
         # including a direct trunk's unchanged phonebook/fallback decision.
         if decision.action is RouteAction.AUTOMATION:
@@ -387,16 +398,6 @@ async def route_invite(
             return SipInviteResult(480, "Temporarily Unavailable", to_tag="")
         resolved_callee = target_endpoint.name
     else:
-        target_resolution = resolve_inbound_target(
-            invite=invite,
-            decision=decision,
-            endpoint_registry=endpoint_registry,
-            roster_entries=roster_entries,
-            route_resolver=_ha_router_decision,
-        )
-        if target_resolution.failure is not None:
-            return target_resolution.failure
-        decision = target_resolution.decision
         target_endpoint = target_resolution.endpoint
         resolved_callee = str(
             (

@@ -1371,7 +1371,9 @@ def _ha_softphone_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
     from .device_resolver import get_resolver
+    from .phone_config import esphome_phone_policy
     from .repairs import async_sync_esphome_action_issue
+    from .store import config_entry
 
     devices = await get_resolver(hass).list_devices()
     registry = _endpoint_registry(hass)
@@ -1379,6 +1381,7 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
         return devices
 
     discovered_ids: set[str] = set()
+    entry = config_entry(hass)
     for device in devices:
         device_id = str(device.get("device_id") or "").strip()
         name = str(device.get("name") or "").strip()
@@ -1410,6 +1413,7 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
             conference_group=str(device.get("conference_group") or ""),
             conference_ring=bool(device.get("conference_ring", False)),
             active_call_id=(previous.active_call_id if previous is not None else ""),
+            policy=esphome_phone_policy(entry, endpoint_id),
         )
         try:
             registry.upsert(endpoint)

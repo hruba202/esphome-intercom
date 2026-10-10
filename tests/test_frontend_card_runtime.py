@@ -390,6 +390,33 @@ for (const pendingState of ["calling", "ringing", "connecting"]) {{
 }}
 
 const card = makeCard();
+// Routing controls display names while persistent references remain opaque.
+const routingCard = makeCard();
+routingCard.config = {{ mode: "ha_softphone", device_id: "device-kitchen" }};
+const routingRequests = [];
+routingCard._hass = {{
+  services: {{ voip_stack: {{ set_phone_settings: {{}} }} }},
+  callService: async (...args) => routingRequests.push(args),
+}};
+routingCard._rosterEntries = [
+  {{ name: "Kitchen", metadata: {{ device_id: "device-kitchen", endpoint_id: "kitchen",
+    call_policy: {{ always: {{ kind: "contact", target: "bedroom" }} }} }} }},
+  {{ name: "Renamed bedroom", metadata: {{ endpoint_id: "bedroom" }} }},
+];
+const routingInput = {{ value: "" }};
+routingCard._els.routingPanel = {{ hidden: true }};
+routingCard._els.routingControls = {{
+  forward_to: {{ input: routingInput, options: {{ dataset: {{}}, replaceChildren() {{}} }} }},
+}};
+routingCard._renderRoutingControls(true);
+assert.equal(routingCard._els.routingPanel.hidden, false);
+assert.equal(routingInput.value, "Renamed bedroom");
+routingCard._render = () => {{}};
+await routingCard._setPhoneRouting("forward_to", "");
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests)), [["voip_stack", "set_phone_settings", {{
+  device_id: "device-kitchen", forward_to: "",
+}}]]);
+assert.equal(routingCard._routingSettingsBusy, false);
 const antiAliasPreference = makeCard();
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), true);
 antiAliasPreference._toggleMicrophoneAntiAlias();

@@ -1,4 +1,9 @@
 const PT_BR = {
+  "Call routing": "Encaminhamento de chamadas",
+  "Always forward to": "Sempre encaminhar para",
+  "When busy or Do not disturb": "Quando ocupado ou Não perturbe",
+  "When unavailable": "Quando indisponível",
+  "Disabled": "Desativado",
   "Active call": "Chamada ativa",
   "Active": "Ativa",
   "call": "chamada",
@@ -103,6 +108,11 @@ const PT_BR = {
 };
 
 const DE = {
+  "Call routing": "Anrufweiterleitung",
+  "Always forward to": "Immer weiterleiten an",
+  "When busy or Do not disturb": "Bei besetzt oder Nicht stören",
+  "When unavailable": "Wenn nicht erreichbar",
+  "Disabled": "Deaktiviert",
   "Active call": "Aktiver Anruf",
   "Active": "Aktiv",
   "call": "Anruf",

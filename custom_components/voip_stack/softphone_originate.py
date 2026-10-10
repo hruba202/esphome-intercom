@@ -225,6 +225,25 @@ async def async_originate_browser_call(
     )
     contacts = parse_roster_json(roster_json) if roster_json else []
     route = resolve_ha_router(target, contacts, trunk_ready=trunk_ready)
+    from .inbound_routing.targets import resolve_phone_target
+
+    resolved = resolve_phone_target(
+        decision=route,
+        endpoint_registry=endpoint_directory(hass),
+        roster_entries=contacts,
+        route_resolver=lambda destination, entries: resolve_ha_router(
+            destination, entries, trunk_ready=trunk_ready,
+        ),
+    )
+    if resolved.failure is not None:
+        raise _service_error(
+            f"Phone routing failed: {resolved.failure.decline_reason}",
+            "phone_unavailable",
+            phone=target,
+        )
+    if resolved.decision != route:
+        target = resolved.decision.target
+    route = resolved.decision
     route, target, browser_destination = await _async_resolve_browser_destination(
         hass,
         route=route,

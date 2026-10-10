@@ -927,6 +927,36 @@ export function buildMainCardSkeleton(cardVersion) {
     conferenceRingRow.appendChild(conferenceRingLabel);
     softphoneGroupsPanel.appendChild(conferenceRingRow);
     settingsPanel.appendChild(softphoneGroupsPanel);
+    const routingPanel = document.createElement("details");
+    routingPanel.hidden = true;
+    routingPanel.className = "softphone-groups-panel";
+    const routingSummary = document.createElement("summary");
+    routingSummary.textContent = translate("Call routing");
+    routingPanel.appendChild(routingSummary);
+    const routingControls = {};
+    for (const [field, label] of [
+      ["forward_to", "Always forward to"],
+      ["busy_to", "When busy or Do not disturb"],
+      ["unavailable_to", "When unavailable"],
+    ]) {
+      const row = document.createElement("label");
+      row.className = "softphone-group-row";
+      const title = document.createElement("span");
+      title.textContent = translate(label);
+      const input = document.createElement("input");
+      input.type = "text";
+      input.autocomplete = "off";
+      input.placeholder = translate("Disabled");
+      const options = document.createElement("datalist");
+      options.id = `phone-routing-${field}-options`;
+      input.setAttribute("list", options.id);
+      row.appendChild(title);
+      row.appendChild(input);
+      row.appendChild(options);
+      routingPanel.appendChild(row);
+      routingControls[field] = { input, options };
+    }
+    settingsPanel.appendChild(routingPanel);
     card.appendChild(settingsPanel);
 
     const stats = document.createElement("div");
@@ -953,6 +983,7 @@ export function buildMainCardSkeleton(cardVersion) {
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
       runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel,
+      routingPanel, routingControls,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       microphoneAntiAliasRow, microphoneAntiAliasCheckbox,
       videoCameraRow, videoCameraCheckbox,

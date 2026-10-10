@@ -13,10 +13,10 @@ from ..fsm import TerminalReason
 from ..phone_endpoint import (
     EndpointAvailability,
     EndpointKind,
-    OfflinePolicy,
     PhoneEndpoint,
 )
 from ..router import RouteAction, RouteReason
+from ..phone_policy import DestinationKind
 from ..sip_listener import SipInviteResult
 
 if TYPE_CHECKING:
@@ -46,30 +46,52 @@ def _decision_endpoint(
     return endpoint_registry.get(endpoint_id) if endpoint_id else None
 
 
-def resolve_inbound_target(
+def resolve_phone_target(
     *,
-    invite: SipInvite,
     decision: RouteDecision,
     endpoint_registry: EndpointRegistry | None,
     roster_entries: list[Any],
     route_resolver: Callable[..., RouteDecision],
+    call_id: str = "",
+    apply_policy: bool = True,
 ) -> TargetResolution:
-    """Apply endpoint offline forwarding before creating a transport leg."""
+    """Resolve phone defaults before creating any transport or browser leg.
+
+    Explicit automation decisions can bypass defaults. Permissions still belong
+    to the caller and must be checked against the final route by the caller.
+    """
 
     visited_endpoint_ids: set[str] = set()
     while True:
         candidate = _decision_endpoint(endpoint_registry, decision)
-        if (
-            candidate is None
-            or candidate.availability is EndpointAvailability.AVAILABLE
-            or candidate.kind.is_softphone
-            or candidate.offline_policy is not OfflinePolicy.FORWARD
-        ):
+        if candidate is None or not apply_policy:
+            return TargetResolution(decision, candidate)
+        if decision.reason is RouteReason.TARGET_DISABLED:
+            return TargetResolution(decision, candidate)
+        fallback = candidate.policy.before_ringing(
+            busy=bool(candidate.dnd or (candidate.active_call_id and candidate.active_call_id != call_id)),
+            unavailable=candidate.availability is not EndpointAvailability.AVAILABLE,
+        )
+        forward_target = ""
+        if fallback is not None:
+            if fallback.kind is DestinationKind.HANGUP:
+                return TargetResolution(decision, candidate, SipInviteResult(
+                    486, "Busy Here", to_tag="", decline_reason="phone_policy",
+                ))
+            if fallback.kind is DestinationKind.VOICEMAIL:
+                # Do not reinterpret an unavailable application as a trunk or
+                # silently dial the mailbox owner's ordinary telephone.
+                return TargetResolution(decision, candidate, SipInviteResult(
+                    480, "Temporarily Unavailable", to_tag="",
+                    decline_reason="voicemail_unavailable",
+                ))
+            forward_target = fallback.target
+        if not forward_target:
             return TargetResolution(decision, candidate)
         if candidate.endpoint_id in visited_endpoint_ids:
             _LOGGER.warning(
-                "Offline forward loop rejected call_id=%s endpoint=%s visited=%s",
-                invite.call_id,
+                "Phone forward loop rejected call_id=%s endpoint=%s visited=%s",
+                call_id,
                 candidate.endpoint_id,
                 sorted(visited_endpoint_ids),
             )
@@ -84,17 +106,24 @@ def resolve_inbound_target(
                 ),
             )
         visited_endpoint_ids.add(candidate.endpoint_id)
-        forward_target = candidate.offline_forward_target
-        if not forward_target:
-            return TargetResolution(decision, candidate)
+        # Persisted endpoint references survive display-name/extension changes.
+        # Resolve them to the current public alias before using the dial plan.
+        target_endpoint = endpoint_registry.get(forward_target)
+        if target_endpoint is not None:
+            forward_target = target_endpoint.name
         decision = route_resolver(forward_target, roster_entries)
         _LOGGER.info(
-            "Offline endpoint forward call_id=%s endpoint=%s destination=%s route=%s",
-            invite.call_id,
+            "Phone forward call_id=%s endpoint=%s destination=%s route=%s",
+            call_id,
             candidate.endpoint_id,
             forward_target,
             decision.action.value,
         )
+
+
+def resolve_inbound_target(*, invite: SipInvite, **kwargs) -> TargetResolution:
+    """Adapt an incoming SIP request to the common phone-policy resolver."""
+    return resolve_phone_target(call_id=invite.call_id, **kwargs)
 
 
 def validate_target_endpoint(

@@ -213,6 +213,7 @@ permission are independent.
 - `voip_stack.set_auto_answer`
 - `voip_stack.set_send_video`
 - `voip_stack.set_ha_softphone_settings`
+- `voip_stack.set_phone_settings`
 - `voip_stack.add_contact`
 - `voip_stack.remove_contact`
 - `voip_stack.set_contacts`

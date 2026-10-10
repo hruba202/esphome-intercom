@@ -45,6 +45,8 @@ from .phone_config import (
     CONF_PHONE_USERNAME,
     CONF_PHONE_VIDEO_ENABLED,
     PHONE_SUBENTRY_TYPE,
+    CONF_PHONE_POLICY,
+    persisted_phone_policy,
     new_browser_endpoint_id,
     new_sip_account_endpoint_id,
     phone_subentries,
@@ -738,10 +740,9 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
             ): BooleanSelector(),
         }
         if sip_account:
-            offline_policy = str(
-                current.get(CONF_PHONE_OFFLINE_POLICY)
-                or OfflinePolicy.UNAVAILABLE.value
-            )
+            unavailable = persisted_phone_policy(current).unavailable
+            offline_target = unavailable.target if unavailable is not None else ""
+            offline_policy = OfflinePolicy.FORWARD.value if offline_target else OfflinePolicy.UNAVAILABLE.value
             fields.update(
                 {
                     vol.Required(
@@ -758,9 +759,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     vol.Optional(
                         CONF_PHONE_OFFLINE_FORWARD_TARGET,
-                        default=str(
-                            current.get(CONF_PHONE_OFFLINE_FORWARD_TARGET) or ""
-                        ),
+                        default=offline_target,
                     ): TextSelector(),
                 }
             )
@@ -899,18 +898,17 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                 user_input.get(CONF_PHONE_VIDEO_ENABLED, True)
             ),
         }
+        # Reconfiguring a name/account must preserve separately edited policies.
+        policy_data = persisted_phone_policy(current).as_data()
         if kind is EndpointKind.SIP_ACCOUNT:
-            data.update(
-                {
-                    CONF_PHONE_OFFLINE_POLICY: str(
-                        user_input.get(CONF_PHONE_OFFLINE_POLICY)
-                        or OfflinePolicy.UNAVAILABLE.value
-                    ),
-                    CONF_PHONE_OFFLINE_FORWARD_TARGET: str(
-                        user_input.get(CONF_PHONE_OFFLINE_FORWARD_TARGET) or ""
-                    ).strip(),
-                }
-            )
+            if CONF_PHONE_OFFLINE_POLICY in user_input:
+                if user_input[CONF_PHONE_OFFLINE_POLICY] == OfflinePolicy.FORWARD.value:
+                    policy_data["unavailable"] = {
+                        "kind": "contact",
+                        "target": str(user_input.get(CONF_PHONE_OFFLINE_FORWARD_TARGET) or "").strip(),
+                    }
+                else:
+                    policy_data.pop("unavailable", None)
         else:
             data.update(
                 {
@@ -922,6 +920,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                 }
             )
+        data[CONF_PHONE_POLICY] = policy_data
         return data, errors
 
     def _finish(self, data: dict[str, Any]):

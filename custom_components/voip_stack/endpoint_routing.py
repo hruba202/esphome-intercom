@@ -561,4 +561,15 @@ def roster_from_peers(hass: HomeAssistant, peers: list[Peer], registered_entries
                 },
             )
         )
+    # Endpoint policies require HA to see the call before the target rings.
+    # Keep physical addressing intact for negotiation; only set the existing
+    # routing hint consumed by ESP phonebooks.
+    for index, entry in enumerate(entries):
+        endpoint = endpoint_registry.get((entry.metadata or {}).get("endpoint_id", ""))
+        if endpoint is not None:
+            entries[index] = replace(
+                entry,
+                ha_bridge=entry.ha_bridge or endpoint.policy.requires_ha_routing,
+                metadata={**entry.metadata, "call_policy": endpoint.policy.as_data()},
+            )
     return entries
