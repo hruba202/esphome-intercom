@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Iterable, Iterator, Literal
 
@@ -17,6 +18,8 @@ from .endpoint_session import (
 from .automation_routing import CALL_EVENT_SCHEMA_VERSION
 from .media_reservation import release_media_reservation
 from .session_cleanup import async_cleanup_sip_runtime
+
+_LOGGER = logging.getLogger(__name__)
 
 LegRole = Literal[
     "caller",
@@ -699,26 +702,18 @@ class CallRuntimeApi:
 
         async def _relay_refer(target: Any) -> int:
             current = self.get_session(session_id)
-            if current is None or not current.live:
+            if current is not session or not current.live:
                 return 503
-            candidates = {
-                id(leg.dialog): leg.dialog
-                for leg in current.legs.values()
-                if leg.dialog is not None
-                and leg.dialog is not client
-                and getattr(leg.dialog, "dialog", None) is not None
-                and callable(getattr(leg.dialog, "refer", None))
-            }
-            if len(candidates) != 1:
-                return 603
+            handler = self.refer_call
+            if handler is None:
+                return 503
             try:
-                result = await next(iter(candidates.values())).refer(target)
+                return await handler(dest_call_id, target, source_client=client)
             except asyncio.CancelledError:
                 raise
             except Exception:
+                _LOGGER.exception("SIP REFER routing failed call_id=%s", dest_call_id)
                 return 500
-            status = int(getattr(result, "status", 0) or 0)
-            return status if 200 <= status <= 699 else 500
 
         if hasattr(client, "on_refer") and client.on_refer is None:
             client.on_refer = _relay_refer

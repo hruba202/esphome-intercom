@@ -19,6 +19,31 @@ from custom_components.voip_stack.sip_client import (
 pytestmark = pytest.mark.ha
 
 
+@pytest.mark.parametrize("blocked", [False, True])
+async def test_callee_refer_uses_inbound_dialog_and_shared_trunk_policy(blocked):
+    from .test_trunk_transfer_access import _runtime
+
+    runtime, source = _runtime(blocked=blocked)
+    session = runtime.sip.get_session("call")
+    session.live = True
+    session.call_id = "inbound"
+    runtime.sip.resolve_session_id = lambda _call_id: "inbound"
+    server = SimpleNamespace(
+        remote_uri_for_call=lambda call_id: "sip:caller@192.0.2.20" if call_id == "inbound" else "",
+        local_ip="192.0.2.1", port=5060,
+        async_refer=AsyncMock(return_value=SipTransferResult(True, 200, "completed")),
+    )
+    runtime.sip.component = lambda name: server if name == "udp_listener" else None
+    target = sip_transfer.SipReferTarget("sip:441234567890@provider.example")
+    result = await call_transfer.async_transfer_target(runtime, "outbound", target, source_client=source)
+    assert result.status == (403 if blocked else 200)
+    source.refer.assert_not_awaited()
+    if blocked:
+        server.async_refer.assert_not_awaited()
+    else:
+        server.async_refer.assert_awaited_once_with("inbound", target)
+
+
 def _established(call_id: str, remote_tag: str, user: str) -> SipCallClient:
     pcm = sdp.RtpPcmFormat(96, "L16", 16000, 1, 32)
     client = SipCallClient(

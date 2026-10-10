@@ -839,10 +839,10 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             method,
         )
 
-    async def _on_refer(call_id, target) -> int:
+    async def _on_refer(call_id, target, *, source_client=None) -> int:
         from .call_transfer import async_transfer_target
 
-        result = await async_transfer_target(runtime, call_id, target)
+        result = await async_transfer_target(runtime, call_id, target, source_client=source_client)
         if result.status:
             return result.status
         return 503 if result.state == "call_not_found" else 500
@@ -880,6 +880,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     # SipEndpointManager instance.
     pbx_runtime.attach_component("tcp_listener", endpoint)
     pbx_runtime.attach_component("udp_listener", endpoint, closer=endpoint.stop)
+    pbx_runtime.refer_call = _on_refer
     pbx_runtime.activate()
     runtime.sip = pbx_runtime
     try:

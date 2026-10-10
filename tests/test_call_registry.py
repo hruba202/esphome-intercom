@@ -128,7 +128,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
 
         asyncio.run(exercise())
 
-    def test_attached_sip_clients_relay_refer_to_the_opposite_leg(self) -> None:
+    def test_attached_sip_clients_use_shared_refer_policy_with_exact_source(self) -> None:
         async def exercise() -> None:
             registry = _registry()
             registry.upsert("source", state="in_call", owner="bridge")
@@ -150,11 +150,12 @@ class CallRegistryEventContextTest(unittest.TestCase):
             registry.attach_sip_client(
                 "source", "destination", destination, role="callee"
             )
-
-            status = await source.on_refer(object())
-
+            target = object()
+            registry.refer_call = mock.AsyncMock(return_value=200)
+            status = await source.on_refer(target)
             self.assertEqual(status, 200)
-            destination.refer.assert_awaited_once()
+            registry.refer_call.assert_awaited_once_with("source", target, source_client=source)
+            destination.refer.assert_not_awaited()
             source.refer.assert_not_awaited()
 
         asyncio.run(exercise())

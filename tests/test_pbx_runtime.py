@@ -48,6 +48,55 @@ def _registry_runtime():
 
 
 class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sip_consultation_retains_each_claim_until_its_own_cleanup(self):
+        endpoints_module = _load_module("endpoint_registry")
+        phones_module = _load_module("phone_endpoint")
+        for first_closed in ("original", "consultation"):
+            with self.subTest(first_closed=first_closed):
+                endpoints = endpoints_module.EndpointRegistry()
+                endpoints.register(phones_module.PhoneEndpoint(
+                    endpoint_id="desk", name="Desk", kind="sip_account",
+                ))
+                runtime = SipEndpointRuntime()
+                runtime.activate()
+                runtime.bind_endpoint_registry(endpoints)
+                runtime.upsert("original", state="in_call", owner="router")
+                runtime.claim_endpoint("original", "desk", role="destination")
+                runtime.upsert("consultation", state="connecting", owner="router")
+                runtime.claim_endpoint("consultation", "desk", role="source", adopt_transport=True)
+                self.assertEqual(endpoints.get("desk").active_call_id, "original")
+                runtime.upsert("unrelated", state="connecting", owner="router")
+                with self.assertRaises(endpoints_module.EndpointBusyError):
+                    runtime.claim_endpoint("unrelated", "desk", role="destination")
+                await runtime.terminate_call_wait(first_closed, reason="remote_hangup")
+                remaining = "consultation" if first_closed == "original" else "original"
+                self.assertEqual(endpoints.get("desk").active_call_id, remaining)
+                self.assertEqual(set(runtime.get_session(remaining).endpoint_claims), {"desk"})
+                self.assertFalse(endpoints.release_call("desk", first_closed))
+                self.assertEqual(endpoints.get("desk").active_call_id, remaining)
+                await runtime.terminate_call_wait(remaining, reason="remote_hangup")
+                self.assertEqual(endpoints.get("desk").active_call_id, "")
+                await runtime.shutdown()
+                self.assertFalse(runtime.endpoint_claims_snapshot())
+
+    async def test_consultation_does_not_allow_busy_browser_esp_or_unanswered_sip(self):
+        endpoints_module = _load_module("endpoint_registry")
+        phones_module = _load_module("phone_endpoint")
+        for kind, state in (("browser", "in_call"), ("esphome", "in_call"), ("sip_account", "ringing")):
+            with self.subTest(kind=kind, state=state):
+                endpoints = endpoints_module.EndpointRegistry()
+                endpoints.register(phones_module.PhoneEndpoint(endpoint_id="phone", name="Phone", kind=kind))
+                runtime = SipEndpointRuntime()
+                runtime.activate()
+                runtime.bind_endpoint_registry(endpoints)
+                runtime.upsert("original", state=state, owner="router")
+                runtime.claim_endpoint("original", "phone", role="destination")
+                runtime.upsert("consultation", state="connecting", owner="router")
+                with self.assertRaises(endpoints_module.EndpointBusyError):
+                    runtime.claim_endpoint("consultation", "phone", role="source", adopt_transport=True)
+                self.assertEqual(endpoints.get("phone").active_call_id, "original")
+                await runtime.shutdown()
+
     async def test_dark_runtime_has_no_io_and_rejects_calls(self) -> None:
         runtime = SipEndpointRuntime()
 

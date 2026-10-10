@@ -464,3 +464,28 @@ barriers, so a concurrent save cannot announce a new message for the removed
 phone. Cancelling the removal caller waits for the owned deletion to finish.
 The regressions hold both disk finalization and the final archive lookup open,
 then verify no message event, no WAV, no active writer and no cleanup errors.
+
+### SIP consultation and shared REFER policy
+
+Three registered baresip processes reproduced an occupied-phone rejection when
+the middle phone held its established call and called a third phone. SIP source
+consultations now acquire another claim in the existing session registry. The
+phone remains busy to unrelated incoming calls until all its owned calls finish.
+Closing either call first and late releases cannot clear the remaining claim.
+Browser and ESP phones retain their existing single-call behavior.
+
+REFER requests from outbound dialogs now use the same routing and external-call
+permissions as those received by the inbound listener. The previous callback
+could only find another outbound client and rejected an ordinary inbound leg.
+The shared handler delegates to the actual UDP/TCP dialog owner instead.
+
+Qualification: 106 registry tests and 27 subtests, 33 transfer-policy tests, and
+458 HA tests passed. A permanent real-baresip test covers consultation, returning
+to the original call and cleanup. These results do not qualify completed attended
+transfer: its final INVITE with Replaces still receives 486 in the three-phone
+witness. That dialog replacement is the next required step.
+
+Protocol references: RFC 3891 and Asterisk's res_pjsip remote-attended-transfer
+documentation. Asterisk distinguishes replacement of locally owned dialogs
+from delegation to another server; the replacement must retain existing media
+and ownership rather than ring the busy destination again.

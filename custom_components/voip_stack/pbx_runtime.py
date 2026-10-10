@@ -28,6 +28,7 @@ from .endpoint_session import (
     TerminationSignaler,
 )
 from .session_cleanup import async_wait_for_cleanup
+from .phone_endpoint import EndpointKind
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -163,6 +164,7 @@ class SipEndpointRuntime(CallRuntimeApi):
         self.trunk_stop_task: asyncio.Task[Any] | None = None
         self.softphone_start_locks: dict[str, asyncio.Lock] = {}
         self.forward_call: Any | None = None
+        self.refer_call: Any | None = None
         self.start_ring_group_from_ha: Any | None = None
         self.ring_conference_members_from_ha: Any | None = None
 
@@ -412,7 +414,22 @@ class SipEndpointRuntime(CallRuntimeApi):
         if not session_id:
             raise ValueError("call_id must not be empty")
         session = self.sessions.get(session_id) or self.upsert(session_id, state="new")
-        if adopt_transport and hasattr(registry, "adopt_transport_call"):
+        endpoint = registry.get(clean_endpoint_id) if hasattr(registry, "get") else None
+        active_id = getattr(endpoint, "active_call_id", "")
+        active = self.sessions.get(self.resolve_session_id(active_id)) if active_id else None
+        consultation = (
+            role == "source"
+            and getattr(endpoint, "kind", None) is EndpointKind.SIP_ACCOUNT
+            and active is not None
+            and active.call_id != session.call_id
+            and clean_endpoint_id in active.endpoint_claims
+            and active.phase in {SessionPhase.ESTABLISHED, SessionPhase.HELD}
+        )
+        if consultation:
+            # The sessions own both dialogs. Keep the existing busy projection
+            # until that call closes, then expose the remaining session below.
+            pass
+        elif adopt_transport and hasattr(registry, "adopt_transport_call"):
             self.adopt_event_observation(
                 f"physical:{clean_endpoint_id}",
                 session.call_id,
@@ -431,7 +448,7 @@ class SipEndpointRuntime(CallRuntimeApi):
                     not hasattr(registry, "get")
                     or registry.get(clean_endpoint_id) is not None
                 ):
-                    registry.release_call(clean_endpoint_id, session.call_id)
+                    self._release_endpoint_projection(clean_endpoint_id, session.call_id)
 
             session.add_resource(
                 resource_name,
@@ -442,6 +459,19 @@ class SipEndpointRuntime(CallRuntimeApi):
         if previous != session.endpoint_claims[clean_endpoint_id]:
             session.revision += 1
         return True
+
+    def _release_endpoint_projection(self, endpoint_id: str, call_id: str) -> bool:
+        """Keep a SIP phone busy while another owned dialog remains."""
+        remaining = next((
+            item.call_id for item in self.sessions.values()
+            if item.call_id != call_id and item.phase is not SessionPhase.TERMINATED
+            and endpoint_id in item.endpoint_claims
+        ), "")
+        if remaining:
+            return bool(self._endpoint_registry.release_call(
+                endpoint_id, call_id, remaining_call_id=remaining,
+            ))
+        return bool(self._endpoint_registry.release_call(endpoint_id, call_id))
 
     def release_endpoint_claim(
         self,
@@ -469,7 +499,7 @@ class SipEndpointRuntime(CallRuntimeApi):
         if registry is not None and (
             not hasattr(registry, "get") or registry.get(clean_endpoint_id) is not None
         ):
-            released = bool(registry.release_call(clean_endpoint_id, session.call_id))
+            released = self._release_endpoint_projection(clean_endpoint_id, session.call_id)
         if released:
             session.revision += 1
         return released

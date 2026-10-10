@@ -123,6 +123,11 @@ def _attended_target(
     )
 
 
+def _server_local_uri(server) -> str:
+    port = getattr(server, "local_sip_port", None) or getattr(server, "port", 5060)
+    return str(sip.SipUri("HA", server.local_ip, port))
+
+
 def _external_transfer_denied(runtime, call_id, target, remote_uri, local_uri="") -> bool:
     """Apply the existing call's access policy before delegating a REFER."""
     if not call_external_call_denied(runtime, call_id):
@@ -191,7 +196,7 @@ async def async_transfer_call(
     local_uri = (
         client.dialog.local_uri
         if client is not None and client.dialog is not None
-        else str(sip.SipUri("HA", server.local_ip, server.local_sip_port))
+        else _server_local_uri(server)
     )
     if _external_transfer_denied(runtime, request.call_id, target, remote_uri, local_uri):
         return SipTransferResult(False, 403, "external_calls_disabled")
@@ -204,14 +209,39 @@ async def async_transfer_target(
     runtime: VoipStackRuntime,
     call_id: str,
     target: sip_transfer.SipReferTarget,
+    *,
+    source_client: SipCallClient | None = None,
 ) -> SipTransferResult:
     """Relay an inbound REFER to the unique opposite SIP leg."""
 
     client = _client_for_call(runtime, call_id)
-    if client is None or client.dialog is None:
+    server = None
+    if source_client is not None:
+        calls = runtime.sip
+        session = calls.get_session(calls.resolve_session_id(call_id)) if calls else None
+        if session is None or not session.live:
+            return SipTransferResult(False, 0, "call_not_found")
+        candidates = {
+            id(leg.dialog): leg.dialog for leg in session.legs.values()
+            if isinstance(leg.dialog, SipCallClient) and leg.dialog is not source_client
+            and leg.dialog.dialog is not None
+        }
+        if len(candidates) > 1:
+            return SipTransferResult(False, 603, "ambiguous_call")
+        client = next(iter(candidates.values()), None)
+        call_id = session.call_id
+        if client is None:
+            server, remote_uri = _inbound_server(runtime, call_id)
+    if client is not None and client.dialog is not None:
+        remote_uri, local_uri = client.dialog.remote_uri, client.dialog.local_uri
+    elif server is not None:
+        local_uri = _server_local_uri(server)
+    else:
         return SipTransferResult(False, 0, "call_not_found")
     if _external_transfer_denied(
-        runtime, call_id, target, client.dialog.remote_uri, client.dialog.local_uri
+        runtime, call_id, target, remote_uri, local_uri
     ):
         return SipTransferResult(False, 403, "external_calls_disabled")
+    if server is not None:
+        return await server.async_refer(call_id, target) or SipTransferResult(False, 0, "call_not_found")
     return await client.refer(target)

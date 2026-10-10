@@ -316,13 +316,15 @@ class EndpointRegistry:
             active_call_id=requested_call_id,
         )
 
-    def release_call(self, endpoint_id: object, call_id: object) -> bool:
+    def release_call(
+        self, endpoint_id: object, call_id: object, *, remaining_call_id: str = ""
+    ) -> bool:
         """Release only the matching call so stale callbacks cannot clear a claim."""
         requested_call_id = str(call_id or "").strip()
         endpoint = self.require(endpoint_id)
         if not endpoint.active_call_id or endpoint.active_call_id != requested_call_id:
             return False
-        self._replace_runtime(endpoint, active_call_id="")
+        self._replace_runtime(endpoint, active_call_id=remaining_call_id)
         return True
 
     def sync_transport_call(
