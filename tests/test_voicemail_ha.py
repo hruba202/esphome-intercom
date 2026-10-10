@@ -413,6 +413,24 @@ async def test_reinvite_during_voicemail_keeps_recording_at_each_native_rate(mai
         unsub_saved()
 
 
+@pytest.mark.parametrize("kind", ["browser", "sip_account"])
+async def test_native_phone_flow_can_enable_mailbox(mailbox_lab, custom_integrations, kind):
+    lab = mailbox_lab
+    entry = config_entry(lab.hass)
+    lab.hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+    form = await lab.hass.config_entries.subentries.async_init(
+        (entry.entry_id, "phone"), context={"source": "user"},
+    )
+    form = await lab.hass.config_entries.subentries.async_configure(form["flow_id"], {"kind": kind})
+    values = {"name": "Study", "extension": "202", "voicemail_enabled": True}
+    if kind == "sip_account":
+        values.update(username="study", password="test-only")
+    result = await lab.hass.config_entries.subentries.async_configure(form["flow_id"], form["data_schema"](values))
+    assert result["type"] == "create_entry"
+    created = next(item for item in entry.subentries.values() if item.title == "Study")
+    assert created.data["voicemail"] == {"enabled": True}
+
+
 async def test_phone_rename_preserves_private_mailbox_settings(mailbox_lab, custom_integrations):
     lab = mailbox_lab
     entry = config_entry(lab.hass)
@@ -437,9 +455,11 @@ async def test_phone_rename_preserves_private_mailbox_settings(mailbox_lab, cust
 from .test_browser_phone_policy_ha import browser_lab, originate
 
 
-async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(browser_lab, tmp_path):
+async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(browser_lab, tmp_path, monkeypatch):
     import socket
-    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from unittest.mock import AsyncMock
+    from custom_components import voip_stack
+    from custom_components.voip_stack.phone_config import _add_phone_subentry
     from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
     from custom_components.voip_stack.endpoint_session import TerminationIntent
 
@@ -457,9 +477,17 @@ async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(bro
     ))
     setup_phone_policy_events(lab.hass, entry)
     lab.phones[0].auto_answer = False
-    lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
-        "ringing_timeout": 1, "no_answer": {"kind": "voicemail", "target": "kitchen"},
-    }))
+    for identity in ("browser", "sip:bedroom0", "sip:bedroom1"):
+        endpoint = lab.runtime.endpoints.require(identity)
+        _add_phone_subentry(lab.hass, entry, title=endpoint.name, data={
+            "endpoint_id": endpoint.endpoint_id, "name": endpoint.name,
+            "kind": endpoint.kind.value, "username": endpoint.username,
+        })
+    monkeypatch.setattr(voip_stack, "_refresh_and_push_phonebook", AsyncMock())
+    await lab.hass.services.async_call("voip_stack", "set_phone_settings", {
+        "device_id": "device-bedroom0", "ringing_timeout": 1,
+        "no_answer_action": "voicemail", "no_answer_to": "kitchen",
+    }, blocking=True)
     recording = asyncio.Event()
     projections = []
     connection = object()

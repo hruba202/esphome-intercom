@@ -814,6 +814,8 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                     ): BooleanSelector(),
                 }
             )
+        if self._get_entry().data.get("voicemail", {}).get("enabled"):
+            fields[vol.Optional("voicemail_enabled", default=bool(current.get("voicemail", {}).get("enabled")))] = BooleanSelector()
         return vol.Schema(fields)
 
     def _validate_aliases(
@@ -824,6 +826,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
         username: str,
         ring_group: str,
         conference_group: str,
+        voicemail: Mapping[str, Any],
     ) -> bool:
         current_id = (
             self._get_reconfigure_subentry().subentry_id
@@ -835,6 +838,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
             candidate_routes=(name, extension, username),
             candidate_mailbox_routes=mailbox_route_aliases({
                 **self._current_data(), "name": name, "extension": extension, "username": username,
+                "voicemail": voicemail,
             }),
             candidate_groups=_group_route_values(
                 ring_group,
@@ -855,6 +859,9 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
     ) -> tuple[dict[str, Any], dict[str, str]]:
         errors: dict[str, str] = {}
         current = self._current_data()
+        voicemail = dict(current.get("voicemail", {}))
+        if "voicemail_enabled" in user_input:
+            voicemail["enabled"] = bool(user_input["voicemail_enabled"])
         name = str(user_input.get(CONF_PHONE_NAME) or "").strip()
         extension = str(user_input.get(CONF_PHONE_EXTENSION) or "").strip()
         username = ""
@@ -889,6 +896,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
             conference_group=str(
                 user_input.get(CONF_PHONE_CONFERENCE_GROUP) or ""
             ).strip(),
+            voicemail=voicemail,
         ):
             errors["base"] = "phone_alias_conflict"
         endpoint_id = str(current.get(CONF_PHONE_ENDPOINT_ID) or "")
@@ -899,6 +907,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                 endpoint_id = new_sip_account_endpoint_id()
         data = {
             **current,
+            **({"voicemail": voicemail} if voicemail else {}),
             CONF_PHONE_ENDPOINT_ID: endpoint_id,
             CONF_PHONE_KIND: kind.value,
             CONF_PHONE_NAME: name,

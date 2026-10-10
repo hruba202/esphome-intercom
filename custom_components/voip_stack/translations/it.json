@@ -160,7 +160,8 @@
             "conference_ring": "Squilla per le conferenze",
             "video_enabled": "Abilita video",
             "auto_answer": "Risposta automatica",
-            "send_video": "Invia video"
+            "send_video": "Invia video",
+            "voicemail_enabled": "Abilita la segreteria per questo telefono"
           },
           "data_description": {
             "name": "Nome obbligatorio usato da card, rubrica e instradamento.",
@@ -184,7 +185,8 @@
             "conference_ring": "Squilla per le conferenze",
             "video_enabled": "Consenti negoziazione video",
             "offline_policy": "Quando non registrato",
-            "offline_forward_target": "Destinazione inoltro"
+            "offline_forward_target": "Destinazione inoltro",
+            "voicemail_enabled": "Abilita la segreteria per questo telefono"
           }
         },
         "reconfigure": {

@@ -160,7 +160,8 @@
             "conference_ring": "Ring for conference calls",
             "video_enabled": "Allow video",
             "auto_answer": "Auto answer",
-            "send_video": "Send video"
+            "send_video": "Send video",
+            "voicemail_enabled": "Enable voicemail for this phone"
           },
           "data_description": {
             "name": "Required phone name used by the card, phonebook and call routing.",
@@ -184,7 +185,8 @@
             "conference_ring": "Ring for conference calls",
             "video_enabled": "Allow video negotiation",
             "offline_policy": "When not registered",
-            "offline_forward_target": "Forward destination"
+            "offline_forward_target": "Forward destination",
+            "voicemail_enabled": "Enable voicemail for this phone"
           }
         },
         "reconfigure": {

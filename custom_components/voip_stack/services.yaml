@@ -797,15 +797,16 @@ set_phone_settings:
           unit_of_measurement: s
     no_answer_action:
       name: When nobody answers
-      description: Required when enabling a new ringing timeout. Choose hangup or forwarding.
+      description: Required when enabling a new ringing timeout. Choose hangup, forwarding or an enabled voicemail mailbox.
       selector:
         select:
           options:
             - hangup
             - forward
+            - voicemail
     no_answer_to:
       name: No-answer destination
-      description: Phonebook name, extension or SIP URI. Required with the forward action.
+      description: Required phonebook destination or SIP URI for forwarding. For voicemail, choose a phone name or extension, or leave empty for this phone's mailbox.
       selector:
         text:
 

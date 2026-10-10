@@ -64,6 +64,33 @@ async def test_native_action_persists_defaults_and_keeps_active_call(hass, phone
     phones.push.assert_awaited_once()
 
 
+@pytest.mark.parametrize("destination", ["", "Bedroom"])
+async def test_no_answer_voicemail_uses_an_enabled_mailbox(hass, phones, destination):
+    hass.config_entries.async_update_entry(phones.entry, data={"voicemail": {
+        "enabled": True, "tts_entity_id": "tts.test", "language": "en",
+    }})
+    for name in ("kitchen", "bedroom"):
+        phone_config.update_phone_subentry(hass, phones.entry, name, {"voicemail": {"enabled": True}})
+    await settings(hass, ringing_timeout=30, no_answer_action="voicemail", no_answer_to=destination)
+    policy = phones.registry.require("kitchen").policy
+    assert policy.no_answer.kind.value == "voicemail"
+    assert policy.no_answer.target == ("bedroom" if destination else "kitchen")
+    assert policy.ringing_timeout == 30
+    await settings(hass, ringing_timeout=0)
+    assert phones.registry.require("kitchen").policy.no_answer is None
+
+
+async def test_no_answer_voicemail_rejects_unconfigured_service_and_mailbox(hass, phones):
+    with pytest.raises(ServiceValidationError, match="Enable voicemail"):
+        await settings(hass, ringing_timeout=30, no_answer_action="voicemail")
+    hass.config_entries.async_update_entry(phones.entry, data={"voicemail": {
+        "enabled": True, "tts_entity_id": "tts.test", "language": "en",
+    }})
+    with pytest.raises(ServiceValidationError, match="destination phone"):
+        await settings(hass, ringing_timeout=30, no_answer_action="voicemail", no_answer_to="Bedroom")
+    assert phones.registry.require("kitchen").policy.ringing_timeout is None
+
+
 async def test_partial_update_preserves_other_rules_and_empty_clears(hass, phones):
     await settings(hass, forward_to="Bedroom", busy_to="Bedroom")
     await settings(hass, forward_to="")

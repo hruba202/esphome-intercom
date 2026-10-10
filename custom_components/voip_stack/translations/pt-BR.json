@@ -160,7 +160,8 @@
             "conference_ring": "Tocar para chamadas de conferência",
             "video_enabled": "Permitir vídeo",
             "auto_answer": "Atendimento automático",
-            "send_video": "Enviar vídeo"
+            "send_video": "Enviar vídeo",
+            "voicemail_enabled": "Ativar correio de voz para este telefone"
           },
           "data_description": {
             "name": "Nome obrigatório do telefone usado pelo card, pela agenda telefônica e pelo roteamento de chamadas.",
@@ -184,7 +185,8 @@
             "conference_ring": "Tocar para chamadas de conferência",
             "video_enabled": "Permitir negociação de vídeo",
             "offline_policy": "Quando não estiver registrado",
-            "offline_forward_target": "Destino de encaminhamento"
+            "offline_forward_target": "Destino de encaminhamento",
+            "voicemail_enabled": "Ativar correio de voz para este telefone"
           }
         },
         "reconfigure": {

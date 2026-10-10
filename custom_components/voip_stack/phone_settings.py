@@ -49,6 +49,16 @@ async def async_set_phone_settings(call: ServiceCall) -> None:
     elif "no_answer_action" in call.data:
         if call.data["no_answer_action"] == "hangup":
             updates["no_answer"] = PhoneDestination(DestinationKind.HANGUP)
+        elif call.data["no_answer_action"] == "voicemail":
+            from .mailbox import mailbox_settings
+            from .voicemail_config import require_voicemail_config
+
+            require_voicemail_config(call.hass)
+            target = str(call.data.get("no_answer_to") or "").strip()
+            destination = (registry.by_device_id(target) or registry.resolve(target)) if target else endpoint
+            if destination is None or not mailbox_settings(call.hass, destination.endpoint_id).get("enabled"):
+                raise ServiceValidationError("Enable voicemail for the destination phone first")
+            updates["no_answer"] = PhoneDestination(DestinationKind.VOICEMAIL, destination.endpoint_id)
         else:
             target = str(call.data.get("no_answer_to") or "").strip()
             if not target:
@@ -60,7 +70,7 @@ async def async_set_phone_settings(call: ServiceCall) -> None:
                 target = destination.endpoint_id
             updates["no_answer"] = PhoneDestination(DestinationKind.CONTACT, target)
     elif "no_answer_to" in call.data:
-        raise ServiceValidationError("Select the forward no-answer action with its destination")
+        raise ServiceValidationError("Select the forward or voicemail no-answer action with its destination")
     try:
         policy = replace(endpoint.policy, **updates)
     except ValueError as err:

@@ -834,6 +834,17 @@ export function buildMainCardSkeleton(cardVersion) {
     dndRow.appendChild(dndLabel);
     settingsPanel.appendChild(dndRow);
 
+    const mailboxRow = document.createElement("label");
+    mailboxRow.className = "auto-answer-row";
+    mailboxRow.hidden = true;
+    const mailboxCheckbox = document.createElement("input");
+    mailboxCheckbox.type = "checkbox";
+    mailboxRow.appendChild(mailboxCheckbox);
+    const mailboxLabel = document.createElement("span");
+    mailboxLabel.textContent = translate("Enable this phone's mailbox");
+    mailboxRow.appendChild(mailboxLabel);
+    settingsPanel.appendChild(mailboxRow);
+
     const ringtoneRow = document.createElement("div");
     ringtoneRow.className = "auto-answer-row";
     const ringtoneCheckbox = document.createElement("input");
@@ -990,7 +1001,7 @@ export function buildMainCardSkeleton(cardVersion) {
       title.textContent = translate(label);
       const input = document.createElement(type === "select" ? "select" : "input");
       if (type === "select") {
-        for (const [value, text] of [["", "Choose an action"], ["hangup", "Hang up"], ["forward", "Forward"]]) {
+        for (const [value, text] of [["", "Choose an action"], ["hangup", "Hang up"], ["forward", "Forward"], ["voicemail", "Voicemail"]]) {
           const option = document.createElement("option");
           option.value = value;
           option.textContent = translate(text);
@@ -1042,6 +1053,7 @@ export function buildMainCardSkeleton(cardVersion) {
       runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
+      mailboxRow, mailboxCheckbox,
       microphoneAntiAliasRow, microphoneAntiAliasCheckbox,
       videoCameraRow, videoCameraCheckbox,
       mediaDeviceViews: [idleMediaDevices],

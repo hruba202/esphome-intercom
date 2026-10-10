@@ -453,6 +453,20 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen", ringing_timeout: 0 }},
 ]);
 const antiAliasPreference = makeCard();
+// Mailbox timeout controls use the same public settings action, including
+// the ordinary own-mailbox default without a manually entered endpoint ID.
+routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: true,
+  seconds: "30", action: "voicemail", destination: "" }};
+await routingCard._saveRingingPolicy();
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
+  "voip_stack", "set_phone_settings", {{device_id: "device-kitchen",
+    ringing_timeout: 30, no_answer_action: "voicemail", no_answer_to: ""}},
+]);
+routingCard._loadSoftphoneState = async () => {{}};
+await routingCard._setMailboxEnabled(true);
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
+  "voip_stack", "set_voicemail_settings", {{device_id: "device-kitchen", enabled: true}},
+]);
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), true);
 antiAliasPreference._toggleMicrophoneAntiAlias();
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), false);

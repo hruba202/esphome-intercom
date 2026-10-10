@@ -19,14 +19,18 @@ its feature codes or named address prefixes. HA reports conflicts before saving
 the configuration. Numeric extension `97` remains distinct from feature code
 `*97`.
 
-Use **VoIP Stack: Set voicemail settings** and select a phone with the device
-picker. Enable its mailbox. The recording limit defaults to 180 seconds. You
-can choose a greeting through HA's media picker. Without a greeting, the caller
-hears a recording tone.
+Enable the phone's mailbox in its VoIP Stack phone configuration, or with
+**Enable this phone's mailbox** in the card's Options. The native
+**VoIP Stack: Set voicemail settings** action provides the same control and the
+advanced options, including PIN, greeting and recording limit. Select its phone
+with the device picker. The recording limit defaults to 180 seconds. A greeting
+uses HA's media picker; without one, the caller hears a recording tone.
 
-Enabling a mailbox does not enable forwarding. In the phone card's options,
+Enabling a mailbox does not enable forwarding. In the phone card's
+**Options > Call routing** section,
 enable a ringing timeout and select the voicemail destination if unanswered
-calls should go there. Leaving the timeout unset keeps the existing unlimited
+calls should go there. Leave the destination empty for this phone's own mailbox,
+or choose another phone with an enabled mailbox. Leaving the timeout unset keeps the existing unlimited
 application-level ringing behavior. An accepted call-control action from an
 automation takes precedence over the phone's configured fallback.
 

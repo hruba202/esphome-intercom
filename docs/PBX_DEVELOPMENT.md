@@ -442,3 +442,18 @@ Socket tests cover a busy or unresolved replacement with each policy, explicit
 forwarding from one registered trunk to another with actual announcement RTP,
 late answers to the cancelled original leg, and cancellation during retargeting.
 The registration flows remain ready after the calls have released their dialogs.
+
+### Public mailbox configuration and no-answer routing
+
+The native phone config flow and card Options can enable a mailbox. The existing
+`set_phone_settings` action accepts the voicemail no-answer outcome, with the
+phone's own enabled mailbox as the empty-destination default. The same controls
+remain backend-owned for ESP mirror cards. Disabled or missing mailbox targets
+are rejected before persisting the timeout.
+
+A real Chromium card configured this rule in the HA lab, then a baresip caller
+left a recorded 550 Hz message after the unanswered call. The card called its
+own mailbox, selected and deleted that message, and the original media file was
+removed. With the lab's optional routing automations temporarily disabled, the
+configured two-second timeout produced an answer after 2.059 seconds. Their
+previous enabled states and the phone's previous settings were restored.

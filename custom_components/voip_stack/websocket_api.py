@@ -1359,6 +1359,7 @@ def _ha_softphone_device(
         "host": "",
         "sip_transport": "udp+tcp",
         "softphone": True,
+        "voicemail": dict(state.get("voicemail") or {}),
         "ha_softphone": state,
     }
 
@@ -1376,6 +1377,7 @@ def _ha_softphone_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 
 async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
+    from .mailbox import mailbox_snapshot
     from .device_resolver import get_resolver
     from .phone_config import esphome_phone_policy
     from .repairs import async_sync_esphome_action_issue
@@ -1433,6 +1435,7 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
             continue
         device["endpoint_id"] = endpoint_id
         device["endpoint_type"] = EndpointKind.ESPHOME.value
+        device["voicemail"] = mailbox_snapshot(hass, endpoint_id)
         device["capabilities"] = sorted(capabilities)
         async_sync_esphome_action_issue(hass, device)
 

@@ -160,7 +160,8 @@
             "conference_ring": "Bei Telefonkonferenzen klingeln",
             "video_enabled": "Video zulassen",
             "auto_answer": "Automatische Antwort",
-            "send_video": "Video senden"
+            "send_video": "Video senden",
+            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
           },
           "data_description": {
             "name": "Erforderlicher Telefonname, der von der Karte, dem Telefonbuch und der Anrufweiterleitung verwendet wird.",
@@ -184,7 +185,8 @@
             "conference_ring": "Bei Telefonkonferenzen klingeln",
             "video_enabled": "Videoverhandlung zulassen",
             "offline_policy": "Wenn nicht registriert",
-            "offline_forward_target": "Ziel weiterleiten"
+            "offline_forward_target": "Ziel weiterleiten",
+            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
           }
         },
         "reconfigure": {

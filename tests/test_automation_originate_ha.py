@@ -167,6 +167,7 @@ async def lab(hass, monkeypatch, socket_enabled):
         "hangup": voip_stack._handle_sip_hangup_service,
         "send_to_voicemail": voicemail.async_send_to_voicemail,
         "set_voicemail_settings": mailbox.async_set_voicemail_settings,
+        "set_phone_settings": voip_stack._handle_set_phone_settings_service,
         "transcribe_voicemail": mailbox_actions.async_transcribe_voicemail,
         "get_voicemail": mailbox_actions.async_get_voicemail,
     })

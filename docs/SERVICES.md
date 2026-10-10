@@ -199,8 +199,8 @@ phone. Select the Phone in the HA action editor; it supplies `device_id`.
 - `busy_to`: forward when busy or Do not disturb is enabled.
 - `unavailable_to`: forward when offline, including a browser with no attached card.
 - `ringing_timeout`: seconds before the no-answer action; zero disables the limit.
-- `no_answer_action`: `hangup` or `forward`, required when enabling a new timeout.
-- `no_answer_to`: destination required for the `forward` no-answer action.
+- `no_answer_action`: `hangup`, `forward` or `voicemail`, required when enabling a new timeout.
+- `no_answer_to`: destination required for `forward`; for `voicemail`, an enabled phone mailbox, defaulting to this phone when empty.
 
 Omitted fields retain their current values. An empty string clears that rule.
 Known phone destinations are stored by identity, so renaming the destination

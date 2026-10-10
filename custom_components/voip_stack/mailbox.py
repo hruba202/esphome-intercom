@@ -178,7 +178,8 @@ def mailbox_snapshot(hass, endpoint_id):
     owner = runtime.sip if runtime is not None else None
     archive = owner.component("media_archive") if owner is not None else None
     new, old = archive.counts(endpoint_id) if archive is not None else (0, 0)
-    return {"enabled": bool(voicemail_config(hass).get("enabled") and mailbox_settings(hass, endpoint_id).get("enabled")),
+    available = bool(voicemail_config(hass).get("enabled"))
+    return {"available": available, "enabled": bool(available and mailbox_settings(hass, endpoint_id).get("enabled")),
             "new": new, "old": old, "total": new + old}
 
 

@@ -1934,6 +1934,12 @@ class VoipStackCard extends HTMLElement {
     els.settingsBtn.hidden = !showRuntimeOptions;
     els.settingsPanel.hidden = !showSettingsPanel;
     els.settingsBtn.setAttribute("aria-expanded", String(showSettingsPanel));
+    if (els.mailboxRow) {
+      const mailbox = this._phoneMailbox();
+      els.mailboxRow.hidden = !showSettingsPanel || !mailbox.available;
+      els.mailboxCheckbox.checked = this._mailboxSettingsBusy ? this._mailboxEnabledPending : !!mailbox.enabled;
+      els.mailboxCheckbox.disabled = !!this._mailboxSettingsBusy;
+    }
     if (els.voicemailBtn) {
       els.voicemailBtn.hidden = !softphoneMode || !this._softphoneSnapshot?.voicemail?.enabled ||
         !(this._softphoneSnapshot.voicemail.total > 0 || this._mailboxOpen);
@@ -2098,6 +2104,7 @@ class VoipStackCard extends HTMLElement {
       }
     }
     if (els.settingsBtn) els.settingsBtn.onclick = () => this._toggleSettings();
+    if (els.mailboxCheckbox) els.mailboxCheckbox.onchange = () => this._setMailboxEnabled(els.mailboxCheckbox.checked);
     for (const view of els.mediaDeviceViews || []) {
       view.accessBtn.onclick = () => this._refreshMediaDeviceOptions(true);
       view.cycleCameraBtn.onclick = () => this._cycleMediaCamera();
@@ -3001,6 +3008,32 @@ class VoipStackCard extends HTMLElement {
     this._render();
     if (this._settingsOpen && this._isHaSoftphoneMode()) {
       void this._refreshMediaDeviceOptions();
+    } else if (this._settingsOpen && this._hass?.connection?.sendMessagePromise) {
+      void this._loadAvailableDevices();
+    }
+  }
+
+  _phoneMailbox() {
+    if (this._isHaSoftphoneMode()) return this._softphoneSnapshot?.voicemail || {};
+    return this._availableDevices.find((device) => this._deviceMatchesConfig(device))?.voicemail || {};
+  }
+
+  async _setMailboxEnabled(enabled) {
+    if (this._mailboxSettingsBusy) return;
+    const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
+    if (!deviceId) return;
+    this._mailboxEnabledPending = enabled;
+    this._mailboxSettingsBusy = true;
+    this._render();
+    try {
+      await this._hass.callService("voip_stack", "set_voicemail_settings", {device_id: deviceId, enabled});
+      if (this._isHaSoftphoneMode()) await this._loadSoftphoneState();
+      else await this._loadAvailableDevices();
+    } catch (err) {
+      this._showError(err.message || String(err));
+    } finally {
+      this._mailboxSettingsBusy = false;
+      this._render();
     }
   }
 
@@ -3189,10 +3222,13 @@ class VoipStackCard extends HTMLElement {
     controls.enabled.checked = draft.enabled;
     controls.seconds.value = draft.seconds;
     controls.action.value = draft.action;
+    const mailboxOption = Array.from(controls.action.options || []).find((option) => option.value === "voicemail");
+    if (mailboxOption) mailboxOption.disabled = !this._phoneMailbox().available;
     controls.destination.value = draft.destination;
     controls.secondsRow.hidden = !draft.enabled;
     controls.actionRow.hidden = !draft.enabled;
-    controls.destinationRow.hidden = !draft.enabled || draft.action !== "forward";
+    controls.destinationRow.hidden = !draft.enabled || !["forward", "voicemail"].includes(draft.action);
+    controls.destination.placeholder = this._t(draft.action === "voicemail" ? "This phone's mailbox" : "Disabled");
     for (const field of ["enabled", "seconds", "action", "destination"]) {
       controls[field].disabled = !!this._routingSettingsBusy;
     }
@@ -3219,15 +3255,15 @@ class VoipStackCard extends HTMLElement {
     if (draft.enabled) {
       const seconds = Number(draft.seconds);
       if (!Number.isFinite(seconds) || seconds < 1 || seconds > 3600 ||
-          !["hangup", "forward"].includes(draft.action)) {
+          !["hangup", "forward", "voicemail"].includes(draft.action)) {
         this._showError("Choose a ringing duration and a no-answer action.");
         return;
       }
       data.ringing_timeout = seconds;
       data.no_answer_action = draft.action;
-      if (draft.action === "forward") {
+      if (["forward", "voicemail"].includes(draft.action)) {
         data.no_answer_to = String(draft.destination || "").trim();
-        if (!data.no_answer_to) {
+        if (!data.no_answer_to && draft.action === "forward") {
           this._showError("Select a no-answer destination.");
           return;
         }

@@ -1,4 +1,6 @@
 const PT_BR = {
+  "Enable this phone's mailbox": "Ativar a caixa postal deste telefone",
+  "This phone's mailbox": "Caixa postal deste telefone",
   "Voicemail": "Correio de voz",
   "No messages": "Nenhuma mensagem",
   "Older messages": "Mensagens anteriores",
@@ -131,6 +133,8 @@ const PT_BR = {
 };
 
 const DE = {
+  "Enable this phone's mailbox": "Anrufbeantworter dieses Telefons aktivieren",
+  "This phone's mailbox": "Anrufbeantworter dieses Telefons",
   "Voicemail": "Anrufbeantworter",
   "No messages": "Keine Nachrichten",
   "Older messages": "Ältere Nachrichten",
