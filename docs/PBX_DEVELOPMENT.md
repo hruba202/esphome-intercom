@@ -147,6 +147,35 @@ advertised address is being resolved cannot be claimed by the old execution.
 A takeover also drops the former destination from command scope while preserving
 the caller. The software suite passed 1931 tests and 162 subtests (4 deselected).
 
+Outgoing Automation announcements now use the existing `DialForkController` to
+arbitrate a SIP answer against a no-answer forwarding decision. The same
+application session and generation survive retargeting; each destination gets
+its own SIP Call-ID. The losing leg finishes CANCEL/487 or ACK/BYE before the
+next leg is used. No browser, extra RTP receiver or second SIP state machine is
+created. The original action's answer deadline covers the complete sequence.
+
+Five real UDP tests cover successful retargeting, a late 200 during CANCEL,
+busy and unanswered replacement phones, and cancellation during replacement
+ringing. They check exact announcement PCM on the selected phone, no audio on
+the abandoned phone, retained application Call-ID and complete cleanup. This
+path currently supports the configured no-answer fallback with failure ending
+the announcement. Resuming a cancelled destination, browser-originated SIP
+retargeting and mailbox destinations remain unfinished.
+
+Investigation: the original witness reached the phone deadline but failed with
+`call_not_forwardable`, because the forwarding entry point only accepted an
+incoming INVITE or a local browser bridge. RFC 5359 section 2.9 shows closing the
+unanswered destination attempt before trying the next destination. The local
+`DialForkController` already owns this arbitration and cancellation barrier, so
+the outgoing application now supplies it with a SIP candidate and the existing
+pending-route decision future. The falsifiable check is that the first peer gets
+CANCEL (and BYE after a late answer), the second gets a distinct INVITE, and the
+HA call token stays unchanged. This passes with exact RTP audio verification.
+Replacement legs use `add_leg` before attaching their client and watcher, so
+their wire Call-IDs resolve to the original application session.
+The complete HA suite after this increment passed 368 tests; the independent
+fork/controller regression suite passed 20 tests and 4 subtests.
+
 Executed so far:
 
 - Software suite: 1926 tests and 162 subtests passed (4 deselected).

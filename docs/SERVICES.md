@@ -214,6 +214,14 @@ made directly to a physical phone's IP bypass Home Assistant and its policies.
 An unavailable forwarding destination produces the normal routing error; it
 does not silently fall back to another phone or operator.
 
+For an outgoing Automation announcement, a configured no-answer contact can
+redirect the attempt to another supported SIP or ESPHome phone. The `call`
+action still returns the same application call reference, so the following
+`tts_say` and `hangup` need no changes. Its `answer_timeout` covers all attempts
+together. Synthesis starts only after the selected phone answers; a failed
+replacement ends the action and releases both attempts. This development path
+does not yet resume a cancelled destination or support a mailbox replacement.
+
 ### `voip_stack.set_ha_softphone_settings`
 
 Publish HA softphone identity and group membership.

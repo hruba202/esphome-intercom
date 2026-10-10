@@ -439,6 +439,87 @@ async def test_busy_or_unanswered_peer_releases_call_without_tts(lab, monkeypatc
     assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
 
 
+@pytest.mark.parametrize("late_answer", [False, True])
+async def test_no_answer_policy_retargets_outgoing_announcement_without_replacing_session(lab, monkeypatch, late_answer):
+    from functools import partial
+    from custom_components.voip_stack.call_forwarder import async_forward_existing_call
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
+    from custom_components.voip_stack.store import config_entry
+
+    setup_phone_policy_events(lab.hass, config_entry(lab.hass))
+    lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
+        "ringing_timeout": 1,
+        "no_answer": {"kind": "contact", "target": "sip:bedroom1"},
+    }))
+    lab.calls.forward_call = partial(async_forward_existing_call, SimpleNamespace(
+        hass=lab.hass, config=lab.runtime.transport_config, local_ip="127.0.0.1",
+    ))
+    first, second = lab.phones
+    first.auto_answer = False
+    first.answer_on_cancel = late_answer
+    stream = tts_fixture(monkeypatch, lab)
+    script = Script(lab.hass, await async_validate_actions_config(lab.hass, cv.SCRIPT_SCHEMA(sequence())), "Wakeup", "automation")
+    result = await asyncio.wait_for(script.async_run(context=Context()), 8)
+    assert result.variables["dialed"]["call_id"] == first.invites[0].header("Call-ID")
+    assert second.invites[0].header("Call-ID") != result.variables["dialed"]["call_id"]
+    assert len(first.invites) == len(second.invites) == 1
+    assert any(request.method == "CANCEL" for request in first.requests)
+    if late_answer:
+        assert first.bye.is_set()
+    assert second.bye.is_set()
+    assert len(stream.calls) == 1
+    voiced = []
+    while not second.audio.empty():
+        raw, _ = second.audio.get_nowait()
+        payload = rtp.parse_packet(raw).payload
+        if any(payload):
+            voiced.append(payload)
+    assert b"".join(voiced) == b"\x01\x80" * 960
+    assert first.audio.empty()
+    assert not lab.calls.sessions
+    assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
+
+
+@pytest.mark.parametrize("outcome", ["busy", "timeout", "cancel"])
+async def test_retarget_failure_or_cancellation_releases_both_attempts(lab, monkeypatch, outcome):
+    from functools import partial
+    from custom_components.voip_stack.call_forwarder import async_forward_existing_call
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
+    from custom_components.voip_stack.store import config_entry
+
+    setup_phone_policy_events(lab.hass, config_entry(lab.hass))
+    lab.runtime.endpoints.update("sip:bedroom0", policy=PhonePolicy.from_data({
+        "ringing_timeout": 1, "no_answer": {"kind": "contact", "target": "sip:bedroom1"},
+    }))
+    lab.calls.forward_call = partial(async_forward_existing_call, SimpleNamespace(
+        hass=lab.hass, config=lab.runtime.transport_config, local_ip="127.0.0.1",
+    ))
+    first, second = lab.phones
+    first.auto_answer = False
+    second.auto_answer = outcome == "busy"
+    second.final_status = 486 if outcome == "busy" else 200
+    stream = tts_fixture(monkeypatch, lab)
+    task = asyncio.create_task(dial(lab, Context(), answer_timeout=2))
+    try:
+        async with asyncio.timeout(4):
+            await second.invited.wait()
+            if outcome == "cancel":
+                task.cancel()
+            with pytest.raises((ServiceValidationError, asyncio.CancelledError)):
+                await task
+        assert not stream.calls
+        assert not lab.calls.sessions
+        assert all(not endpoint.active_call_id for endpoint in lab.runtime.endpoints.endpoints)
+        assert any(request.method == "CANCEL" for request in first.requests)
+        if outcome != "busy":
+            assert any(request.method == "CANCEL" for request in second.requests)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_stale_generation_and_different_controller_cannot_touch_call(lab, monkeypatch):
     stream = tts_fixture(monkeypatch, lab)
     context = Context()

@@ -12,6 +12,7 @@ from .automation_call import AutomationCall
 from .automation_context import current_execution
 from .call_projection import publish_bridge_projection
 from .core.sip import sip_default_port
+from .dial_fork import DialCandidate, DialDisposition, DialForkController, DialOutcome
 from .endpoint_dialing import EndpointDialer, OutboundLegPolicy
 from .endpoint_lifecycle import call_registry
 from .endpoint_routing import EndpointRouteResolver, roster_from_peers
@@ -26,6 +27,57 @@ from .phonebook_runtime import registered_roster_entries
 from .runtime_data import require_runtime_data
 from .sip_runtime import enable_reused_tcp_connection, uri_transport
 from .trunk_policy import is_trunk_uri
+
+
+async def _dial_attempt(hass, registry, session, attempt, destination, timeout):
+    """Arbitrate an outgoing leg and route decisions with the existing fork."""
+    client = attempt.client
+    decision = hass.loop.create_future()
+    registry.set_pending_route(session.call_id, {"future": decision, "outgoing_automation": True})
+
+    async def dial():
+        result = await client.invite(
+            target=attempt.uri.user, target_display_name=destination,
+            remote_host=attempt.uri.host, remote_sip_port=sip_default_port(attempt.uri),
+            request_uri=str(attempt.uri), timeout=timeout,
+        )
+        if result in {"ringing", "calling", "remote_ringing"}:
+            registry.transition(session.call_id, state=CallState.REMOTE_RINGING.value,
+                                expected_generation=session.generation)
+            publish_bridge_projection(hass, session, event_type="remote_ringing",
+                                      direction="outgoing", route_kind="automation")
+            result = await client.wait_for_final(timeout=timeout)
+        if result == "in_call" and session.owner == "automation":
+            registry.transition(session.call_id, state=CallState.IN_CALL.value,
+                                expected_generation=session.generation)
+        if result != "in_call" and not decision.done():
+            decision.set_result({"action": "failed"})
+        return DialOutcome(
+            DialDisposition.ANSWERED if result == "in_call" and client.dialog is not None
+            else DialDisposition.UNAVAILABLE, reason=result,
+        )
+
+    async def reroute():
+        route = await decision
+        return DialOutcome(DialDisposition.REROUTE if route.get("action") == "forward"
+                           else DialDisposition.UNAVAILABLE)
+
+    async def close(_mode):
+        await registry.close_leg(session.call_id, client.dialog_ids.call_id, reason="route_replaced")
+        attempt.ports.release()
+
+    async def close_control(_mode):
+        return None
+
+    fork = DialForkController(session, (
+        DialCandidate(client.dialog_ids.call_id, dial, close, endpoint_id=attempt.endpoint_id),
+        DialCandidate("route-control", reroute, close_control, control=True),
+    ), overall_timeout=timeout)
+    try:
+        result = await fork.run(lambda _candidate, _outcome: session.live and session.owner == "automation")
+        return result.outcome, decision.result() if decision.done() and not decision.cancelled() else None
+    finally:
+        registry.take_pending_route(session.call_id)
 
 
 async def async_originate_automation_call(call: ServiceCall) -> dict:
@@ -65,22 +117,26 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         route_resolver=resolver, sip_uri_transport=uri_transport,
         enable_reused_tcp_connection=enable_reused_tcp_connection,
     )
-    if dialer.browser_leg_for_member(destination, peers, entries) is not None:
-        raise ServiceValidationError("Outgoing automation calls currently require a SIP or ESPHome destination")
-    uri, _, _ = dialer.sip_uri_for_member(destination, peers, entries)
-    if uri is None and destination.lower().startswith(('sip:', 'sips:')):
-        from .core.sip import parse_sip_uri
-        uri = parse_sip_uri(destination)
-    if uri is None or resolver.is_local_listener_uri(uri) or is_trunk_uri(uri, runtime.trunk_config):
-        raise ServiceValidationError("Select a reachable SIP account, ESPHome phone or direct SIP address")
-    attempt = dialer.prepare_outbound_leg(
-        member=destination, peers=peers, roster_entries=entries,
-        local_name=source.display_name, local_rtp_port_index=0,
-        uri_override=str(uri),
-        policy=OutboundLegPolicy(local_uri_user=source.extension or source.id, allow_video=False),
-    )
-    if attempt is None:
-        raise ServiceValidationError("The destination cannot receive an outgoing automation call")
+    def prepare(target):
+        if dialer.browser_leg_for_member(target, peers, entries) is not None:
+            raise ServiceValidationError("Outgoing automation calls currently require a SIP or ESPHome destination")
+        uri, _, _ = dialer.sip_uri_for_member(target, peers, entries)
+        if uri is None and target.lower().startswith(('sip:', 'sips:')):
+            from .core.sip import parse_sip_uri
+            uri = parse_sip_uri(target)
+        if uri is None or resolver.is_local_listener_uri(uri) or is_trunk_uri(uri, runtime.trunk_config):
+            raise ServiceValidationError("Select a reachable SIP account, ESPHome phone or direct SIP address")
+        candidate = dialer.prepare_outbound_leg(
+            member=target, peers=peers, roster_entries=entries,
+            local_name=source.display_name, local_rtp_port_index=0,
+            uri_override=str(uri),
+            policy=OutboundLegPolicy(local_uri_user=source.extension or source.id, allow_video=False),
+        )
+        if candidate is None:
+            raise ServiceValidationError("The destination cannot receive an outgoing automation call")
+        return candidate
+
+    attempt = prepare(destination)
     client = attempt.client
     call_id = client.dialog_ids.call_id
     session = None
@@ -94,7 +150,7 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         )
         registry.own_resource(
             call_id, f'automation_ports:{call_id}', attempt.ports,
-            lambda _reason: attempt.ports.release(), stage=CleanupStage.RESERVATION,
+            lambda _reason, ports=attempt.ports: ports.release(), stage=CleanupStage.RESERVATION,
             generation=session.generation,
         )
         registry.attach_sip_client(call_id, call_id, client, role='callee', state=CallState.CALLING.value)
@@ -110,20 +166,42 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         )
         timeout = float(call.data.get('answer_timeout', 30))
         async with asyncio.timeout(timeout):
-            result = await client.invite(
-                target=uri.user, target_display_name=destination,
-                remote_host=uri.host, remote_sip_port=sip_default_port(uri),
-                request_uri=str(uri), timeout=timeout,
-            )
-            if result in ('ringing', 'calling', 'remote_ringing'):
-                registry.transition(call_id, state=CallState.REMOTE_RINGING.value, expected_generation=session.generation)
-                publish_bridge_projection(
-                    hass, session, event_type='remote_ringing', direction='outgoing',
-                    route_kind='automation',
+            while True:
+                outcome, route = await _dial_attempt(hass, registry, session, attempt, destination, timeout)
+                if outcome.disposition is not DialDisposition.REROUTE:
+                    break
+                session.ensure_live()
+                if attempt.endpoint_id:
+                    registry.release_endpoint_claim(call_id, attempt.endpoint_id)
+                    session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
+                        *session.metadata.get("policy_endpoint_ids", ()), attempt.endpoint_id,
+                    ))))
+                destination = route["destination"]
+                rerouted = resolve_phone_target(
+                    decision=resolve_ha_router(destination, entries), endpoint_registry=runtime.endpoints,
+                    roster_entries=entries, route_resolver=resolve_ha_router,
                 )
-                result = await client.wait_for_final(timeout=timeout)
-            if result != 'in_call' or client.dialog is None:
-                raise ServiceValidationError(f"The destination did not answer: {result}")
+                if rerouted.failure is not None:
+                    raise ServiceValidationError(f"Phone routing failed: {rerouted.failure.decline_reason}")
+                destination = rerouted.decision.target or destination
+                attempt = prepare(destination)
+                client = attempt.client
+                registry.own_resource(
+                    call_id, f'automation_ports:{client.dialog_ids.call_id}', attempt.ports,
+                    lambda _reason, ports=attempt.ports: ports.release(), stage=CleanupStage.RESERVATION,
+                    generation=session.generation,
+                )
+                registry.transition(call_id, owner="automation", state=CallState.CALLING.value,
+                                    callee=destination, dest_endpoint_id=attempt.endpoint_id)
+                session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
+                    *session.metadata.get("policy_endpoint_ids", ()), *rerouted.forwarded_endpoint_ids,
+                ))))
+                registry.add_leg(call_id, client.dialog_ids.call_id, role="callee", state="calling")
+                registry.attach_sip_client(call_id, client.dialog_ids.call_id, client, role="callee", state="calling")
+                if attempt.endpoint_id:
+                    registry.claim_endpoint(call_id, attempt.endpoint_id, role="destination")
+            if outcome.disposition is not DialDisposition.ANSWERED or client.dialog is None:
+                raise ServiceValidationError(f"The destination did not answer: {outcome.reason or outcome.disposition.value}")
             application.require_current()
             # Final SIP acceptance ends ringing even if media preparation
             # needs another event-loop turn. TTS still waits for media.start().
@@ -158,7 +236,7 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                 except Exception:
                     await registry.terminate_call_wait(call_id, reason='signaling_failed')
             watcher = hass.async_create_task(watch())
-            registry.attach_client_watcher(call_id, watcher)
+            registry.attach_client_watcher(client.dialog_ids.call_id, watcher)
             application.require_current()
             # Teardown must cancel preparation before closing its media/ports.
             # Otherwise a remote BYE can leave start() waiting outside the owner.
