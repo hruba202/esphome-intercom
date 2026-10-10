@@ -504,7 +504,8 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
     session = registry.get_session(call_id, generation=execution.token.generation)
     invite = registry.artifact_for(call_id, "pending_invite")
     if (not local_ip or session is None or not session.live
-            or session.owner not in {"ha_softphone", "local_bridge"} or session.state != CallState.RINGING.value):
+            or session.owner not in {"ha_softphone", "local_bridge"}
+            or session.state not in {CallState.RINGING.value, CallState.REMOTE_RINGING.value}):
         raise ServiceValidationError("The triggering call is no longer an unanswered Home Assistant phone call")
     local_source = None
     if session.owner == "local_bridge":
@@ -518,6 +519,14 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
                 require_runtime_data(call.hass).transport_config.get("sip_port", 5060)
             ))
             invite = local_source.invite
+    elif invite is None and session.state == CallState.REMOTE_RINGING.value:
+        from .local_softphone_runtime import PendingLocalSource
+        from .runtime_data import require_runtime_data
+
+        local_source = PendingLocalSource(call.hass, None, local_ip, int(
+            require_runtime_data(call.hass).transport_config.get("sip_port", 5060)
+        ), call_id=call_id)
+        invite = local_source.invite
     if invite is None:
         raise ServiceValidationError("The triggering caller has no media source available")
     revision = session.revision
@@ -531,10 +540,20 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
     if claimed is None:
         raise ServiceValidationError("The call changed while automation control was being acquired")
     registry.set_pending_invite(call_id, invite)
-    application = attach_automation_application(
-        call.hass, session, invite, contact, local_ip, controller=execution.controller,
-        local_source=local_source,
-    )
+    try:
+        if local_source is not None:
+            await local_source.retire_destination()
+        application = attach_automation_application(
+            call.hass, session, invite, contact, local_ip, controller=execution.controller,
+            local_source=local_source,
+        )
+    except BaseException:
+        barrier = registry.request_termination(call_id, TerminationIntent("application_takeover_failed"),
+                                               generation=execution.token.generation)
+        if barrier is not None:
+            from .session_cleanup import async_wait_for_cleanup
+            await async_wait_for_cleanup(barrier)
+        raise
     if endpoint_id and local_source is None:
         if not _release_ha_softphone_claim(call.hass, call_id, endpoint_id=endpoint_id):
             registry.release_endpoint_claim(call_id, endpoint_id)

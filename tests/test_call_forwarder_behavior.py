@@ -47,6 +47,7 @@ def _registry(
             invite if call_id == "call-1" and name == "pending_invite" else None
         ),
         event_context=Mock(return_value=context),
+        resource_for=lambda *_args: None,
     )
 
 

@@ -564,8 +564,11 @@ mode: parallel
 
 Use your own TTS entity. A phone answer that wins the race invalidates the
 unanswered trigger's control, so the automation cannot interrupt that answer.
-This development path does not yet cover taking over every outgoing SIP call
-from a browser or an Automation caller.
+A browser call whose SIP destination is still ringing can use this same rule:
+the outstanding SIP attempt is cancelled before the automation takes over the
+browser caller. The browser keeps its call identity and hangup control. This
+does not take over an already answered conversation or an outgoing Automation
+announcement, whose application owner is already established.
 
 ### `voip_stack.wait_unanswered`
 

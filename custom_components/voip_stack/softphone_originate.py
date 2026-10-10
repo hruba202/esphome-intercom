@@ -915,7 +915,7 @@ async def async_originate_browser_call(
         and route.entry.metadata.get("registered")
     ):
         await _mark_sip_account_unreachable(hass, route.entry.id)
-    public_result = _sip_public_state(result)
+    public_result = CallState.REMOTE_RINGING.value if result == "ringing" else _sip_public_state(result)
     if public_result in {CallState.REMOTE_RINGING.value, CallState.IN_CALL.value}:
         session = observe_outbound_call_result(
             registry, client.dialog_ids.call_id,

@@ -176,6 +176,34 @@ their wire Call-IDs resolve to the original application session.
 The complete HA suite after this increment passed 368 tests; the independent
 fork/controller regression suite passed 20 tests and 4 subtests.
 
+Browser-originated SIP attempts can now hand their real browser source to the
+existing forwarder. The original session retains its generation, caller and
+card media identity. Closing the destination uses `close_leg`, including its
+watcher and CANCEL/late-answer cleanup; no second phone is registered. The same
+source adapter survives consecutive no-answer destinations. Supported targets
+include another SIP endpoint, a local browser and an Automation application.
+Native unanswered TTS actions can also take this browser source directly.
+
+The UDP witnesses cover both RTP directions after SIP forwarding, chained
+timeouts into an Automation contact, caller hangup, late SIP acceptance and
+answer during route resolution. The latter initially left a pending source
+adapter attached after abort; rollback now removes it while keeping the
+answered call intact. Cancellation after retiring a destination uses the
+session's termination barrier to release the caller. Explicit camera intent is
+retained for browser forwarding and SIP video offers; this tests signaling and
+audio fallback, not physical video presentation. Failed replacement routes
+currently require termination rather than resuming a cancelled SIP attempt.
+
+The initial outgoing 180 witness also exposed an older projection mismatch:
+the SIP client returned `ringing`, but the outgoing publisher only recognized
+`remote_ringing`, publishing `calling` before the watcher updated the session.
+The outgoing boundary now converts the result before publishing it. Incoming
+ringing semantics and the shared SIP state vocabulary remain unchanged.
+This increment passed 380 HA tests and the software suite's 1931 tests plus
+162 subtests (4 deselected). The source handoff is covered by twelve browser
+policy scenarios, including camera-intent preservation and cancellation after
+the old SIP leg has closed. No physical device or production HA was changed.
+
 Executed so far:
 
 - Software suite: 1926 tests and 162 subtests passed (4 deselected).

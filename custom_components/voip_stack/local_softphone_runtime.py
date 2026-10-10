@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, callback
@@ -399,33 +400,66 @@ def async_shutdown_local_softphone_bridge(hass: HomeAssistant) -> None:
     runtime.local_bridge_unsub = None
 
 
+@dataclass(frozen=True, slots=True)
+class BrowserSourceIdentity:
+    """The existing browser caller and its current destination, not a new phone."""
+
+    call_id: str
+    caller_endpoint_id: str
+    callee_endpoint_id: str
+    caller_media_owner_id: str
+
+
 class PendingLocalSource:
     """Move a ringing browser source into the existing RTP call owners."""
 
     def __init__(
-        self, hass: HomeAssistant, snapshot: LocalCallSnapshot,
-        local_ip: str, sip_port: int,
+        self, hass: HomeAssistant, snapshot: LocalCallSnapshot | None,
+        local_ip: str, sip_port: int, *, call_id: str = "",
     ) -> None:
         from .core import sdp, sip
         from .sip_listener import SipInvite
 
         self.hass = hass
-        self.call = snapshot
         self.registry = call_registry(hass)
         self.bridge = local_softphone_bridge(hass)
-        session = self.registry.get_session(snapshot.call_id)
-        if session is None or snapshot.callee_state is not LocalCallState.RINGING:
+        self.snapshot = snapshot
+        self.outgoing = snapshot is None
+        self.retired = False
+        session = self.registry.get_session(snapshot.call_id if snapshot else call_id)
+        if session is None or (snapshot is not None and snapshot.callee_state is not LocalCallState.RINGING):
             raise RuntimeError("local call is no longer ringing")
+        if self.outgoing:
+            self.previous_client = self.registry.sip_client_for(call_id)
+            if (session.owner != "ha_softphone" or session.state != "remote_ringing"
+                    or self.previous_client is None or self.previous_client.dialog is not None):
+                raise RuntimeError("outgoing browser call is no longer ringing")
+            self.call = BrowserSourceIdentity(
+                session.call_id, str(session.metadata.get("source_endpoint_id") or ""),
+                str(session.metadata.get("target_endpoint_id") or ""),
+                str(session.metadata.get("source_media_client_id") or session.metadata.get("media_client_id") or ""),
+            )
+        else:
+            self.previous_client = None
+            self.call = BrowserSourceIdentity(snapshot.call_id, snapshot.caller_endpoint_id,
+                                              snapshot.callee_endpoint_id, snapshot.caller_media_owner_id)
+        self.video_requested = bool(self.previous_client.video_formats) if self.outgoing else snapshot.video_requested
+        self.caller_video_send = (
+            self.previous_client.video_direction in {"sendonly", "sendrecv"} and self.video_requested
+            if self.outgoing else snapshot.caller_video_send
+        )
         self.token = session.token
-        self.media = self.registry.resource_for(snapshot.call_id, "softphone_media")
+        self.media = self.registry.resource_for(session.call_id, "softphone_media")
+        if self.outgoing and self.media is None:
+            self.media = {}
         if not isinstance(self.media, dict):
             raise RuntimeError("local call media ownership is missing")
         self.original_media = dict(self.media)
         self.paused = False
         self.committed = False
-        caller = _endpoint(hass, snapshot.caller_endpoint_id)
-        callee = _endpoint(hass, snapshot.callee_endpoint_id)
-        if caller is None or callee is None:
+        caller = _endpoint(hass, self.call.caller_endpoint_id)
+        callee = _endpoint(hass, self.call.callee_endpoint_id)
+        if caller is None or (callee is None and not self.outgoing):
             raise RuntimeError("local phone disappeared during forwarding")
         rtp_format = next(
             fmt for fmt in HA_SIP_PCM_FORMATS
@@ -433,19 +467,25 @@ class PendingLocalSource:
         )
         self.invite = SipInvite(
             source_host=local_ip, source_port=sip_port,
-            request_uri=sip.SipUri(callee.sip_uri_user, local_ip, sip_port),
+            request_uri=sip.SipUri(callee.sip_uri_user if callee else session.callee, local_ip, sip_port),
             caller_uri=sip.SipUri(caller.sip_uri_user, local_ip, sip_port),
-            target=callee.name, caller=caller.name, call_id=snapshot.call_id,
+            target=callee.name if callee else session.callee, caller=caller.name, call_id=session.call_id,
             cseq="1 INVITE", remote_sdp=b"",
             send_format=sdp.audio_format_to_rtp(rtp_format, 96),
             recv_format=sdp.audio_format_to_rtp(rtp_format, 96),
             remote_rtp_host=local_ip, remote_rtp_port=0,
+            video_format=(replace(self.previous_client.video_format, direction=self.previous_client.video_direction)
+                          if self.outgoing and self.previous_client.video_format is not None else None),
+            remote_video_rtp_host=local_ip if self.video_requested else "",
         )
 
     def pause(self) -> None:
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
             raise RuntimeError("local source ended during forwarding")
         session = self.registry.get_session(self.token.call_id)
+        if self.outgoing:
+            self.paused = True
+            return
         observe_phone_leg_projection(
             self.hass, self.registry, session, self.call.callee_endpoint_id, "idle",
             leg_id=f"local:{self.call.callee_endpoint_id}", role="local_phone",
@@ -454,9 +494,23 @@ class PendingLocalSource:
         )
         self.paused = True
 
+    async def retire_destination(self) -> None:
+        """Close the old UAC leg through its owner before using a replacement."""
+        if not self.outgoing or self.retired:
+            return
+        try:
+            await self.registry.close_leg(self.token.call_id, self.previous_client.dialog_ids.call_id,
+                                          reason="forwarded")
+        finally:
+            self.retired = self.registry.sip_client_for(self.previous_client.dialog_ids.call_id) is not self.previous_client
+        if self.call.callee_endpoint_id:
+            self.registry.release_endpoint_claim(self.token.call_id, self.call.callee_endpoint_id)
+
     def stage_media(self, descriptor: dict) -> None:
         self.media.clear()
         self.media.update(descriptor)
+        if self.outgoing and self.registry.resource_for(self.token.call_id, "softphone_media") is not self.media:
+            self.registry.attach_media(self.token.call_id, self.media)
 
     def stage_application_media(self, invite, source_port: int, browser_port: int):
         """Connect the existing browser RTP adapter to a local application."""
@@ -486,6 +540,11 @@ class PendingLocalSource:
         """Adopt a selected browser winner without replacing the caller media."""
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
             raise RuntimeError("local source ended during forwarding")
+        if self.outgoing:
+            self.redirect_browser(endpoint_id, request_video=send_video)
+            self.bridge.answer(self.token.call_id, endpoint_id, media_owner_id,
+                               enable_video_send=send_video)
+            return
         current = self.bridge.require_call(self.token.call_id)
         if current.callee_state is not LocalCallState.RINGING:
             raise RuntimeError("local source was already answered")
@@ -496,14 +555,37 @@ class PendingLocalSource:
         self.bridge.answer(self.token.call_id, endpoint_id, media_owner_id,
                            enable_video_send=send_video)
 
+    def redirect_browser(self, endpoint_id: str, *, request_video: bool | None = None) -> None:
+        """Continue the actual browser caller through the existing local bridge."""
+        if not self.outgoing or not self.retired:
+            raise RuntimeError("previous SIP destination has not been released")
+        self.registry.take_pending_invite(self.token.call_id)
+        self.registry.take_media(self.token.call_id)
+        self.registry.release_endpoint_claim(self.token.call_id, endpoint_id)
+        # The local bridge acquires both endpoint claims synchronously below.
+        # Transfer the caller claim instead of leaving it owned by the old UAC.
+        self.registry.release_endpoint_claim(self.token.call_id, self.call.caller_endpoint_id)
+        start_local_softphone_call(
+            self.hass, self.call.caller_endpoint_id, endpoint_id, call_id=self.token.call_id,
+            caller_owner_id=self.call.caller_media_owner_id, preserve_controller=True,
+            request_video=self.video_requested if request_video is None else request_video,
+            enable_caller_video_send=self.caller_video_send,
+        )
+        self.committed = True
+
     def commit(self, *, keep_media: bool = False) -> None:
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
             raise RuntimeError("local source ended during forwarding")
-        current = self.bridge.require_call(self.token.call_id)
-        if current.callee_state is not LocalCallState.RINGING:
-            raise RuntimeError("local source was already answered")
+        if self.outgoing:
+            if not self.retired:
+                raise RuntimeError("previous SIP destination is still active")
+        else:
+            current = self.bridge.require_call(self.token.call_id)
+            if current.callee_state is not LocalCallState.RINGING:
+                raise RuntimeError("local source was already answered")
         self.registry.claim_endpoint(self.token.call_id, self.call.caller_endpoint_id, role="source")
-        self.bridge.detach_ringing(self.token.call_id)
+        if not self.outgoing:
+            self.bridge.detach_ringing(self.token.call_id)
         self.committed = True
         if not keep_media:
             self.registry.take_media(self.token.call_id)
@@ -513,12 +595,23 @@ class PendingLocalSource:
         session.metadata.update(
             local_bridge=False, endpoint_id=self.call.caller_endpoint_id,
             source_endpoint_id=self.call.caller_endpoint_id,
-            dest_endpoint_id="",
+            dest_endpoint_id="", target_endpoint_id="",
             media_client_id=self.call.caller_media_owner_id,
             source_media_client_id=self.call.caller_media_owner_id,
         )
 
     def resume(self) -> None:
+        if self.outgoing:
+            if self.retired:
+                self.registry.request_termination(
+                    self.token.call_id, TerminationIntent("route_failed", initiator=TerminationInitiator.ROUTING),
+                    generation=self.token.generation,
+                )
+            else:
+                if self.registry.artifact_for(self.token.call_id, "pending_invite") is self.invite:
+                    self.registry.take_pending_invite(self.token.call_id)
+                self.registry.release_resource(self.token.call_id, f"browser_source:{self.token.call_id}", value=self)
+            return
         if (
             self.bridge.get_call(self.token.call_id) is None
             or not self.registry.is_generation_current(self.token.call_id, self.token.generation)
@@ -538,9 +631,9 @@ class PendingLocalSource:
         for endpoint in (self.call.caller_endpoint_id, self.call.callee_endpoint_id):
             self.registry.add_leg(
                 self.token.call_id, f"local:{endpoint}", role="local_phone",
-                state=self.call.state_for(endpoint).value, endpoint_id=endpoint,
+                state=self.snapshot.state_for(endpoint).value, endpoint_id=endpoint,
             )
-            _publish_leg(self.hass, self.call, endpoint)
+            _publish_leg(self.hass, self.snapshot, endpoint)
 
     def connected(self, destination: str, route_kind: str) -> None:
         session = self.registry.get_session(self.token.call_id)

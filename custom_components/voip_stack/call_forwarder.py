@@ -213,7 +213,7 @@ async def async_forward_existing_call(
         )) and call_external_call_denied(access_runtime, call_id):
             raise _service_error("External calls are disabled for this phone", "external_calls_disabled")
 
-    local_source = None
+    local_source = registry.resource_for(call_id, "browser_source")
     invite = registry.artifact_for(call_id, "pending_invite")
     if invite is None:
         from .local_softphone_runtime import local_softphone_bridge
@@ -263,6 +263,19 @@ async def async_forward_existing_call(
                 from .local_softphone_runtime import PendingLocalSource
 
                 local_source = PendingLocalSource(hass, local_call, local_ip, int(cfg["sip_port"]))
+                registry.own_resource(call_id, f"browser_source:{call_id}", local_source, None)
+                invite = local_source.invite
+                registry.set_pending_invite(call_id, invite)
+        if invite is None and context is not None and context.state == CallState.REMOTE_RINGING.value:
+            current = registry.get_session(call_id)
+            if current is not None and current.owner == "ha_softphone" and current.metadata.get("source_endpoint_id"):
+                if on_failure != "terminate":
+                    raise _service_error("Outgoing browser forwarding requires on_failure: terminate",
+                                         "forward_failure_policy_invalid")
+                from .local_softphone_runtime import PendingLocalSource
+
+                local_source = PendingLocalSource(hass, None, local_ip, int(cfg["sip_port"]), call_id=call_id)
+                registry.own_resource(call_id, f"browser_source:{call_id}", local_source, None)
                 invite = local_source.invite
                 registry.set_pending_invite(call_id, invite)
         if invite is None:
@@ -273,11 +286,16 @@ async def async_forward_existing_call(
     if cfg.get(EXTERNAL_CALL_BLOCKED_ENDPOINTS):
         # Reject before cancelling an existing ringing attempt or claiming its
         # route. The normal generation checks below still guard this await.
-        access_peers = await _async_build_peer_snapshot(hass)
-        access_roster = _roster_from_peers(
-            hass, access_peers, _registered_roster_entries(hass)
-        )
-        _check_external_route(runtime.route_resolver.route(destination, access_roster))
+        try:
+            access_peers = await _async_build_peer_snapshot(hass)
+            access_roster = _roster_from_peers(
+                hass, access_peers, _registered_roster_entries(hass)
+            )
+            _check_external_route(runtime.route_resolver.route(destination, access_roster))
+        except BaseException:
+            if local_source is not None:
+                local_source.resume()
+            raise
     artifacts = call_runtime_artifacts(hass)
     call_artifacts = artifacts.artifacts_for(call_id)
     if call_artifacts is None:
@@ -378,7 +396,8 @@ async def async_forward_existing_call(
         application = registry.resource_for(call_id, "automation")
         session_endpoint = browser_phone(
             hass,
-            local_source.call.callee_endpoint_id if local_source is not None else str(
+            (local_source.call.caller_endpoint_id if local_source.outgoing else local_source.call.callee_endpoint_id)
+            if local_source is not None else str(
                 (session.metadata if session is not None else {}).get("endpoint_id")
                 or ""
             ),
@@ -417,6 +436,10 @@ async def async_forward_existing_call(
             )
         )
         if session is not None:
+            if (local_source is not None and local_source.outgoing and not local_source.retired
+                    and local_source.previous_client.dialog is not None):
+                raise _service_error("The original destination already answered", "call_changed_during_operation",
+                                     call_id=call_id)
             session.metadata["automation_resume_ha"] = ha_claimed
             route_already_claimed = bool(
                 session.state == CallState.CONNECTING.value
@@ -433,6 +456,9 @@ async def async_forward_existing_call(
                     expected_revision=session.revision,
                     expected_owner=session.owner,
                     automation_resume_ha=ha_claimed,
+                    **({"dest_endpoint_id": str((decision.entry.metadata if decision.entry else {}).get("endpoint_id") or ""),
+                        "target_endpoint_id": str((decision.entry.metadata if decision.entry else {}).get("endpoint_id") or "")}
+                       if local_source is not None else {}),
                 )
                 if claimed is None:
                     raise _service_error(
@@ -443,6 +469,7 @@ async def async_forward_existing_call(
         else:
             route_already_claimed = False
         if local_source is not None:
+            await local_source.retire_destination()
             local_source.pause()
         elif application is None:
             _release_ha_softphone_claim(
@@ -463,7 +490,7 @@ async def async_forward_existing_call(
                     event_type="forwarding",
                     last_sip_event="ROUTE_FORWARD",
                 )
-    except Exception:
+    except BaseException:
         call_artifacts.forward_claim = False
         if local_source is not None:
             local_source.resume()
@@ -560,6 +587,9 @@ async def async_forward_existing_call(
                     raise RuntimeError("target Home Assistant phone is busy")
                 if endpoint.availability is EndpointAvailability.UNAVAILABLE:
                     raise RuntimeError("target Home Assistant phone is disabled")
+                if local_source is not None and local_source.outgoing:
+                    local_source.redirect_browser(endpoint.endpoint_id)
+                    return
                 session_id = registry.resolve_session_id(call_id)
                 claims = registry.endpoint_claims_for(session_id)
                 target_was_claimed = endpoint.endpoint_id in claims
