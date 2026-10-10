@@ -71,6 +71,7 @@ def entry_runtime_signature(entry: ConfigEntry) -> dict:
         if key not in {
             CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS,
             EXTERNAL_CALL_BLOCKED_ENDPOINTS, CONF_ESPHOME_PHONE_POLICIES,
+            "default_trunk_id",
         }
     }
 
@@ -114,6 +115,9 @@ async def async_config_entry_updated(hass: HomeAssistant, entry: ConfigEntry) ->
     if previous_runtime is not None and previous_runtime != runtime_signature:
         await hass.config_entries.async_reload(entry.entry_id)
         return
+
+    from .trunk_runtime import async_reconcile_trunks
+    await async_reconcile_trunks(hass, entry)
 
     phones_changed = previous_phones is not None and previous_phones != phone_signature
     contacts_changed = (

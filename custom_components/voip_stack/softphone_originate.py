@@ -7,7 +7,7 @@ import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall
 
-from .trunk_policy import external_call_denied, is_trunk_uri, trunk_available
+from .trunk_policy import external_call_denied, is_any_trunk_uri, trunk_available
 from .peer_media_profile import resolve_peer_media_profile
 from .call_projection import publish_phone_projection
 from .core.audio_format import HA_TRUNK_AUDIO_FORMATS
@@ -214,8 +214,11 @@ async def async_originate_browser_call(
     source_device_id = str(getattr(browser_endpoint, "device_id", ""))
     _ha_softphone_store(hass, endpoint_id)["device_id"] = source_device_id
     cfg = _get_transport_config(hass)
-    trunk = sip_trunk(hass)
-    trunk_cfg = _get_trunk_config(hass)
+    from .trunk_selection import select_call_trunk
+
+    trunk_selection = select_call_trunk(hass, requested=str(call.data.get("trunk_id") or ""), endpoint_id=endpoint_id)
+    trunk = trunk_selection.client
+    trunk_cfg = trunk_selection.config
     trunk_ready = _trunk_enabled(trunk_cfg) and bool(
         trunk_available(trunk)
     )
@@ -244,6 +247,8 @@ async def async_originate_browser_call(
     if resolved.decision != route:
         target = resolved.decision.target
     route = resolved.decision
+    if route.reason is RouteReason.TRUNK_UNAVAILABLE:
+        raise _service_error("The selected SIP trunk is unavailable", "trunk_required", destination=target)
     policy_endpoint_ids = getattr(resolved, "forwarded_endpoint_ids", ())
     route, target, browser_destination = await _async_resolve_browser_destination(
         hass,
@@ -253,7 +258,7 @@ async def async_originate_browser_call(
     )
     if external_call_denied(cfg, endpoint_id, *policy_endpoint_ids) and (
         route.action is RouteAction.TRUNK
-        or is_trunk_uri(route.sip_uri, trunk_cfg, getattr(trunk, "active_registrar_target", None))
+        or is_any_trunk_uri(require_runtime_data(hass), route.sip_uri)
     ):
         raise _service_error("External calls are disabled for this phone", "external_calls_disabled")
     if browser_destination is not None:
@@ -279,6 +284,7 @@ async def async_originate_browser_call(
                 caller_owner_id=str(call.data.get("media_client_id") or ""),
                 context=getattr(call, "context", None),
                 **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids else {}),
+                **({"outbound_trunk_id": trunk_selection.identity} if trunk_selection.identity else {}),
             )
         except LocalBridgeError as err:
             raise _service_error(
@@ -362,6 +368,7 @@ async def async_originate_browser_call(
             await start_ring_group(
                 route.entry,
                 **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids else {}),
+                **({"outbound_trunk_id": trunk_selection.identity} if trunk_selection.identity else {}),
                 context=getattr(call, "context", None),
                 endpoint_id=endpoint_id,
                 media_client_id=str(call.data.get("media_client_id") or ""),
@@ -412,6 +419,7 @@ async def async_originate_browser_call(
                 endpoint_id=endpoint_id,
                 source_endpoint_id=endpoint_id,
                 policy_endpoint_ids=policy_endpoint_ids,
+                outbound_trunk_id=trunk_selection.identity,
                 session_device_id=source_device_id,
                 media_client_id=str(call.data.get("media_client_id") or ""),
             )
@@ -807,6 +815,7 @@ async def async_originate_browser_call(
         source_endpoint_id=endpoint_id,
         policy_endpoint_ids=policy_endpoint_ids,
         session_device_id=source_device_id,
+        outbound_trunk_id=trunk_selection.identity,
         media_client_id=str(call.data.get("media_client_id") or ""),
         source_media_client_id=str(call.data.get("media_client_id") or ""),
         target_endpoint_id=(
@@ -881,6 +890,7 @@ async def async_originate_browser_call(
         client,
         role="ha_softphone",
         state=CallState.CALLING.value,
+        trunk_id=trunk_selection.identity if use_trunk else "",
     )
     try:
         result = await client.invite(

@@ -1,11 +1,12 @@
-# Optional SIP trunk
+# SIP trunks
 
-Home Assistant can connect one SIP trunk to a provider or PBX, either with
+Home Assistant can connect named SIP trunks to providers or PBXs, either with
 registration or as a static trunk authorized by source IP. This does not change the local contract: ESP devices remain direct SIP
 phones and do not register to the provider.
 
-When the trunk is disabled, no trunk registration, external outbound routing or
-inbound DTMF collector is started.
+Each trunk has its own connection, credentials and incoming routing settings.
+Disabled trunks do not register or accept new external calls. Local calls work
+without any trunk configured.
 
 ## Which phones may use the trunk?
 
@@ -33,10 +34,11 @@ endpoint identity and media ports:
 - optional SIP/RTP diagnostics
 - optional browser SIP video
 - optional local SIP registrar
-- optional trunk enable switch
 
-Enable the trunk, then choose **Register the trunk**. It is enabled by default
-for existing provider accounts. The following step asks for trunk details:
+After setting up the integration, use **Add SIP trunk** on its integration page.
+Give the line a name, such as Home or Work, and choose **Register the trunk** if
+the provider requires account registration. You can choose one default outgoing
+line. The following step asks for trunk details:
 
 - transport: `udp` or `tcp`; `tls` is available for registered trunks
 - server, port and optional domain
@@ -48,6 +50,57 @@ for existing provider accounts. The following step asks for trunk details:
 - incoming routing mode: Direct or DTMF extension selection
 - optional experimental automation routing override
 - DTMF timeout and optional terminator
+
+Registered trunks are tested before saving. A failed registration leaves the
+previous saved configuration and working connection intact. A successful edit
+adopts the validated connection; it does not send a second concurrent REGISTER.
+Finish active calls before changing a trunk's connection settings. Renaming a
+line or editing incoming routing does not replace its connection.
+
+An existing single trunk is migrated to a named **SIP trunk** entry, retaining
+its credentials, incoming routing and default selection.
+
+### Choose an outgoing line
+
+The selection order is:
+
+1. **Outgoing SIP trunk** in the call or forward action.
+2. The calling phone's **Outgoing SIP trunk** preference under its card options,
+   also configurable with `voip_stack.set_phone_settings`.
+3. The integration's default trunk.
+
+The action editor uses HA's device picker, showing trunk names. It stores a
+stable reference. An unavailable selected line produces an error; a working
+default or another provider is never substituted silently. Internal calls do
+not require a working external line.
+
+Backend announcements can select a trunk as well. Create an Automation contact
+named `Wakeup-Caller` and an external phonebook contact named `Delivery phone`,
+then use:
+
+```yaml
+actions:
+  - action: voip_stack.call
+    data:
+      source_automation: Wakeup-Caller
+      destination: Delivery phone
+      trunk_id: Work
+      answer_timeout: 30
+  - action: voip_stack.tts_say
+    data:
+      tts_entity_id: tts.piper
+      message: "A parcel has arrived."
+  - action: voip_stack.hangup
+```
+
+`Work` is the configured trunk name in this readable example; choose the device
+in HA's editor to retain the selection across renames. Replace `tts.piper` with
+your TTS entity. No browser or ESP caller is needed. The call action waits for
+the remote answer, and the following actions control that execution's call.
+
+During development, explicit per-action ESPHome trunk selection still requires
+the correlated firmware action. Persistent phone preferences apply to calls
+routed through HA; calls made directly to another device IP bypass these rules.
 
 ### Static trunk without REGISTER
 
@@ -80,8 +133,15 @@ not the RTP media addresses negotiated in SDP.
 Calls from a matching source use the existing trunk routing rules. Other sources
 do not acquire trunk privileges; registered phones and ESP endpoints keep their
 existing call paths. Local phonebook destinations, DTMF and automation routing
-continue to use the shared call implementation. This option does not add multiple
-trunks or add a separate routing engine.
+continue to use the shared call implementation. Static trunks using the same
+transport must have non-overlapping incoming source networks, so a request
+cannot accidentally be attributed to two lines.
+
+Registered trunks carry a unique `line` parameter in their Contact URI, as used
+by PJSIP, to distinguish incoming calls when a provider preserves that Contact.
+The source still has to pass its trust checks. If a request matches multiple
+lines and cannot be identified unambiguously, it is rejected. Registration flow
+identity, incoming line identity and the selected outgoing line remain separate.
 
 ### Registered trunk
 

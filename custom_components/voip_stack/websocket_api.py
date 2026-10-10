@@ -735,6 +735,7 @@ def _sip_runtime_snapshot(
         "rtp_relays": {},
         "sip_client_dialogs": {},
         "sip_trunk": {},
+        "sip_trunks": {},
         "sip_registrar": {},
         "media_debug": {},
         "runtime_resources": {},
@@ -825,6 +826,9 @@ def _sip_runtime_snapshot(
                 client_data.get("last_sip_reason") or data["last_sip_reason"]
             )
     trunk = sip_trunk(hass)
+    if detailed:
+        from .runtime_data import sip_trunks
+        data["sip_trunks"] = {identity: dict(client.snapshot()) for identity, client in sip_trunks(hass).items()}
     trunk_snapshot = getattr(trunk, "snapshot", None)
     if callable(trunk_snapshot):
         trunk_data = dict(trunk_snapshot())
@@ -1082,6 +1086,7 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "rtp_relays": runtime["rtp_relays"] if debug_mode else {},
         "sip_client_dialogs": runtime["sip_client_dialogs"] if debug_mode else {},
         "sip_trunk": runtime["sip_trunk"] if debug_mode else {},
+        "sip_trunks": runtime["sip_trunks"] if debug_mode else {},
         **{
             key: _runtime_counter(store, runtime, key)
             for key in _MEDIA_COUNTER_KEYS

@@ -99,12 +99,17 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         raise ServiceValidationError("Select an enabled Automation contact as the calling identity")
     destination = str(call.data['destination']).strip()
     from .inbound_routing.targets import resolve_phone_target
-    from .router import resolve_ha_router
+    from .router import RouteAction, RouteReason, resolve_ha_router
+    from .trunk_selection import select_call_trunk
+    from .config import trunk_identity_uri, trunk_leg_identity
 
-    initial_route = resolve_ha_router(destination, entries)
+    trunk_selection = select_call_trunk(hass, requested=str(call.data.get("trunk_id") or ""))
+    resolve_route = lambda target, roster: resolve_ha_router(target, roster, trunk_ready=trunk_selection.available)
+
+    initial_route = resolve_route(destination, entries)
     resolved = resolve_phone_target(
         decision=initial_route, endpoint_registry=runtime.endpoints,
-        roster_entries=entries, route_resolver=resolve_ha_router,
+        roster_entries=entries, route_resolver=resolve_route,
     )
     if resolved.failure is not None:
         raise ServiceValidationError(f"Phone routing failed: {resolved.failure.decline_reason}")
@@ -121,16 +126,40 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         if dialer.browser_leg_for_member(target, peers, entries) is not None:
             raise ServiceValidationError("Outgoing automation calls currently require a SIP or ESPHome destination")
         uri, _, _ = dialer.sip_uri_for_member(target, peers, entries)
+        route = resolve_route(target, entries)
+        if route.reason is RouteReason.TRUNK_UNAVAILABLE:
+            raise ServiceValidationError("The selected SIP trunk is unavailable")
+        use_trunk = route.action is RouteAction.TRUNK
+        cfg = trunk_selection.config
+        if use_trunk:
+            from .core.sip import SipUri
+
+            if not trunk_selection.available:
+                raise ServiceValidationError("The selected SIP trunk is unavailable")
+            uri = SipUri(route.target or target, cfg["trunk_server"], cfg["trunk_port"],
+                         (("transport", cfg["trunk_transport"]),))
         if uri is None and target.lower().startswith(('sip:', 'sips:')):
             from .core.sip import parse_sip_uri
             uri = parse_sip_uri(target)
-        if uri is None or resolver.is_local_listener_uri(uri) or is_trunk_uri(uri, runtime.trunk_config):
+        if uri is None or resolver.is_local_listener_uri(uri):
             raise ServiceValidationError("Select a reachable SIP account, ESPHome phone or direct SIP address")
+        if not use_trunk and is_trunk_uri(uri, cfg):
+            raise ServiceValidationError("Select an external phonebook number to use the configured trunk")
         candidate = dialer.prepare_outbound_leg(
             member=target, peers=peers, roster_entries=entries,
             local_name=source.display_name, local_rtp_port_index=0,
             uri_override=str(uri),
-            policy=OutboundLegPolicy(local_uri_user=source.extension or source.id, allow_video=False),
+            policy=OutboundLegPolicy(
+                local_uri_user=trunk_leg_identity(cfg, source.extension or source.id) if use_trunk else source.extension or source.id,
+                local_identity_uri=trunk_identity_uri(cfg) if use_trunk else "",
+                username=cfg.get("trunk_username", "") if use_trunk else "",
+                auth_username=cfg.get("trunk_auth_username", "") if use_trunk else "",
+                password=cfg.get("trunk_password", "") if use_trunk else "",
+                outbound_proxy=cfg.get("trunk_outbound_proxy", "") if use_trunk else "",
+                force_common_audio=use_trunk, use_trunk_flow=use_trunk,
+                reuse_registered_flow=not use_trunk, allow_video=False,
+                trunk_id=trunk_selection.identity if use_trunk else "",
+            ),
         )
         if candidate is None:
             raise ServiceValidationError("The destination cannot receive an outgoing automation call")
@@ -147,13 +176,15 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             origin='automation', source_automation=source.id,
             dest_endpoint_id=attempt.endpoint_id,
             policy_endpoint_ids=resolved.forwarded_endpoint_ids,
+            outbound_trunk_id=attempt.trunk_id,
         )
         registry.own_resource(
             call_id, f'automation_ports:{call_id}', attempt.ports,
             lambda _reason, ports=attempt.ports: ports.release(), stage=CleanupStage.RESERVATION,
             generation=session.generation,
         )
-        registry.attach_sip_client(call_id, call_id, client, role='callee', state=CallState.CALLING.value)
+        registry.attach_sip_client(call_id, call_id, client, role='callee', state=CallState.CALLING.value,
+                                   trunk_id=attempt.trunk_id)
         if attempt.endpoint_id:
             registry.claim_endpoint(call_id, attempt.endpoint_id, role='destination')
         application = AutomationCall(
@@ -178,8 +209,8 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                     ))))
                 destination = route["destination"]
                 rerouted = resolve_phone_target(
-                    decision=resolve_ha_router(destination, entries), endpoint_registry=runtime.endpoints,
-                    roster_entries=entries, route_resolver=resolve_ha_router,
+                    decision=resolve_route(destination, entries), endpoint_registry=runtime.endpoints,
+                    roster_entries=entries, route_resolver=resolve_route,
                 )
                 if rerouted.failure is not None:
                     raise ServiceValidationError(f"Phone routing failed: {rerouted.failure.decline_reason}")
@@ -192,12 +223,14 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                     generation=session.generation,
                 )
                 registry.transition(call_id, owner="automation", state=CallState.CALLING.value,
-                                    callee=destination, dest_endpoint_id=attempt.endpoint_id)
+                                    callee=destination, dest_endpoint_id=attempt.endpoint_id,
+                                    outbound_trunk_id=attempt.trunk_id)
                 session.update_metadata(policy_endpoint_ids=tuple(dict.fromkeys((
                     *session.metadata.get("policy_endpoint_ids", ()), *rerouted.forwarded_endpoint_ids,
                 ))))
                 registry.add_leg(call_id, client.dialog_ids.call_id, role="callee", state="calling")
-                registry.attach_sip_client(call_id, client.dialog_ids.call_id, client, role="callee", state="calling")
+                registry.attach_sip_client(call_id, client.dialog_ids.call_id, client, role="callee", state="calling",
+                                           trunk_id=attempt.trunk_id)
                 if attempt.endpoint_id:
                     registry.claim_endpoint(call_id, attempt.endpoint_id, role="destination")
             if outcome.disposition is not DialDisposition.ANSWERED or client.dialog is None:

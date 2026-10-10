@@ -347,7 +347,8 @@ async def route_sip_bridge(
         allow_video_transcoding=video_transcoding_enabled,
     )
     if bridge_to_trunk:
-        reuse_registered_trunk_flow(sip_trunk(hass), client)
+        selected_trunk_id = getattr(decision, "trunk_id", "")
+        reuse_registered_trunk_flow(sip_trunk(hass, selected_trunk_id) if selected_trunk_id else sip_trunk(hass), client)
     else:
         runtime.enable_reused_sip_tcp_connection(
             hass,
@@ -639,6 +640,9 @@ async def route_sip_bridge(
     )
     if session is None:
         return SipInviteResult(487, "Request Terminated", to_tag="")
+    session.update_metadata(inbound_trunk_id=invite.trunk_id,
+                            outbound_trunk_id=getattr(decision, "trunk_id", "") if bridge_to_trunk else "")
+    session.legs[client.dialog_ids.call_id].trunk_id = getattr(decision, "trunk_id", "") if bridge_to_trunk else ""
     _LOGGER.info(
         "SIP bridge registered call_id=%s dest_call_id=%s target=%s",
         invite.call_id,

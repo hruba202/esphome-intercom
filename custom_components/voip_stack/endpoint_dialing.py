@@ -33,7 +33,7 @@ from .peer_media_profile import resolve_peer_media_profile
 from .peer import sip_uri_for_peer
 from .runtime_data import preferred_browser_phone, sip_trunk
 from .trunk_signaling import reuse_registered_trunk_flow
-from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, call_external_call_denied, is_trunk_uri
+from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, call_external_call_denied, is_any_trunk_uri
 from .core.sip import parse_sip_uri
 from .sip_bridge import build_pending_invite_video_relay, video_bridge_offer_formats
 from .sip_client import SipCallClient
@@ -60,6 +60,7 @@ class OutboundLegPolicy:
     reuse_registered_flow: bool = True
     use_trunk_flow: bool = False
     allow_video: bool = True
+    trunk_id: str = ""
 
 
 @dataclass(slots=True)
@@ -167,11 +168,7 @@ class EndpointDialer:
             from .runtime_data import require_runtime_data
 
             access_runtime = require_runtime_data(self.hass)
-            trunk = sip_trunk(self.hass)
-            if (policy.use_trunk_flow or is_trunk_uri(
-                str(uri), access_runtime.trunk_config,
-                getattr(trunk, "active_registrar_target", None),
-            )) and call_external_call_denied(
+            if (policy.use_trunk_flow or is_any_trunk_uri(access_runtime, str(uri))) and call_external_call_denied(
                 access_runtime, invite.call_id if invite is not None else source_call_id
             ):
                 _LOGGER.info("External call denied for group or forward member=%s", member)
@@ -338,7 +335,7 @@ class EndpointDialer:
                 ),
             )
             if policy.use_trunk_flow:
-                reuse_registered_trunk_flow(sip_trunk(self.hass), client)
+                reuse_registered_trunk_flow(sip_trunk(self.hass, policy.trunk_id) if policy.trunk_id else sip_trunk(self.hass), client)
             elif policy.reuse_registered_flow:
                 self.enable_reused_tcp_connection(
                     self.hass,
@@ -363,6 +360,7 @@ class EndpointDialer:
                 order=int(order),
                 video_relay=video_relay,
                 video_failure_reason=video_failure_reason,
+                trunk_id=policy.trunk_id if policy.use_trunk_flow else "",
             )
         except Exception:  # noqa: BLE001
             if video_relay is not None:

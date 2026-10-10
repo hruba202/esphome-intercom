@@ -204,6 +204,14 @@ class CallRuntimeApi:
         """Attach an INVITE to the sole current call owner."""
 
         self._set_artifact(call_id, "pending_invite", invite)
+        session = self.get_session(call_id)
+        if session is not None:
+            inbound = str(getattr(invite, "trunk_id", "") or "")
+            outbound = str(getattr(invite, "outbound_trunk_id", "") or "")
+            if inbound:
+                session.metadata.setdefault("inbound_trunk_id", inbound)
+            if outbound:
+                session.metadata.setdefault("outbound_trunk_id", outbound)
 
     def take_pending_invite(self, call_id: str) -> Any | None:
         """Take an INVITE without mutating a detached compatibility view."""
@@ -682,6 +690,7 @@ class CallRuntimeApi:
         *,
         role: LegRole = "callee",
         state: str = "",
+        trunk_id: str | None = None,
     ) -> None:
         session_id = self.resolve_session_id(str(source_call_id or "").strip())
         session = self.sessions.get(session_id)
@@ -727,6 +736,8 @@ class CallRuntimeApi:
             closer=_close_client,
             generation=session.generation,
         )
+        if trunk_id is not None:
+            session.legs[dest_call_id].trunk_id = trunk_id
 
     def attach_client_watcher(self, call_id: str, task: Any) -> None:
         session_id = self.resolve_session_id(str(call_id or "").strip())

@@ -1,0 +1,216 @@
+"""Named line selection sends real SIP and announcement RTP to the chosen peer."""
+
+import asyncio
+import re
+import socket
+import struct
+
+import pytest
+from homeassistant.core import Context
+from homeassistant.exceptions import ServiceValidationError
+
+from custom_components.voip_stack.config import normalized_trunk_config
+from custom_components.voip_stack.core import rtp, sip
+from custom_components.voip_stack.roster import RosterEntry
+from custom_components.voip_stack.runtime_data import sip_trunk, sip_trunks
+from custom_components.voip_stack.trunk_runtime import async_start_sip_trunk, async_stop_sip_trunk
+
+from .test_automation_originate_ha import lab, dial, tts_fixture
+
+pytestmark = pytest.mark.ha
+
+
+@pytest.fixture
+async def trunks(lab, monkeypatch, request):
+    full_runtime = bool(getattr(request, "param", False))
+    if full_runtime:
+        from unittest.mock import AsyncMock
+        from custom_components.voip_stack import endpoint_runtime, invite_router, peer_snapshot
+        from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
+
+        lab.runtime.sip = lab.calls = SipEndpointRuntime(allow_dark_sessions=True)
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            lab.runtime.transport_config["sip_port"] = probe.getsockname()[1]
+        monkeypatch.setattr(peer_snapshot, "async_build_peer_snapshot", AsyncMock(return_value=[]))
+        monkeypatch.setattr(endpoint_runtime, "_roster_from_peers", lambda *_args: lab.roster)
+        monkeypatch.setattr(invite_router, "_roster_from_peers", lambda *_args: lab.roster)
+        assert await endpoint_runtime.async_start_sip_endpoint(lab.hass)
+    configs = {}
+    for index, identity in enumerate(("home", "work")):
+        phone = lab.phones[index]
+        original = phone.datagram_received
+
+        def receive(raw, address, phone=phone, original=original):
+            request = sip.parse_message(raw)
+            if request.method != "REGISTER":
+                original(raw, address)
+                return
+            headers = [(key, request.header(key)) for key in ("Via", "From", "To", "Call-ID", "CSeq", "Contact", "Expires")]
+            phone.transport.sendto(sip.build_response(200, "OK", headers), address)
+
+        monkeypatch.setattr(phone, "datagram_received", receive)
+        configs[identity] = normalized_trunk_config({
+            "trunk_enabled": True, "trunk_register": True, "trunk_server": "127.0.0.1",
+            "trunk_port": phone.transport.get_extra_info("sockname")[1],
+            "trunk_username": identity, "trunk_password": "test-only",
+        })
+    lab.runtime.trunk_configs = configs
+    lab.runtime.default_trunk_id = "home"
+    lab.runtime.trunk_config = configs["home"]
+    lab.roster.append(RosterEntry("External", number="12345"))
+    await async_start_sip_trunk(lab.hass, local_ip="127.0.0.1")
+    try:
+        assert all(await asyncio.gather(*(client.wait_for_registration(timeout=2) for client in sip_trunks(lab.hass).values())))
+        yield lab
+    finally:
+        await async_stop_sip_trunk(lab.hass)
+        if full_runtime:
+            await endpoint_runtime.async_stop_sip_endpoint(lab.hass)
+
+
+@pytest.mark.parametrize("identity,index", [("home", 0), ("work", 1)])
+async def test_automation_announcement_uses_selected_trunk_and_preserves_registration(trunks, monkeypatch, identity, index):
+    lab = trunks
+    stream = tts_fixture(monkeypatch, lab)
+    context = Context()
+    result = await dial(lab, context, destination="External", trunk_id=identity)
+    session = lab.calls.get_session(result["call_id"])
+    assert session.metadata["outbound_trunk_id"] == identity
+    assert len(lab.phones[index].invites) == 1
+    assert not lab.phones[1 - index].invites
+    assert lab.phones[index].invites[0].uri.startswith("sip:12345@")
+    await lab.hass.services.async_call("voip_stack", "tts_say", {
+        "tts_entity_id": "tts.test", "message": "Wake up",
+    }, blocking=True, context=context)
+    await lab.hass.services.async_call("voip_stack", "hangup", {}, blocking=True, context=context)
+    assert len(stream.calls) == 1
+    voiced = []
+    while not lab.phones[index].audio.empty():
+        raw, _ = lab.phones[index].audio.get_nowait()
+        packet = rtp.parse_packet(raw)
+        if any(packet.payload):
+            voiced.append(packet.payload)
+    assert b"".join(voiced) == b"\x01\x80" * 960
+    assert lab.phones[index].bye.is_set()
+    assert not lab.calls.sessions
+    assert all(client.ready and not client._outbound_dialogs for client in sip_trunks(lab.hass).values())
+
+
+async def test_unavailable_selected_trunk_never_dials_the_healthy_default(trunks):
+    lab = trunks
+    await sip_trunk(lab.hass, "work").stop()
+    assert sip_trunk(lab.hass, "home").ready
+    with pytest.raises(ServiceValidationError, match="unavailable"):
+        await dial(lab, Context(), destination="External", trunk_id="work")
+    assert not any(phone.invites for phone in lab.phones)
+    assert not lab.calls.sessions
+
+
+@pytest.mark.parametrize("override,index", [("", 1), ("home", 0)])
+async def test_browser_phone_preference_and_explicit_override_dial_the_selected_line(trunks, monkeypatch, override, index):
+    from unittest.mock import AsyncMock
+    from homeassistant.core import ServiceCall, callback
+    from custom_components.voip_stack import softphone_originate
+    from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpoint
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.phone_control import CallControlRequest, PhoneOperation
+    from custom_components.voip_stack.roster import dump_roster_json
+    from custom_components.voip_stack.websocket_api import CALL_EVENT
+
+    lab = trunks
+    phone = PhoneEndpoint(endpoint_id="browser", name="Browser", kind=EndpointKind.BROWSER,
+                          device_id="browser-device", availability="available",
+                          policy=PhonePolicy(outbound_trunk_id="work"))
+    lab.runtime.endpoints.register(phone)
+    lab.hass.states.async_set("sensor.voip_phonebook", "3", {"roster_json": dump_roster_json(lab.roster)})
+    monkeypatch.setattr(softphone_originate, "_ha_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    monkeypatch.setattr(softphone_originate, "_resolve_target_device", AsyncMock(return_value=None))
+    connected = asyncio.Event()
+
+    @callback
+    def observe(event):
+        if event.data.get("state") == "in_call" and event.data.get("endpoint_id") == "browser":
+            connected.set()
+
+    unsubscribe = lab.hass.bus.async_listen(CALL_EVENT, observe)
+    try:
+        call = ServiceCall(lab.hass, "voip_stack", "call", {
+            "device_id": "browser-device", "destination": "External", "trunk_id": override,
+        })
+        await softphone_originate.async_originate_browser_call(call, endpoint_id="browser", browser_endpoint=phone)
+        await asyncio.wait_for(connected.wait(), 2)
+        assert len(lab.phones[index].invites) == 1
+        assert not lab.phones[1 - index].invites
+        call_id = lab.phones[index].invites[0].header("Call-ID")
+        session = lab.calls.get_session(call_id)
+        assert session.metadata["outbound_trunk_id"] == ("home" if index == 0 else "work")
+        await lab.runtime.phones.control(
+            ServiceCall(lab.hass, "voip_stack", "hangup", {"device_id": "browser-device", "call_id": call_id}),
+            PhoneOperation.HANGUP, CallControlRequest(call_id=call_id),
+        )
+        assert not lab.calls.sessions
+        assert all(client.ready for client in sip_trunks(lab.hass).values())
+    finally:
+        unsubscribe()
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_duplex_rtp(trunks):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpoint
+    from custom_components.voip_stack.phone_policy import PhonePolicy
+    from custom_components.voip_stack.sip_client import SipCallClient
+    from custom_components.voip_stack.sip_udp_io import SipDatagramQueueProtocol
+
+    lab = trunks
+    lab.runtime.endpoints.register(PhoneEndpoint(
+        endpoint_id="source", name="Source", username="source", kind=EndpointKind.SIP_ACCOUNT,
+        availability="available", policy=PhonePolicy(outbound_trunk_id="work"),
+    ))
+    lab.roster.append(RosterEntry("source", address="127.0.0.2", metadata={"endpoint_id": "source"}))
+    audio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    audio.bind(("127.0.0.2", 0))
+    audio.setblocking(False)
+    client = SipCallClient(local_ip="127.0.0.2", local_name="Source", local_uri_user="source",
+                           local_sip_port=5060, local_rtp_port=audio.getsockname()[1],
+                           supported_formats=[AudioFormat(sample_rate=16000, frame_ms=20)])
+    # Bind the independent phone to another loopback IP, outside the providers'
+    # trusted source address. Signaling and all call state use the real client.
+    client.transport, client.protocol = await lab.hass.loop.create_datagram_endpoint(
+        lambda: SipDatagramQueueProtocol(client.queue), local_addr=("127.0.0.2", 0),
+    )
+    client.local_sip_port = client.transport.get_extra_info("sockname")[1]
+    try:
+        result = await client.invite(target="External", remote_host="127.0.0.1",
+                                     remote_sip_port=lab.runtime.transport_config["sip_port"], timeout=3)
+        if result == "ringing":
+            result = await client.wait_for_final(timeout=3)
+        assert result == "in_call"
+        assert not lab.phones[0].invites and len(lab.phones[1].invites) == 1
+        session = lab.calls.get_session(client.dialog_ids.call_id)
+        assert session.metadata["outbound_trunk_id"] == "work"
+        dialog = client.dialog
+        async with asyncio.timeout(3):
+            for index in range(3):
+                packet = rtp.build_packet(rtp.RtpPacket(dialog.send_format.payload_type, index, index * 320,
+                    901, struct.pack("!320h", *([2000] * 320))))
+                await lab.hass.loop.sock_sendto(audio, packet, (dialog.remote_rtp_host, dialog.remote_rtp_port))
+            received, _ = await lab.phones[1].audio.get()
+            assert set(struct.unpack("!320h", rtp.parse_packet(received).payload)) == {2000}
+            peer_port = int(re.search(rb"m=audio (\d+)", lab.phones[1].invites[0].body)[1])
+            response = rtp.build_packet(rtp.RtpPacket(lab.phones[1].payload_type, 0, 0, 902,
+                                                      struct.pack("!320h", *([3000] * 320))))
+            await lab.hass.loop.sock_sendto(lab.phones[1].rtp_socket, response, ("127.0.0.1", peer_port))
+            returned = rtp.parse_packet(await lab.hass.loop.sock_recv(audio, 4096))
+            assert set(struct.unpack("!320h", returned.payload)) == {3000}
+        assert client.bye()
+        await asyncio.wait_for(session.termination_started.wait(), 3)
+        barrier = lab.calls.request_termination(session.call_id, session.termination_intent)
+        if barrier is not None:
+            await barrier
+        assert not lab.calls.sessions
+        assert all(trunk.ready for trunk in sip_trunks(lab.hass).values())
+    finally:
+        await client.close()
+        audio.close()

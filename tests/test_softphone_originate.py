@@ -78,6 +78,11 @@ def softphone_originate(monkeypatch):
     monkeypatch.setitem(sys.modules, "homeassistant.exceptions", exceptions)
 
     dependencies = {
+        "trunk_selection": {
+            "select_call_trunk": lambda hass, **_kwargs: SimpleNamespace(
+                identity="", config=module._get_trunk_config(hass), client=module.sip_trunk(hass),
+            ),
+        },
         "inbound_routing.targets": {
             # This suite isolates origination; real registry/dial-plan policy
             # decisions are exercised by test_phone_routing_ha.py.
@@ -171,7 +176,7 @@ def softphone_originate(monkeypatch):
         },
         "router": {
             "RouteAction": _RouteAction,
-            "RouteReason": SimpleNamespace(DIRECT_URI="direct_uri"),
+            "RouteReason": SimpleNamespace(DIRECT_URI="direct_uri", TRUNK_UNAVAILABLE="trunk_unavailable"),
             "ha_uri_for": Mock(),
             "resolve_ha_router": Mock(),
         },
@@ -305,7 +310,7 @@ def test_browser_to_browser_uses_local_bridge_before_network(
         supports=Mock(return_value=True),
     )
     destination_endpoint = SimpleNamespace(endpoint_id="test", name="Test")
-    route = SimpleNamespace(action=_RouteAction.ANSWER_HA, entry=object())
+    route = SimpleNamespace(action=_RouteAction.ANSWER_HA, entry=object(), reason=None)
     softphone_originate._require_phone_service_control = AsyncMock()
     softphone_originate._get_transport_config = Mock(
         return_value={"video_camera_send": True}
@@ -464,9 +469,10 @@ def test_restricted_browser_rejects_trunk_before_call_start(softphone_originate,
     module = softphone_originate
     hass = SimpleNamespace(data={"voip_stack": {}}, states=SimpleNamespace(get=lambda _: None))
     source = SimpleNamespace(endpoint_id="caller", device_id="browser", availability=_Availability.AVAILABLE)
-    route = SimpleNamespace(action=action, sip_uri=uri, entry=None)
+    route = SimpleNamespace(action=action, sip_uri=uri, entry=None, reason=None)
     module._get_transport_config = Mock(return_value={"external_call_blocked_endpoints": ["caller"]})
     module._get_trunk_config = Mock(return_value={"trunk_server": "provider.example"})
+    hass.runtime = SimpleNamespace(trunk_configs={}, trunk_config=module._get_trunk_config(hass), sip=None)
     module.resolve_ha_router = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, "441234567890", None))
     module._async_prepare_ha_outbound_call = AsyncMock()

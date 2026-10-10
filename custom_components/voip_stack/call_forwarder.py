@@ -127,6 +127,7 @@ async def async_forward_existing_call(
     expected_state: str = "",
     expected_sequence: int = 0,
     initial_selection: bool = False,
+    trunk_id: str = "",
 ) -> None:
     """Route or move one HA-owned pending/ringing call to a target.
 
@@ -192,6 +193,7 @@ async def async_forward_existing_call(
             "expected_state": expected_state, "expected_sequence": expected_sequence,
         })
         return
+    route_resolver = runtime.route_resolver.for_call(call_id, trunk_id=trunk_id)
     if context is not None and len(context.route_history) >= 8:
         raise _service_error(
             f"call_id {call_id} exceeded 8 routing hops",
@@ -203,13 +205,12 @@ async def async_forward_existing_call(
     def _check_external_route(decision):
         if not cfg.get(EXTERNAL_CALL_BLOCKED_ENDPOINTS):
             return
-        from .runtime_data import require_runtime_data, sip_trunk
+        from .runtime_data import require_runtime_data
+        from .trunk_policy import is_any_trunk_uri
 
         access_runtime = require_runtime_data(hass)
-        trunk = sip_trunk(hass)
-        if (decision.action is RouteAction.TRUNK or is_trunk_uri(
-            decision.sip_uri, access_runtime.trunk_config,
-            getattr(trunk, "active_registrar_target", None),
+        if (decision.action is RouteAction.TRUNK or is_any_trunk_uri(
+            access_runtime, decision.sip_uri,
         )) and call_external_call_denied(access_runtime, call_id):
             raise _service_error("External calls are disabled for this phone", "external_calls_disabled")
 
@@ -229,7 +230,7 @@ async def async_forward_existing_call(
                     "call_changed_during_operation", call_id=call_id,
                 )
             roster_entries = _roster_from_peers(hass, peers, _registered_roster_entries(hass))
-            decision = runtime.route_resolver.route(destination, roster_entries)
+            decision = route_resolver.route(destination, roster_entries)
             _check_external_route(decision)
             target = runtime.route_resolver.logical_endpoint(
                 decision.target or destination, peers, roster_entries,
@@ -269,9 +270,6 @@ async def async_forward_existing_call(
         if invite is None and context is not None and context.state == CallState.REMOTE_RINGING.value:
             current = registry.get_session(call_id)
             if current is not None and current.owner == "ha_softphone" and current.metadata.get("source_endpoint_id"):
-                if on_failure != "terminate":
-                    raise _service_error("Outgoing browser forwarding requires on_failure: terminate",
-                                         "forward_failure_policy_invalid")
                 from .local_softphone_runtime import PendingLocalSource
 
                 local_source = PendingLocalSource(hass, None, local_ip, int(cfg["sip_port"]), call_id=call_id)
@@ -291,7 +289,7 @@ async def async_forward_existing_call(
             access_roster = _roster_from_peers(
                 hass, access_peers, _registered_roster_entries(hass)
             )
-            _check_external_route(runtime.route_resolver.route(destination, access_roster))
+            _check_external_route(route_resolver.route(destination, access_roster))
         except BaseException:
             if local_source is not None:
                 local_source.resume()
@@ -340,7 +338,7 @@ async def async_forward_existing_call(
             peers,
             _registered_roster_entries(hass),
         )
-        decision = runtime.route_resolver.route(destination, roster_entries)
+        decision = route_resolver.route(destination, roster_entries)
         _check_external_route(decision)
         if decision.action is RouteAction.ANSWER_HA:
             target_browser_endpoint = runtime.route_resolver.logical_endpoint(
@@ -422,6 +420,7 @@ async def async_forward_existing_call(
             )
         session_device_id = session_endpoint.device_id if session_endpoint is not None else ""
         original_callee = session.callee if session is not None else invite.target
+        original_trunk_id = str(session.metadata.get("outbound_trunk_id") or "") if session is not None else ""
         original_route_kind = session.route_kind if session is not None else ""
         # A trunk call is already SIP-answered while its DTMF/automation
         # route is being selected.  It has not populated the HA softphone
@@ -456,6 +455,7 @@ async def async_forward_existing_call(
                     expected_revision=session.revision,
                     expected_owner=session.owner,
                     automation_resume_ha=ha_claimed,
+                    **({"outbound_trunk_id": decision.trunk_id} if getattr(decision, "trunk_id", "") else {}),
                     **({"dest_endpoint_id": str((decision.entry.metadata if decision.entry else {}).get("endpoint_id") or ""),
                         "target_endpoint_id": str((decision.entry.metadata if decision.entry else {}).get("endpoint_id") or "")}
                        if local_source is not None else {}),
@@ -504,8 +504,8 @@ async def async_forward_existing_call(
         resume_callee=original_callee,
         resume_route_kind=original_route_kind,
         transition_resume=session is not None,
-        resume_owner="local_bridge" if local_source is not None else "automation" if application else "ha_softphone",
-        resume_state="in_call" if application and application.answered else "ringing",
+        resume_owner=("router" if local_source.outgoing else "local_bridge") if local_source is not None else "automation" if application else "ha_softphone",
+        resume_state="remote_ringing" if local_source is not None and local_source.outgoing else "in_call" if application and application.answered else "ringing",
         publish_resume=application.resume if application else partial(
             runtime.publish_pending_ringing,
             invite,
@@ -519,7 +519,9 @@ async def async_forward_existing_call(
         else None,
     )
     if local_source is not None:
-        forward_abort.publish_resume = local_source.resume
+        forward_abort.publish_resume = lambda: local_source.resume(
+            redial=local_source.outgoing, destination=original_callee, trunk_id=original_trunk_id,
+        )
 
     async def _commit_source_answer(
         answer_sdp: str,
@@ -1075,7 +1077,8 @@ async def async_forward_existing_call(
             bridge_to_trunk = decision.action is RouteAction.TRUNK
             target = decision.target or destination
             if bridge_to_trunk:
-                trunk_cfg = _get_trunk_config(hass)
+                selected_trunk_id = getattr(decision, "trunk_id", "")
+                trunk_cfg = _get_trunk_config(hass, trunk_id=selected_trunk_id) if selected_trunk_id else _get_trunk_config(hass)
                 uri_override = (
                     f"sip:{target}@{trunk_cfg[CONF_TRUNK_SERVER]}:"
                     f"{int(trunk_cfg[CONF_TRUNK_PORT])};"
@@ -1124,7 +1127,9 @@ async def async_forward_existing_call(
             video_transcoding_enabled = bool(
                 forward_video_enabled and cfg.get(CONF_VIDEO_TRANSCODING, False)
             )
-            trunk_cfg = _get_trunk_config(hass) if bridge_to_trunk else {}
+            selected_trunk_id = getattr(decision, "trunk_id", "")
+            trunk_cfg = ((_get_trunk_config(hass, trunk_id=selected_trunk_id) if selected_trunk_id else _get_trunk_config(hass))
+                         if bridge_to_trunk else {})
             direct_winner = runtime.prepare_outbound_leg(
                 member=target,
                 peers=peers,
@@ -1166,6 +1171,7 @@ async def async_forward_existing_call(
                     force_common_audio=bridge_to_trunk,
                     reuse_registered_flow=not bridge_to_trunk,
                     use_trunk_flow=bridge_to_trunk,
+                    trunk_id=selected_trunk_id if bridge_to_trunk else "",
                     allow_video=forward_video_enabled,
                 ),
             )
@@ -1175,6 +1181,8 @@ async def async_forward_existing_call(
                 )
             bridge_uri = direct_winner.uri
             client = direct_winner.client
+            if session is not None and bridge_to_trunk:
+                session.update_metadata(outbound_trunk_id=selected_trunk_id)
             video_relay = direct_winner.video_relay
             video_failure_reason = direct_winner.video_failure_reason
             result = await client.invite(

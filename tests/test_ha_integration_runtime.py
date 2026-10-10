@@ -1092,7 +1092,7 @@ async def test_retired_native_phones_migrate_without_removing_supported_phones(h
     )
 
     assert await async_migrate_entry(hass, entry)
-    assert entry.version == 6 and entry.minor_version == 2
+    assert entry.version == 6 and entry.minor_version == 3
     assert dict(entry.data) == {"sip_port": 5060}
     assert set(entry.subentries) == {children[k].subentry_id for k in ("browser", "sip_account")}
     assert registry.async_get_entity_id("sensor", DOMAIN, "companion") is None

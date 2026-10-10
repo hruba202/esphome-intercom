@@ -165,6 +165,7 @@ class CallLeg:
     state: str = ""
     local_uri: str = ""
     remote_uri: str = ""
+    trunk_id: str = ""
     closer: AsyncCloser | None = field(default=None, repr=False)
     _close_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 

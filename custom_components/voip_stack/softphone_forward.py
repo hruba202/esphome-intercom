@@ -90,4 +90,5 @@ async def async_forward_browser_call(call: ServiceCall) -> None:
         on_failure=str(data.get("on_failure") or "resume"),
         expected_state=str(data.get("expected_state") or ""),
         expected_sequence=int(data.get("expected_sequence") or 0),
+        **({"trunk_id": str(data["trunk_id"])} if data.get("trunk_id") else {}),
     )

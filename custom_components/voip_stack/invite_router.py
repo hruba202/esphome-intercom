@@ -101,6 +101,9 @@ async def route_invite(
     local_ip = runtime.local_ip
     registrar = runtime.registrar
     _get_trunk_config = runtime.get_trunk_config
+    def _get_inbound_trunk_config(hass):
+        return (_get_trunk_config(hass, trunk_id=invite.trunk_id)
+                if invite.trunk_id else _get_trunk_config(hass))
     _trunk_enabled = runtime.trunk_enabled
     _is_trunk_invite = runtime.is_trunk_invite
     _is_ha_target = runtime.is_ha_target
@@ -167,6 +170,8 @@ async def route_invite(
         or local_ha_origin
     )
     decision = _inbound_route_decision(invite, peers, roster_entries)
+    if getattr(decision, "trunk_id", ""):
+        invite = replace(invite, outbound_trunk_id=decision.trunk_id)
     if not caller_is_trusted_endpoint and decision.action is RouteAction.TRUNK:
         _LOGGER.warning(
             "SIP unauthenticated trunk route rejected caller=%s source=%s:%s target=%s",
@@ -182,7 +187,7 @@ async def route_invite(
             decline_reason="unauthenticated_trunk",
         )
     if trunk_invite:
-        trunk_cfg = _get_trunk_config(hass)
+        trunk_cfg = _get_inbound_trunk_config(hass)
         dtmf_timeout_ms = max(0, int(trunk_cfg.get(CONF_TRUNK_DTMF_TIMEOUT_MS) or 0))
         dtmf_preanswer = bool(
             trunk_cfg.get(CONF_TRUNK_INBOUND_MODE) == TRUNK_INBOUND_MODE_DTMF
@@ -276,7 +281,7 @@ async def route_invite(
         trunk_result = prepare_trunk_preanswer(
             runtime=runtime,
             invite=invite,
-            trunk_config=_get_trunk_config(hass),
+            trunk_config=_get_inbound_trunk_config(hass),
             direct_route_preprocessed=trunk_direct_preprocessed,
             registry=registry,
         )
@@ -297,7 +302,7 @@ async def route_invite(
         native_override=native_override,
         caller_is_trusted_endpoint=caller_is_trusted_endpoint,
         automation_routing_enabled=native_override or bool(
-            _get_trunk_config(hass).get(
+            _get_inbound_trunk_config(hass).get(
                 CONF_AUTOMATION_ROUTING_ENABLED,
                 False,
             )
@@ -414,8 +419,9 @@ async def route_invite(
             or invite.target
         ).strip()
 
-    trunk_cfg = _get_trunk_config(hass)
-    trunk = sip_trunk(hass)
+    selected_trunk_id = getattr(decision, "trunk_id", "") or invite.outbound_trunk_id
+    trunk_cfg = _get_trunk_config(hass, trunk_id=selected_trunk_id) if selected_trunk_id else _get_trunk_config(hass)
+    trunk = sip_trunk(hass, selected_trunk_id) if selected_trunk_id else sip_trunk(hass)
     trunk_ready = _trunk_enabled(trunk_cfg) and bool(
         trunk_available(trunk)
     )

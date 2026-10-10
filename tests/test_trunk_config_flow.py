@@ -2,14 +2,18 @@
 from unittest.mock import Mock
 
 import pytest
-from custom_components.voip_stack.config_flow import VoipStackConfigFlow
+from custom_components.voip_stack.config_flow import TrunkFormMixin, VoipStackConfigFlow
+
+
+class TrunkForm(TrunkFormMixin, VoipStackConfigFlow):
+    """Isolate form schema tests from network registration validation."""
 
 pytestmark = pytest.mark.ha
 
 
 @pytest.mark.asyncio
 async def test_mode_switch_hides_registration_expiry_and_requires_source_acl(hass):
-    flow = VoipStackConfigFlow()
+    flow = TrunkForm()
     flow.hass = hass
     flow._current_entry_data = lambda: (None, {})
     form = await flow.async_step_trunk_mode()
@@ -36,7 +40,7 @@ async def test_mode_switch_hides_registration_expiry_and_requires_source_acl(has
 
 @pytest.mark.asyncio
 async def test_empty_or_unrestricted_acl_cannot_be_saved(hass):
-    flow = VoipStackConfigFlow()
+    flow = TrunkForm()
     flow.hass = hass
     flow._current_entry_data = lambda: (None, {})
     form = await flow.async_step_trunk_mode({"trunk_register": False})

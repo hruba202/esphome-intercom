@@ -226,6 +226,81 @@
         "invalid_contact": "Eindeutigen Namen und eindeutige Nebenstelle verwenden. Ein normaler Kontakt benötigt eine Rufnummer oder SIP-Adresse; ein Automationskontakt darf diese nicht enthalten.",
         "invalid_sip_profile": "Ein gültiges SIP-Profil auswählen. Explizite Dahua-Audiooptionen erfordern das Dahua-Profil. Automationskontakte können keine Geräteprofile verwenden."
       }
+    },
+    "trunk": {
+      "entry_type": "SIP-Trunk",
+      "initiate_flow": {
+        "user": "SIP-Trunk hinzufügen"
+      },
+      "title": "SIP-Trunk",
+      "step": {
+        "user": {
+          "title": "SIP-Trunk",
+          "description": "Gib der Leitung einen Namen und wähle aus, ob der Anbieter eine Registrierung verlangt.",
+          "data": {
+            "name": "Name",
+            "trunk_enabled": "Diesen Trunk aktivieren",
+            "trunk_register": "Trunk registrieren",
+            "make_default": "Als Standard für ausgehende Anrufe verwenden"
+          },
+          "data_description": {
+            "make_default": "Wird verwendet, wenn weder die Anrufaktion noch das anrufende Telefon einen Trunk auswählt. Ein nicht verfügbarer ausgewählter Trunk wird niemals automatisch durch eine andere Leitung ersetzt."
+          }
+        },
+        "trunk": {
+          "title": "Optionaler SIP-Trunk",
+          "description": "Home Assistant mit einem Anbieter oder einer Telefonanlage verbinden. Eingehende Anrufe folgen den konfigurierten Regeln und optionalen Automationen.",
+          "data": {
+            "trunk_transport": "Trunk-SIP-Transport",
+            "trunk_server": "Trunk-Server",
+            "trunk_port": "Trunk-SIP-Port",
+            "trunk_domain": "Trunk-Domäne",
+            "trunk_username": "Trunk-Benutzername",
+            "trunk_auth_username": "Auth-Benutzername",
+            "trunk_password": "Passwort",
+            "trunk_register_expires": "REGISTER-Ablaufzeit",
+            "trunk_outbound_proxy": "Ausgehender Proxy",
+            "trunk_inbound_default_target": "Fallback-Ziel",
+            "trunk_inbound_mode": "Bearbeitung eingehender Anrufe",
+            "automation_routing_enabled": "Erlauben Sie Automatisierungen, das eingehende Ziel auszuwählen",
+            "trunk_dtmf_timeout_ms": "DTMF-Timeout (Sekunden)",
+            "trunk_dtmf_terminator": "DTMF-Terminator",
+            "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen"
+          },
+          "data_description": {
+            "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
+            "trunk_server": "Anbieter-Registrar/Proxy-Host.",
+            "trunk_port": "SIP-Port des Anbieters, normalerweise 5060.",
+            "trunk_domain": "Optionaler SIP-Bereich/Domäne. Wenn leer, wird standardmäßig der Trunk-Server verwendet.",
+            "trunk_username": "SIP-Kontobenutzer und Standardbenutzer für eingehende Anforderungs-URI.",
+            "trunk_auth_username": "Digest-Authentifizierungsbenutzername, wenn dieser vom SIP-Benutzernamen abweicht.",
+            "trunk_password": "Digest-Authentifizierungskennwort.",
+            "trunk_register_expires": "REGISTER-Ablauf in Sekunden.",
+            "trunk_outbound_proxy": "Optionaler Proxy-Host oder sip:host:port, der als nächster Signalisierungs-Hop verwendet wird.",
+            "trunk_inbound_default_target": "Beim sofortigen Routing nur verwendet, wenn das angerufene Ziel nicht im Telefonbuch steht. DTMF-Auswahl und Routing-Automationen können ein anderes Ziel wählen.",
+            "trunk_inbound_mode": "Route überspringt sofort die Ziffernerfassung. Beim Sammeln der Nebenstelle mit DTMF wird zunächst die Amtsleitung beantwortet, und durch explizite Ziffern kann eine Telefonbuch-Nebenstelle ausgewählt werden.",
+            "automation_routing_enabled": "Veröffentlichen Sie vor der Verwendung des Fallback-Ziels eine kurze Routing-Anfrage, die möglicherweise von einer Automatisierung beantwortet wird. Explizite DTMF-Ziffern behalten immer Vorrang.",
+            "trunk_dtmf_timeout_ms": "Zeitüberschreitung zwischen Ziffern, die im DTMF-Modus verwendet wird. Die erste Ziffer darf 10 Sekunden lang sein. Der Standardwert beträgt 3 Sekunden, der Höchstwert 10 Sekunden.",
+            "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
+            "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich."
+          }
+        }
+      },
+      "error": {
+        "trunk_server_required": "Trunk-Server ist erforderlich.",
+        "trunk_username_required": "Trunk-Benutzername ist erforderlich.",
+        "trunk_password_required": "Trunk-Passwort ist erforderlich.",
+        "trunk_allowed_ips_invalid": "Mindestens eine gültige IP oder ein CIDR-Netz eingeben. Uneingeschränkte /0-Netze sind nicht erlaubt.",
+        "invalid_name": "Gib einen Namen mit 1 bis 128 Zeichen ein.",
+        "duplicate_name": "Wähle einen anderen Trunk-Namen.",
+        "advertise_ip_unknown": "Konfiguriere vor dem Hinzufügen dieses Trunks die angekündigte SIP-Adresse.",
+        "trunk_in_use": "Beende Anrufe über diesen Trunk, bevor du seine Verbindungseinstellungen änderst.",
+        "trunk_registration_failed": "Registrierung fehlgeschlagen. Prüfe Server, Transport und Zugangsdaten. Die gespeicherte Konfiguration wurde nicht geändert.",
+        "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben."
+      },
+      "abort": {
+        "reconfigure_successful": "Trunk-Konfiguration aktualisiert."
+      }
     }
   },
   "selector": {
@@ -509,6 +584,9 @@
     "binary_sensor": {
       "phone_endpoint_connectivity": {
         "name": "Konnektivität"
+      },
+      "trunk_ready": {
+        "name": "Bereit"
       }
     }
   },

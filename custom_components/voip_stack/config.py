@@ -72,6 +72,11 @@ def entry_transport_config(entry: ConfigEntry | None = None) -> dict:
 
 def entry_trunk_config(entry: ConfigEntry | None = None) -> dict:
     data = entry.data if entry is not None else {}
+    return normalized_trunk_config(data)
+
+
+def normalized_trunk_config(data) -> dict:
+    """Normalize one persisted trunk independently of its HA storage record."""
     raw_dtmf_value = data.get(CONF_TRUNK_DTMF_TIMEOUT_MS)
     raw_dtmf_timeout = 3000 if raw_dtmf_value in (None, "") else int(raw_dtmf_value)
     dtmf_timeout_ms = (
@@ -86,6 +91,7 @@ def entry_trunk_config(entry: ConfigEntry | None = None) -> dict:
     dtmf_enabled = inbound_mode == TRUNK_INBOUND_MODE_DTMF and dtmf_timeout_ms > 0
     return {
         CONF_TRUNK_ENABLED: bool(data.get(CONF_TRUNK_ENABLED, False)),
+        "trunk_registration_id": int(data.get("trunk_registration_id") or 1),
         CONF_TRUNK_REGISTER: bool(data.get(CONF_TRUNK_REGISTER, True)),
         CONF_TRUNK_ALLOWED_IPS: data.get(CONF_TRUNK_ALLOWED_IPS, []),
         CONF_TRUNK_TRANSPORT: str(data.get(CONF_TRUNK_TRANSPORT) or "udp")
@@ -133,8 +139,17 @@ def assist_config(hass: HomeAssistant) -> dict:
     return runtime.assist_config if runtime is not None else entry_assist_config(None)
 
 
-def trunk_config(hass: HomeAssistant) -> dict:
+def trunk_config(hass: HomeAssistant, trunk_id: str | None = None) -> dict:
     runtime = runtime_data(hass)
+    if runtime is not None and runtime.trunk_configs:
+        identity = runtime.default_trunk_id if trunk_id is None else trunk_id
+        if identity in runtime.trunk_configs:
+            return runtime.trunk_configs[identity]
+        if trunk_id:
+            raise ValueError("The selected trunk no longer exists")
+        return normalized_trunk_config({})
+    if trunk_id:
+        raise ValueError("The selected trunk no longer exists")
     return runtime.trunk_config if runtime is not None else entry_trunk_config(None)
 
 

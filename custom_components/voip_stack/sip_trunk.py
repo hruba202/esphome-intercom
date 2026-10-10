@@ -80,6 +80,7 @@ class SipTrunkConfig:
     outbound_proxy: str = ""
     register: bool = True
     allowed_ips: tuple[str, ...] = ()
+    registration_id: int = 1
 
 
 class SipTrunkClient:
@@ -91,10 +92,17 @@ class SipTrunkClient:
         local_sip_port: int,
         target_resolver: SipServerResolver | None = None,
         tls_context: ssl.SSLContext | None = None,
+        trunk_id: str = "",
     ) -> None:
         if not config.register and config.transport.lower() not in {"udp", "tcp"}:
             raise ValueError("Static trunks require UDP or TCP; inbound TLS requires registration")
         self.config = config
+        if not 1 <= config.registration_id < 2 ** 31:
+            raise ValueError("SIP outbound reg-id must be between 1 and 2147483647")
+        self.trunk_id = str(trunk_id)
+        self.contact_line = uuid.uuid4().hex if self.trunk_id else ""
+        self._registration_attempted = asyncio.Event()
+        self.on_state_change: Callable[[], None] | None = None
         self._trusted_networks = (
             trusted_networks(config.allowed_ips) if not config.register else ()
         )
@@ -137,7 +145,8 @@ class SipTrunkClient:
         self._registrar_candidate: SipServerTarget | None = None
         self._registrar_candidates: tuple[SipServerTarget, ...] = ()
         self._registrar_candidate_index = -1
-        self._instance_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, f'{local_ip}:{self.domain}:{config.username}')}"
+        instance_key = f"voip-stack:trunk:{self.trunk_id}" if self.trunk_id else f"{local_ip}:{self.domain}:{config.username}"
+        self._instance_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, instance_key)}"
         self._flow_timer = 0.0
         self._keepalive_task: asyncio.Task[None] | None = None
         self._outbound_dialogs: dict[str, asyncio.Queue[bytes]] = {}
@@ -235,7 +244,10 @@ class SipTrunkClient:
 
     @property
     def contact_uri(self) -> str:
-        return str(sip.SipUri(self.config.username, self.local_ip, self.local_sip_port, params=(("transport", self.transport_name.lower()),)))
+        params = (("transport", self.transport_name.lower()),)
+        if self.contact_line:
+            params += (("line", self.contact_line),)
+        return str(sip.SipUri(self.config.username, self.local_ip, self.local_sip_port, params=params))
 
     @property
     def address_uri(self) -> str:
@@ -273,10 +285,25 @@ class SipTrunkClient:
             self.registered if self.config.register else bool(self._trusted_networks)
         )
 
+    async def wait_for_registration(self, *, timeout: float = 15.0) -> bool:
+        """Wait for the existing registration owner, without sending another REGISTER."""
+        if not self.config.register or self.ready:
+            return self.ready
+        await asyncio.wait_for(self._registration_attempted.wait(), timeout)
+        return self.ready
+
+    def notify_state_change(self) -> None:
+        if self.on_state_change is not None:
+            try:
+                self.on_state_change()
+            except Exception:
+                _LOGGER.debug("SIP trunk state observer failed", exc_info=True)
+
     async def _start(self) -> None:
         if not self.config.register:
             self.last_sip_event = "STATIC"
             self.status_reason = "Registration disabled; inbound IP allowlist active"
+            self.notify_state_change()
             return
         try:
             if self.transport_name in {"TCP", "TLS"}:
@@ -318,6 +345,7 @@ class SipTrunkClient:
 
     async def _stop(self) -> None:
         self._stopped = True
+        self.notify_state_change()
         self._outbound_dialogs.clear()
         self._refresh_wakeup.set()
         start_task = self._start_task
@@ -446,6 +474,9 @@ class SipTrunkClient:
                     retry_delay,
                 )
                 continue
+            finally:
+                self._registration_attempted.set()
+                self.notify_state_change()
             if result == "registered":
                 retry_delay = _REGISTER_RETRY_INITIAL
             else:
@@ -772,6 +803,7 @@ class SipTrunkClient:
                 getattr(manager, "prefer_browser_video_send", False)
             ),
             trusted_trunk=True,
+            trusted_trunk_id=self.trunk_id,
         )
         attach = getattr(manager, "attach_dialog_endpoint", None)
         if callable(attach):
@@ -838,6 +870,7 @@ class SipTrunkClient:
         self.registered = False
         self.status_code = 0
         self.status_reason = reason
+        self.notify_state_change()
         self._reader_ready.clear()
         writer = self.writer
         tx = self._tcp_writer
@@ -996,6 +1029,7 @@ class SipTrunkClient:
             self.status_code = 0
             self.status_reason = str(err)
             _LOGGER.warning("SIP trunk receive loop stopped server=%s transport=%s error=%s", self.config.server, self.transport_name, err)
+            self.notify_state_change()
 
     async def register(
         self,
@@ -1204,7 +1238,7 @@ class SipTrunkClient:
             headers = [
                 (
                     key,
-                    f'{value};+sip.instance="<{self._instance_id}>";reg-id=1'
+                    f'{value};+sip.instance="<{self._instance_id}>";reg-id={self.config.registration_id}'
                     if key.lower() == "contact"
                     else f"{value}, outbound"
                     if key.lower() == "supported" and "outbound" not in value.lower()

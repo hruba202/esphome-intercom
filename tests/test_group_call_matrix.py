@@ -165,6 +165,7 @@ class _FakeHass:
         self.bus = _FakeBus()
         self.data: dict = {const.DOMAIN: {}}
         self.runtime = types.SimpleNamespace(
+            trunk_configs={}, default_trunk_id="",
             tasks=set(),
             calls=None,
             endpoints=endpoint_registry_module.EndpointRegistry(),

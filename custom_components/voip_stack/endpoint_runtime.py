@@ -90,9 +90,18 @@ MAX_TRUNK_INFO_DIGITS = 16
 MAX_PENDING_HA_INVITES = 64
 
 
-def _classify_trunk_invite(invite, *, enabled: bool, trunk):
+def _classify_trunk_invite(invite, *, enabled: bool, trunk, trunks=None):
     """Apply the authoritative trunk source classification."""
 
+    if trunks is not None:
+        from .trunk_policy import identify_inbound_trunk
+
+        identity = identify_inbound_trunk(
+            trunks, invite.source_host, invite.source_port, invite.signaling_transport,
+            flow_trunk_id=invite.trunk_id if invite.received_via_trunk else "",
+            contact_line=str(dict(invite.request_uri.params).get("line") or ""),
+        ) if enabled else ""
+        return replace(invite, received_via_trunk=bool(identity), trunk_id=identity)
     trusted = False
     if enabled and trunk_available(trunk):
         if invite.received_via_trunk:
@@ -268,6 +277,11 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     )
 
     def _classified_trunk_invite(invite):
+        from .runtime_data import runtime_data, sip_trunks
+
+        runtime = runtime_data(hass)
+        if runtime is not None and runtime.trunk_configs:
+            return _classify_trunk_invite(invite, enabled=True, trunk=None, trunks=sip_trunks(hass))
         trunk_cfg = _get_trunk_config(hass)
         trunk = sip_trunk(hass)
         return _classify_trunk_invite(
@@ -420,7 +434,11 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         # alias before consulting the canonical phonebook dial plan.
         route_target = invite.routing_target
         target = _ha_peer_name(hass) if _is_ha_target(route_target) else route_target
-        return _ha_router_decision(target, entries)
+        source = _logical_endpoint_for_member(invite.routing_caller, peers, entries)
+        return EndpointRouteResolver(
+            hass, local_ip, int(cfg["sip_port"]),
+            source_endpoint_id=source.endpoint_id if source is not None and not invite.received_via_trunk else "",
+        ).route(target, entries)
 
     async def _async_forward_existing_call(
         *,
@@ -430,6 +448,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         expected_state: str = "",
         expected_sequence: int = 0,
         initial_selection: bool = False,
+        trunk_id: str = "",
     ) -> None:
         await async_forward_existing_call(
             ForwardRuntime(
@@ -449,6 +468,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             expected_state=expected_state,
             expected_sequence=expected_sequence,
             initial_selection=initial_selection,
+            trunk_id=trunk_id,
         )
 
     async def _run_trunk_inbound_route_guarded(
@@ -576,6 +596,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         request_video: bool = False,
         enable_caller_video_send: bool = False,
         policy_endpoint_ids: tuple[str, ...] = (),
+        outbound_trunk_id: str = "",
     ) -> str:
         browser_endpoint = browser_phone(hass, endpoint_id)
         if browser_endpoint is None:
@@ -629,6 +650,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             session_device_id=endpoint_device_id,
             source_endpoint_id=endpoint_id,
             policy_endpoint_ids=policy_endpoint_ids,
+            outbound_trunk_id=outbound_trunk_id,
             media_client_id=str(media_client_id or "").strip(),
         )
         try:
@@ -696,7 +718,10 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     pbx_runtime.start_ring_group_from_ha = _start_ring_group_from_ha
 
     async def _on_invite(invite: SipInvite) -> SipInviteResult:
-        invite = _classified_trunk_invite(invite)
+        try:
+            invite = _classified_trunk_invite(invite)
+        except ValueError:
+            return SipInviteResult(403, "Ambiguous trunk source", to_tag="")
         return await route_invite(
             InviteRuntime(
                 hass=hass,
@@ -731,7 +756,10 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     ) -> UasDelayedOfferPlan | None:
         """Prepare one offer, then continue through the canonical router."""
 
-        initial = _classified_trunk_invite(initial)
+        try:
+            initial = _classified_trunk_invite(initial)
+        except ValueError:
+            return None
         registry = _call_registry(hass)
         session = registry.upsert(
             initial.call_id,

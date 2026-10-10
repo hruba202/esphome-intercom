@@ -148,6 +148,8 @@ async def async_commit_outbound_bridge(
         return None
 
     generation = session.generation
+    if winner.trunk_id and dest_call_id in session.legs:
+        session.legs[dest_call_id].trunk_id = winner.trunk_id
     relay = None
     relay_adopted = False
     ports_transferred = False

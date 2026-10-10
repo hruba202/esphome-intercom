@@ -67,6 +67,7 @@ class RouteDecision:
     reason: RouteReason = RouteReason.DEFAULT_HA
     source: Literal["builtin", "phonebook", "automation", "trunk"] = "builtin"
     entry: RosterEntry | None = None
+    trunk_id: str = ""
 
 
 _PUBLIC_NUMBER_RE = re.compile(r"^\+?[0-9][0-9 .()/-]{2,}$")

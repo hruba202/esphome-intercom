@@ -164,6 +164,7 @@ class _FakeHass:
         self.config = types.SimpleNamespace(location_name="HA")
         self.bus = _FakeBus()
         self.runtime = types.SimpleNamespace(
+            trunk_configs={}, default_trunk_id="",
             tasks=set(),
             calls=None,
             endpoints=endpoints,
@@ -881,7 +882,6 @@ class ConferenceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         owner.attach_component("trunk", trunk, closer=trunk.stop)
         owner.activate()
         hass.runtime.sip = owner
-        trunk_runtime.sip_trunk = lambda _hass: trunk
         stopping = asyncio.create_task(trunk_runtime.async_stop_sip_trunk(hass))
         await asyncio.wait_for(trunk.entered.wait(), timeout=1)
         stopping.cancel()

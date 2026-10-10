@@ -86,6 +86,8 @@ class SipInvite:
     caller_route: str = ""
     target_route: str = ""
     initial_response_sent: bool = False
+    trunk_id: str = ""
+    outbound_trunk_id: str = ""
 
     @property
     def selected_format(self) -> sdp.RtpPcmFormat:
@@ -133,6 +135,7 @@ class SipInitialInvite:
     peer_profile: str = ""
     caller_route: str = ""
     target_route: str = ""
+    trunk_id: str = ""
 
     @property
     def routing_caller(self) -> str:
@@ -530,6 +533,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         enable_video_transcoding: bool = False,
         prefer_browser_video_send: bool = False,
         trusted_trunk: bool = False,
+        trusted_trunk_id: str = "",
         max_pending_invites: int = _MAX_PENDING_INVITES,
         deferred_invite_timeout: float | None = None,
     ) -> None:
@@ -553,6 +557,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         self.enable_video_transcoding = bool(enable_video_transcoding)
         self.prefer_browser_video_send = bool(prefer_browser_video_send)
         self.trusted_trunk = bool(trusted_trunk)
+        self.trusted_trunk_id = str(trusted_trunk_id)
         self.max_pending_invites = max(1, int(max_pending_invites))
         self.deferred_invite_timeout = (
             None if deferred_invite_timeout is None else max(0.01, float(deferred_invite_timeout))
@@ -1621,6 +1626,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 cseq=initial.cseq,
                 signaling_transport=initial.signaling_transport,
                 received_via_trunk=initial.received_via_trunk,
+                trunk_id=initial.trunk_id,
                 peer_profile=initial.peer_profile,
                 caller_route=initial.caller_route,
                 target_route=initial.target_route,
@@ -3229,6 +3235,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 cseq=request.header("CSeq"),
                 signaling_transport=self.signaling_transport,
                 received_via_trunk=self.trusted_trunk,
+                trunk_id=self.trusted_trunk_id if self.trusted_trunk else "",
                 peer_profile=profile,
                 caller_route=caller_route,
                 target_route=target_route,
@@ -3379,6 +3386,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 # answer omits a=rtcp-mux, regardless of the original offer.
                 signaling_transport=initial.signaling_transport,
                 received_via_trunk=initial.received_via_trunk,
+                trunk_id=initial.trunk_id,
                 peer_profile=peer_profile,
                 **remote_video_target.as_remote_video_fields(),
             )

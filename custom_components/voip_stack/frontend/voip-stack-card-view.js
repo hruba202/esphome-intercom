@@ -956,6 +956,14 @@ export function buildMainCardSkeleton(cardVersion) {
       routingPanel.appendChild(row);
       routingControls[field] = { input, options };
     }
+    const trunkRow = document.createElement("label");
+    trunkRow.className = "softphone-group-row";
+    const trunkLabel = document.createElement("span");
+    trunkLabel.textContent = translate("Outgoing SIP trunk");
+    const trunkSelect = document.createElement("select");
+    trunkRow.appendChild(trunkLabel);
+    trunkRow.appendChild(trunkSelect);
+    routingPanel.appendChild(trunkRow);
     const ringingControls = {};
     for (const [field, label, type] of [
       ["enabled", "Enable ringing timeout", "checkbox"],
@@ -1019,7 +1027,7 @@ export function buildMainCardSkeleton(cardVersion) {
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
       runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel,
-      routingPanel, routingControls, ringingControls,
+      routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       microphoneAntiAliasRow, microphoneAntiAliasCheckbox,
       videoCameraRow, videoCameraCheckbox,

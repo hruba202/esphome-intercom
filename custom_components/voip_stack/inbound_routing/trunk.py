@@ -96,6 +96,7 @@ def prepare_trunk_preanswer(
         route_kind="trunk",
         ingress="trunk",
         origin="trunk",
+        inbound_trunk_id=invite.trunk_id,
     )
     artifacts = call_runtime_artifacts(hass).artifacts_for(invite.call_id)
     if artifacts is None:

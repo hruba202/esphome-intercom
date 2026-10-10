@@ -335,3 +335,30 @@ async def test_native_unanswered_action_can_speak_to_outgoing_browser_caller(bro
         assert not lab.calls.sessions
     finally:
         automation_context.current_execution.reset(binding)
+
+
+async def test_failed_browser_forward_can_resume_original_destination_with_same_call(browser_lab, monkeypatch):
+    lab = browser_lab
+    first, second = lab.phones
+    first.auto_answer = False
+    second.final_status = 486
+    retried = asyncio.Event()
+    receive = first.datagram_received
+
+    def observe_retry(raw, address):
+        receive(raw, address)
+        if len(first.invites) == 2:
+            retried.set()
+
+    monkeypatch.setattr(first, "datagram_received", observe_retry)
+    session = await originate(lab)
+    token = session.token
+    await lab.calls.forward_call(call_id=session.call_id, destination="bedroom1", on_failure="resume")
+    async with asyncio.timeout(3):
+        await retried.wait()
+    assert session.live and session.token == token
+    assert len(second.invites) == 1
+    assert first.invites[0].header("Call-ID") != first.invites[1].header("Call-ID")
+    assert lab.runtime.endpoints.require("browser").active_call_id == session.call_id
+    await lab.calls.request_termination(session.call_id, TerminationIntent("test_done"))
+    assert not lab.calls.sessions

@@ -130,13 +130,14 @@ def _signaling_summary(hass: HomeAssistant) -> dict[str, Any]:
     }
 
 
-def _trunk_summary(hass: HomeAssistant, bucket: dict[str, Any]) -> dict[str, Any]:
+def _trunk_summary(hass: HomeAssistant, bucket: dict[str, Any], trunk_id: str | None = None) -> dict[str, Any]:
     """Return registration health without the provider identity."""
 
-    trunk = sip_trunk(hass)
+    trunk = sip_trunk(hass, trunk_id) if trunk_id is not None else sip_trunk(hass)
     snapshot = getattr(trunk, "snapshot", None)
     if not callable(snapshot):
-        configured = bool(trunk_config(hass).get("trunk_enabled"))
+        cfg = trunk_config(hass, trunk_id) if trunk_id is not None else trunk_config(hass)
+        configured = bool(cfg.get("trunk_enabled"))
         return {"enabled": configured, "registered": False}
     data = dict(snapshot())
     return {
@@ -156,6 +157,11 @@ def _runtime_summary(hass: HomeAssistant, bucket: dict[str, Any]) -> dict[str, A
         "endpoints": _endpoint_summary(hass),
         "signaling": _signaling_summary(hass),
         "trunk": _trunk_summary(hass, bucket),
+        "trunks": [
+            {"index": index, "default": identity == runtime.default_trunk_id,
+             **_trunk_summary(hass, bucket, identity)}
+            for index, identity in enumerate(getattr(runtime, "trunk_configs", {}), start=1)
+        ],
         "resources": runtime_resource_snapshot(
             call_projection(hass),
             detailed=False,

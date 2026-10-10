@@ -27,6 +27,7 @@ class OutboundLeg:
     order: int = 0
     video_relay: SipVideoRtpRelay | None = None
     video_failure_reason: str = ""
+    trunk_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -226,6 +226,81 @@
         "invalid_contact": "Controlla nome e interno univoci. Un contatto ordinario richiede un numero o indirizzo SIP; un contatto Automazione non deve averli.",
         "invalid_sip_profile": "Seleziona un profilo SIP valido. Le scelte audio Dahua esplicite richiedono il profilo Dahua. I contatti Automazione non possono usare profili dispositivo."
       }
+    },
+    "trunk": {
+      "entry_type": "Trunk SIP",
+      "initiate_flow": {
+        "user": "Aggiungi trunk SIP"
+      },
+      "title": "Trunk SIP",
+      "step": {
+        "user": {
+          "title": "Trunk SIP",
+          "description": "Assegna un nome alla linea e scegli se il provider richiede la registrazione.",
+          "data": {
+            "name": "Nome",
+            "trunk_enabled": "Abilita questo trunk",
+            "trunk_register": "Registra il trunk",
+            "make_default": "Usa come trunk predefinito per le chiamate in uscita"
+          },
+          "data_description": {
+            "make_default": "Usato quando né l'azione di chiamata né il telefono chiamante selezionano un trunk. Se il trunk scelto non è disponibile, la chiamata non passa automaticamente a un'altra linea."
+          }
+        },
+        "trunk": {
+          "title": "Trunk SIP opzionale",
+          "description": "Collega Home Assistant a un gestore o PBX. Le chiamate in ingresso seguono le regole configurate e le eventuali automazioni.",
+          "data": {
+            "trunk_transport": "Transport SIP trunk",
+            "trunk_server": "Server trunk",
+            "trunk_port": "Porta SIP trunk",
+            "trunk_domain": "Dominio trunk",
+            "trunk_username": "Username trunk",
+            "trunk_auth_username": "Username auth",
+            "trunk_password": "Password",
+            "trunk_register_expires": "Scadenza REGISTER",
+            "trunk_outbound_proxy": "Proxy outbound",
+            "trunk_inbound_default_target": "Destinazione di fallback",
+            "trunk_inbound_mode": "Gestione chiamate in ingresso",
+            "automation_routing_enabled": "Consenti alle automazioni di scegliere la destinazione in ingresso",
+            "trunk_dtmf_timeout_ms": "Timeout DTMF (secondi)",
+            "trunk_dtmf_terminator": "Terminatore DTMF",
+            "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso"
+          },
+          "data_description": {
+            "trunk_transport": "Transport SIP usato da HA verso il provider.",
+            "trunk_server": "Host registrar/proxy del provider.",
+            "trunk_port": "Porta SIP provider, normalmente 5060.",
+            "trunk_domain": "Realm/dominio SIP opzionale. Se vuoto usa il server trunk.",
+            "trunk_username": "Utente account SIP e utente Request-URI atteso in ingresso.",
+            "trunk_auth_username": "Username digest auth se diverso dallo username SIP.",
+            "trunk_password": "Password digest auth.",
+            "trunk_register_expires": "Scadenza REGISTER in secondi.",
+            "trunk_outbound_proxy": "Proxy opzionale o sip:host:port usato come next hop di signaling.",
+            "trunk_inbound_default_target": "Nella modalità immediata viene usata solo se la destinazione chiamata non è in rubrica. La selezione DTMF e le automazioni possono scegliere una destinazione diversa.",
+            "trunk_inbound_mode": "Instrada subito evita la raccolta cifre. Raccogli interno con DTMF risponde prima sul trunk e permette alle cifre esplicite di scegliere un interno della rubrica.",
+            "automation_routing_enabled": "Prima di usare la destinazione di fallback, pubblica una breve richiesta di instradamento a cui può rispondere un'automazione. Le cifre DTMF esplicite mantengono sempre la priorità.",
+            "trunk_dtmf_timeout_ms": "Timeout tra cifre usato in modalità DTMF. Per la prima cifra sono disponibili 10 secondi. Default 3 secondi, massimo 10 secondi.",
+            "trunk_dtmf_terminator": "Terminatore opzionale, per esempio #. Vuoto significa che decide timeout o match esatto con una extension in rubrica.",
+            "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione."
+          }
+        }
+      },
+      "error": {
+        "trunk_server_required": "Il server trunk è obbligatorio.",
+        "trunk_username_required": "Lo username trunk è obbligatorio.",
+        "trunk_password_required": "La password trunk è obbligatoria.",
+        "trunk_allowed_ips_invalid": "Inserisci almeno un IP o una rete CIDR validi. Non sono ammesse reti /0 senza restrizioni.",
+        "invalid_name": "Inserisci un nome da 1 a 128 caratteri.",
+        "duplicate_name": "Scegli un altro nome per il trunk.",
+        "advertise_ip_unknown": "Configura l'indirizzo SIP annunciato prima di aggiungere questo trunk.",
+        "trunk_in_use": "Termina le chiamate che usano questo trunk prima di modificarne la connessione.",
+        "trunk_registration_failed": "Registrazione fallita. Controlla server, trasporto e credenziali. La configurazione salvata non è stata modificata.",
+        "trunk_validation_failed": "Controlla la connessione e le reti ammesse in ingresso. I trunk statici con lo stesso trasporto devono avere reti sorgenti non sovrapposte."
+      },
+      "abort": {
+        "reconfigure_successful": "Configurazione del trunk aggiornata."
+      }
     }
   },
   "selector": {
@@ -509,6 +584,9 @@
     "binary_sensor": {
       "phone_endpoint_connectivity": {
         "name": "Connettività"
+      },
+      "trunk_ready": {
+        "name": "Pronto"
       }
     }
   },

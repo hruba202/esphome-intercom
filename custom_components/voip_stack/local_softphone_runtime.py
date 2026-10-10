@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import asyncio
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,7 @@ def start_local_softphone_call(
     context: object | None = None,
     preserve_controller: bool = False,
     policy_endpoint_ids: tuple[str, ...] | None = None,
+    outbound_trunk_id: str | None = None,
 ) -> LocalCallSnapshot:
     """Create one local call with HA provenance bound before its first event."""
     bridge = local_softphone_bridge(hass)
@@ -75,6 +77,7 @@ def start_local_softphone_call(
         dest_endpoint_id=callee_endpoint_id,
         local_bridge=True,
         **({"policy_endpoint_ids": policy_endpoint_ids} if policy_endpoint_ids is not None else {}),
+        **({"outbound_trunk_id": outbound_trunk_id} if outbound_trunk_id is not None else {}),
     )
     if not preserve_controller:
         registry.bind_controller(
@@ -600,9 +603,29 @@ class PendingLocalSource:
             source_media_client_id=self.call.caller_media_owner_id,
         )
 
-    def resume(self) -> None:
+    def resume(self, *, redial: bool = False, destination: str = "", trunk_id: str = "") -> None:
         if self.outgoing:
-            if self.retired:
+            if self.retired and redial:
+                session = self.registry.get_session(self.token.call_id, generation=self.token.generation)
+                previous = self.registry.task_for(self.token.call_id, "forward")
+
+                async def retry_original_route():
+                    if previous is not None and previous is not asyncio.current_task():
+                        await asyncio.gather(previous, return_exceptions=True)
+                    if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
+                        return
+                    try:
+                        await self.registry.forward_call(
+                            call_id=self.token.call_id, destination=destination or self.invite.target, on_failure="terminate",
+                            **({"trunk_id": trunk_id} if trunk_id else {}),
+                        )
+                    except Exception:
+                        self.registry.request_termination(self.token.call_id, TerminationIntent("resume_failed"),
+                                                           generation=self.token.generation)
+
+                if session is not None and session.live:
+                    session.create_task(retry_original_route(), name="browser-route-resume")
+            elif self.retired:
                 self.registry.request_termination(
                     self.token.call_id, TerminationIntent("route_failed", initiator=TerminationInitiator.ROUTING),
                     generation=self.token.generation,

@@ -91,6 +91,8 @@ ha_tests=(
   tests/test_phone_settings_ha.py
   tests/test_phone_policy_runtime_ha.py
   tests/test_trunk_config_flow.py
+  tests/test_trunk_catalog_ha.py
+  tests/test_trunk_calls_ha.py
   tests/test_contact_profile_ha.py
   tests/test_trunk_access_ha.py
   tests/test_trunk_transfer_access.py

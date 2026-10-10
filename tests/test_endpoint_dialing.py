@@ -330,7 +330,8 @@ def test_restricted_group_member_is_rejected_before_allocating_media(monkeypatch
     access_runtime = SimpleNamespace(
         transport_config=dialer.config,
         trunk_config={"trunk_server": "provider.example"},
-        sip=SimpleNamespace(get_session=lambda _: session),
+        sip=SimpleNamespace(get_session=lambda _: session,
+                            component=lambda _: SimpleNamespace(active_registrar_target=("198.51.100.8", 5060))),
     )
     monkeypatch.setattr(runtime_data, "require_runtime_data", lambda _: access_runtime)
     monkeypatch.setattr(endpoint_dialing, "sip_trunk", lambda _: SimpleNamespace(active_registrar_target=("198.51.100.8", 5060)))
@@ -359,6 +360,7 @@ async def test_conference_retains_initiator_access_for_outbound_members(monkeypa
     registry = SimpleNamespace(
         sessions={"owner": session}, resolve_session_id=lambda value: value,
         get_session=lambda call_id: session if call_id == "owner" else None,
+        component=lambda _: None,
     )
     access_runtime = SimpleNamespace(
         transport_config=dialer.config, trunk_config={"trunk_server": "provider.example"}, sip=registry,

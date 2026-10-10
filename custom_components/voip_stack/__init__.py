@@ -151,6 +151,10 @@ async def async_migrate_entry(
         data = dict(config_entry.data)
         data.pop("companion_enabled", None)
         hass.config_entries.async_update_entry(config_entry, data=data, minor_version=2)
+    if config_entry.version == 6 and config_entry.minor_version < 3:
+        from .trunk_config import migrate_legacy_trunk
+        migrate_legacy_trunk(hass, config_entry)
+        hass.config_entries.async_update_entry(config_entry, minor_version=3)
     return True
 
 
@@ -629,13 +633,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) ->
         else:
             data.pop(CONF_PREFERRED_PHONE_DEVICE_ID, None)
         hass.config_entries.async_update_entry(entry, data=data)
+    from .trunk_config import migrate_legacy_trunk
+    migrate_legacy_trunk(hass, entry)
     cfg = _entry_transport_config(entry)
     assist_cfg = _entry_assist_config(entry)
     trunk_cfg = _entry_trunk_config(entry)
+    from .trunk_config import entry_trunk_configs, entry_default_trunk
+
+    trunk_configs = entry_trunk_configs(entry)
+    default_trunk_id = entry_default_trunk(entry, trunk_configs)
+    if default_trunk_id in trunk_configs:
+        trunk_cfg = trunk_configs[default_trunk_id]
     entry.runtime_data = VoipStackRuntime(
         transport_config=cfg,
         assist_config=assist_cfg,
         trunk_config=trunk_cfg,
+        trunk_configs=trunk_configs,
+        default_trunk_id=default_trunk_id,
         endpoints=endpoint_registry,
         phones=PhoneAdapterRegistry(
             hass,
@@ -699,6 +713,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) ->
             "endpoint may already be listening on that port."
         )
     await _async_start_sip_trunk(hass)
+    from .trunk_config import sync_trunk_devices
+    sync_trunk_devices(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_config_entry_updated))
     create_runtime_task(hass, _deferred_phonebook_sync(hass))

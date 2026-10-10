@@ -12,7 +12,7 @@ from .runtime_data import (
     call_projection,
     endpoint_directory,
     sip_endpoint_manager,
-    sip_trunk,
+    sip_trunks,
 )
 from .endpoint_session import SipTerminationDisposition, TerminationIntent
 from .fsm import sip_failure_response
@@ -62,9 +62,10 @@ def sip_servers(hass: HomeAssistant) -> list[object]:
     endpoint = sip_endpoint_manager(hass)
     if endpoint is not None:
         servers.append(endpoint)
-    trunk_endpoint = getattr(sip_trunk(hass), "inbound_endpoint", None)
-    if trunk_endpoint is not None:
-        servers.append(trunk_endpoint)
+    for trunk in sip_trunks(hass).values():
+        trunk_endpoint = getattr(trunk, "inbound_endpoint", None)
+        if trunk_endpoint is not None:
+            servers.append(trunk_endpoint)
     return servers
 
 

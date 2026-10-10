@@ -123,7 +123,7 @@ async def async_route_trunk_invite(
         )
         await EndpointTerminationHandler(hass).terminate(invite.call_id, intent)
 
-    configured_trunk = trunk_config(hass)
+    configured_trunk = trunk_config(hass, trunk_id=invite.trunk_id) if invite.trunk_id else trunk_config(hass)
     dtmf_timeout_ms = max(
         0, int(configured_trunk.get(CONF_TRUNK_DTMF_TIMEOUT_MS) or 0)
     )

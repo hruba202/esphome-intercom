@@ -68,6 +68,9 @@ class VoipStackRuntime:
     trunk_config: dict[str, Any]
     endpoints: EndpointRegistry
     phones: PhoneAdapterRegistry
+    trunk_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    default_trunk_id: str = ""
+    trunk_update_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     preferred_phone_device_id: str = ""
     debug_mode: bool = False
     media_capture: bool = False
@@ -216,10 +219,23 @@ def sip_registrar(hass: HomeAssistant) -> Any | None:
     return sip_component(hass, "registrar")
 
 
-def sip_trunk(hass: HomeAssistant) -> Any | None:
-    """Return the trunk client owned by the active SIP runtime."""
+def sip_trunk(hass: HomeAssistant, trunk_id: str | None = None) -> Any | None:
+    """Return one selected trunk, never substitute another available line."""
+    runtime = runtime_data(hass)
+    if runtime is not None and runtime.trunk_configs:
+        identity = runtime.default_trunk_id if trunk_id is None else trunk_id
+        return sip_component(hass, f"trunk:{identity}") if identity in runtime.trunk_configs else None
+    return sip_component(hass, "trunk") if not trunk_id else None
 
-    return sip_component(hass, "trunk")
+
+def sip_trunks(hass: HomeAssistant) -> dict[str, Any]:
+    """Enumerate clients from the existing SIP component owner."""
+    runtime = runtime_data(hass)
+    if runtime is not None and runtime.trunk_configs:
+        return {identity: client for identity in runtime.trunk_configs
+                if (client := sip_trunk(hass, identity)) is not None}
+    client = sip_trunk(hass)
+    return {"": client} if client is not None else {}
 
 
 def conference_component(hass: HomeAssistant) -> Any | None:

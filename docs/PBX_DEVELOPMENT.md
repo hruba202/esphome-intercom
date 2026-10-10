@@ -204,6 +204,62 @@ This increment passed 380 HA tests and the software suite's 1931 tests plus
 policy scenarios, including camera-intent preservation and cancellation after
 the old SIP leg has closed. No physical device or production HA was changed.
 
+## Named trunks in progress
+
+The parent configuration's former single trunk migrates to a stable native
+trunk subentry. New lines use HA's Add SIP trunk flow and Device selectors.
+Credentials and registration lifecycle remain in `SipTrunkClient`, with one
+client per line owned by the existing SIP runtime. The old enable-trunk branch
+of the global configuration wizard is removed; global edits preserve phone
+policies and default-line selection.
+
+Validation uses the client's existing registration owner. Real UDP Digest
+tests verify that the validated client is adopted without a second REGISTER,
+and that a failed password edit leaves the original registration and persisted
+credentials intact. A fault-injection test reproduced a partial multi-line
+update; reconciliation now prepares all clients before atomically changing
+ownership, and closes prepared replacements on failure.
+
+PJSIP's Contact `line` approach identifies registrations sharing a provider IP,
+after source trust checks. RFC 5626 additionally keys TCP/TLS bindings by
+instance/reg-id. Logical trunk identity now gives a stable SIP instance; a
+validated replacement alternates two persisted flow labels. A TCP registrar
+oracle compares those RFC keys and proves that unregistering the old flow does
+not remove its replacement.
+
+Call actions, phone preferences and default selection now drive browser and
+Automation origination. The card reuses HA's device registry to show named line
+choices. An independent SIP phone has also called through the real HA listener
+using its preferred second trunk, with exact PCM checks in both RTP directions.
+Closing calls preserves both registrations. An unavailable explicit selection
+does not dial the healthy default. Access restrictions now recognize every
+configured provider URI, including non-default lines.
+
+Native per-line readiness sensors use lifecycle events, not polling. Diagnostic
+exports enumerate lines without provider identities; detailed card diagnostics
+retain separate client snapshots. Call-leg trunk identity tracks lines actually
+in use, separately from the preferred line carried by a logical call.
+
+Browser forwarding can resume a previous SIP destination by redialing it after
+the failed replacement has finished cleanup. The logical call identity and
+caller remain unchanged; cancelled SIP transactions are never reused. The test
+verifies two distinct INVITEs to the original peer around a rejected replacement.
+
+The combined gate at this point passed 1938 software tests with 162 subtests
+(4 deselected) and 396 HA tests. No production HA or firmware was deployed.
+
+Still required before declaring the trunk phase complete: finish all incoming,
+forward/group and transfer selection witnesses,
+explicit per-action ESP correlation and firmware qualification. The explicit
+ESP selector currently rejects unsupported use instead of silently ignoring it.
+Mailbox, recording and parking work remains pending.
+
+References for this increment:
+
+- https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/Configuring-Outbound-Registrations/
+- https://www.asterisk.org/the-pjsip-outbound-registration-line-option/
+- https://www.rfc-editor.org/rfc/rfc5626.html
+
 Executed so far:
 
 - Software suite: 1926 tests and 162 subtests passed (4 deselected).

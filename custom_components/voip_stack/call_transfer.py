@@ -10,7 +10,7 @@ from .runtime_data import VoipStackRuntime
 from .roster import find_entry, parse_roster_json
 from .sip_client import SipCallClient, SipTransferResult
 from .router import RouteAction, ha_uri_for, resolve_ha_router
-from .trunk_policy import call_external_call_denied, is_trunk_uri
+from .trunk_policy import call_external_call_denied
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +97,9 @@ def _inbound_server(runtime: VoipStackRuntime, call_id: str):
     if runtime.sip is None:
         return None, ""
     server = runtime.sip.component("udp_listener")
-    trunk = runtime.sip.component("trunk")
-    for candidate in (server, getattr(trunk, "inbound_endpoint", None)):
+    identities = runtime.trunk_configs or {"": runtime.trunk_config}
+    trunks = [runtime.sip.component(f"trunk:{identity}" if identity else "trunk") for identity in identities]
+    for candidate in (server, *(getattr(trunk, "inbound_endpoint", None) for trunk in trunks)):
         if candidate is not None:
             remote_uri = candidate.remote_uri_for_call(call_id)
             if remote_uri:
@@ -126,10 +127,9 @@ def _external_transfer_denied(runtime, call_id, target, remote_uri, local_uri=""
     """Apply the existing call's access policy before delegating a REFER."""
     if not call_external_call_denied(runtime, call_id):
         return False
-    trunk_config = runtime.trunk_config
-    trunk = runtime.sip.component("trunk")
-    active_target = getattr(trunk, "active_registrar_target", None)
-    if is_trunk_uri(target.uri, trunk_config, active_target):
+    from .trunk_policy import is_any_trunk_uri
+
+    if is_any_trunk_uri(runtime, target.uri):
         return True
     uri = sip.parse_sip_uri(target.uri)
     phonebook = getattr(runtime, "phonebook_sensor", None)
@@ -148,10 +148,8 @@ def _external_transfer_denied(runtime, call_id, target, remote_uri, local_uri=""
         # only HA-owned forwarding can retain the origin across those routes.
         return route.action in {
             RouteAction.TRUNK, RouteAction.GROUP, RouteAction.AUTOMATION,
-        } or is_trunk_uri(
-            route.sip_uri, trunk_config, active_target
-        )
-    if not is_trunk_uri(remote_uri, trunk_config, active_target):
+        } or is_any_trunk_uri(runtime, route.sip_uri)
+    if not is_any_trunk_uri(runtime, remote_uri):
         return False
     # A provider executes REFER itself. Only a known direct local destination
     # is safe here; an unknown remote target could create another trunk call.

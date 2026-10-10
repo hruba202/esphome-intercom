@@ -191,299 +191,8 @@ def _disabled_trunk_data(data: dict, existing: Mapping[str, Any]) -> dict:
     return data
 
 
-def _base_entry_data(existing: Mapping[str, Any]) -> dict[str, Any]:
-    """Return the non-trunk settings preserved by direct trunk edits."""
-
-    return {
-        "sip_port": int(existing.get("sip_port", VOIP_STACK_SIP_PORT)),
-        "rtp_port": int(existing.get("rtp_port", VOIP_STACK_RTP_PORT)),
-        "advertise_host": str(existing.get("advertise_host", "") or "").strip(),
-        CONF_ASSIST_INTENTS: bool(existing.get(CONF_ASSIST_INTENTS, False)),
-        CONF_ASSIST_ENDPOINT_ENABLED: bool(
-            existing.get(CONF_ASSIST_ENDPOINT_ENABLED, False)
-        ),
-        CONF_ASSIST_EXTENSION: str(
-            existing.get(CONF_ASSIST_EXTENSION, "") or ""
-        ).strip(),
-        CONF_ASSIST_PIPELINE: str(
-            existing.get(CONF_ASSIST_PIPELINE, "") or ""
-        ).strip(),
-        CONF_ASSIST_ADVANCED_CALL_CONTEXT: bool(
-            existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
-        ),
-        CONF_DEBUG_MODE: bool(existing.get(CONF_DEBUG_MODE, False)),
-        CONF_MEDIA_CAPTURE: bool(existing.get(CONF_MEDIA_CAPTURE, False)),
-        CONF_SIP_VIDEO: bool(existing.get(CONF_SIP_VIDEO, False)),
-        CONF_VIDEO_TRANSCODING: bool(
-            existing.get(CONF_VIDEO_TRANSCODING, False)
-        ),
-        CONF_VIDEO_CAMERA_SEND: bool(existing.get(CONF_VIDEO_CAMERA_SEND, False)),
-        CONF_REGISTRAR_ENABLED: bool(existing.get(CONF_REGISTRAR_ENABLED, False)),
-    }
-
-
-class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for VoIP Stack."""
-
-    VERSION = 6
-    MINOR_VERSION = 2
-    _base_input: dict | None = None
-
-    @classmethod
-    @callback
-    def async_get_supported_subentry_types(
-        cls, config_entry: ConfigEntry
-    ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Expose the native Add phone flow on the integration entry."""
-        from .contact_flow import ContactSubentryFlowHandler
-
-        return {PHONE_SUBENTRY_TYPE: PhoneSubentryFlowHandler, "contact": ContactSubentryFlowHandler}
-
-    def _current_entry(self) -> ConfigEntry | None:
-        if self.source == SOURCE_RECONFIGURE:
-            return self._get_reconfigure_entry()
-        return next(iter(self._async_current_entries()), None)
-
-    def _current_entry_data(self) -> tuple[ConfigEntry | None, Mapping[str, Any]]:
-        current_entry = self._current_entry()
-        return current_entry, (current_entry.data if current_entry else {})
-
-    def _store_entry(self, data: dict):
-        current_entry, _existing = self._current_entry_data()
-        if current_entry is None or current_entry.version >= 6:
-            data.pop(CONF_PHONEBOOK_CONTACTS, None)
-        if current_entry is not None:
-            # Phone permissions are managed by their action, not this wizard.
-            # Read the current entry so an action run while the form was open
-            # is preserved rather than replaced by an older form snapshot.
-            if EXTERNAL_CALL_BLOCKED_ENDPOINTS in current_entry.data:
-                data[EXTERNAL_CALL_BLOCKED_ENDPOINTS] = list(
-                    current_entry.data[EXTERNAL_CALL_BLOCKED_ENDPOINTS]
-                )
-            else:
-                data.pop(EXTERNAL_CALL_BLOCKED_ENDPOINTS, None)
-            return self.async_update_and_abort(
-                current_entry,
-                data=data,
-                reason="reconfigure_successful",
-            )
-        return self.async_create_entry(title="VoIP Stack", data=data)
-
-    async def async_step_reconfigure(self, user_input=None):
-        """Reconfigure the existing VoIP Stack entry from HA's native menu."""
-        return await self.async_step_user(user_input)
-
-    async def async_step_user(self, user_input=None):
-        """Handle install/reconfigure of the single VoIP Stack entry.
-
-        SIP is the only HA call-control protocol. HA is always both a
-        softphone and SIP router/B2BUA, and it listens on both SIP/UDP and
-        SIP/TCP like a normal SIP endpoint.
-        """
-        _current_entry, existing = self._current_entry_data()
-        defaults = {
-            "sip_port": existing.get("sip_port", VOIP_STACK_SIP_PORT),
-            "rtp_port": existing.get("rtp_port", VOIP_STACK_RTP_PORT),
-            "advertise_host": existing.get("advertise_host", ""),
-            CONF_ASSIST_INTENTS: existing.get(CONF_ASSIST_INTENTS, False),
-            CONF_ASSIST_ENDPOINT_ENABLED: existing.get(
-                CONF_ASSIST_ENDPOINT_ENABLED, False
-            ),
-            CONF_DEBUG_MODE: existing.get(CONF_DEBUG_MODE, False),
-            CONF_MEDIA_CAPTURE: existing.get(CONF_MEDIA_CAPTURE, False),
-            CONF_SIP_VIDEO: existing.get(CONF_SIP_VIDEO, False),
-            CONF_REGISTRAR_ENABLED: existing.get(CONF_REGISTRAR_ENABLED, False),
-            CONF_TRUNK_ENABLED: existing.get(CONF_TRUNK_ENABLED, False),
-        }
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "sip_port", default=defaults["sip_port"]
-                ): _port_selector(),
-                vol.Required(
-                    "rtp_port", default=defaults["rtp_port"]
-                ): _port_selector(),
-                vol.Optional("advertise_host", default=defaults["advertise_host"]): str,
-                vol.Required(
-                    CONF_ASSIST_INTENTS,
-                    default=defaults[CONF_ASSIST_INTENTS],
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_ASSIST_ENDPOINT_ENABLED,
-                    default=defaults[CONF_ASSIST_ENDPOINT_ENABLED],
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_DEBUG_MODE, default=defaults[CONF_DEBUG_MODE]
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_MEDIA_CAPTURE, default=defaults[CONF_MEDIA_CAPTURE]
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_SIP_VIDEO,
-                    default=defaults[CONF_SIP_VIDEO],
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_REGISTRAR_ENABLED, default=defaults[CONF_REGISTRAR_ENABLED]
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_TRUNK_ENABLED, default=defaults[CONF_TRUNK_ENABLED]
-                ): BooleanSelector(),
-            }
-        )
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            # Number selectors hand floats; coerce to int once on the boundary.
-            for k in ("sip_port", "rtp_port"):
-                user_input[k] = int(user_input[k])
-            for k in ("advertise_host",):
-                user_input[k] = (user_input.get(k) or "").strip()
-            if user_input["sip_port"] == user_input["rtp_port"]:
-                errors["base"] = "sip_rtp_port_conflict"
-
-            if not errors:
-                self._base_input = dict(user_input)
-                if user_input[CONF_SIP_VIDEO]:
-                    return await self.async_step_video()
-                self._base_input[CONF_VIDEO_TRANSCODING] = False
-                self._base_input[CONF_VIDEO_CAMERA_SEND] = False
-                if user_input[CONF_ASSIST_ENDPOINT_ENABLED]:
-                    return await self.async_step_assist()
-                self._base_input[CONF_ASSIST_EXTENSION] = str(
-                    existing.get(CONF_ASSIST_EXTENSION) or ""
-                ).strip()
-                self._base_input[CONF_ASSIST_PIPELINE] = str(
-                    existing.get(CONF_ASSIST_PIPELINE) or ""
-                ).strip()
-                self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
-                    existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
-                )
-                if user_input[CONF_TRUNK_ENABLED]:
-                    return await self.async_step_trunk_mode()
-                data = dict(self._base_input)
-                _disabled_trunk_data(data, existing)
-                current_entry, _existing = self._current_entry_data()
-                if current_entry is None:
-                    await self.async_set_unique_id(DOMAIN)
-                    self._abort_if_unique_id_configured()
-                return self._store_entry(data)
-
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
-
-    async def async_step_video(self, user_input=None):
-        """Configure optional browser video features without affecting audio."""
-
-        _current_entry, existing = self._current_entry_data()
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_VIDEO_TRANSCODING,
-                    default=bool(existing.get(CONF_VIDEO_TRANSCODING, False)),
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_VIDEO_CAMERA_SEND,
-                    default=bool(existing.get(CONF_VIDEO_CAMERA_SEND, False)),
-                ): BooleanSelector(),
-            }
-        )
-        if user_input is not None:
-            assert self._base_input is not None
-            self._base_input[CONF_VIDEO_TRANSCODING] = bool(
-                user_input[CONF_VIDEO_TRANSCODING]
-            )
-            self._base_input[CONF_VIDEO_CAMERA_SEND] = bool(
-                user_input[CONF_VIDEO_CAMERA_SEND]
-            )
-            if self._base_input[CONF_ASSIST_ENDPOINT_ENABLED]:
-                return await self.async_step_assist()
-            self._base_input[CONF_ASSIST_EXTENSION] = str(
-                existing.get(CONF_ASSIST_EXTENSION) or ""
-            ).strip()
-            self._base_input[CONF_ASSIST_PIPELINE] = str(
-                existing.get(CONF_ASSIST_PIPELINE) or ""
-            ).strip()
-            self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
-                existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
-            )
-            if self._base_input[CONF_TRUNK_ENABLED]:
-                return await self.async_step_trunk_mode()
-            data = dict(self._base_input)
-            _disabled_trunk_data(data, existing)
-            current_entry, _existing = self._current_entry_data()
-            if current_entry is None:
-                await self.async_set_unique_id(DOMAIN)
-                self._abort_if_unique_id_configured()
-            return self._store_entry(data)
-        return self.async_show_form(step_id="video", data_schema=schema)
-
-    async def async_step_assist(self, user_input=None):
-        """Configure the optional local Assist pipeline extension."""
-        current_entry, existing = self._current_entry_data()
-        suggested = str(existing.get(CONF_ASSIST_EXTENSION) or "").strip()
-        pipeline = str(existing.get(CONF_ASSIST_PIPELINE) or "").strip()
-        advanced_call_context = bool(
-            existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
-        )
-        extension_key = (
-            vol.Required(CONF_ASSIST_EXTENSION, default=suggested)
-            if suggested
-            else vol.Required(CONF_ASSIST_EXTENSION)
-        )
-        # HA's native selector represents "Preferred assistant" as an empty
-        # selection, while named pipelines carry their concrete pipeline ID.
-        pipeline_key = (
-            vol.Optional(
-                CONF_ASSIST_PIPELINE, description={"suggested_value": pipeline}
-            )
-            if pipeline and pipeline != "preferred"
-            else vol.Optional(CONF_ASSIST_PIPELINE)
-        )
-        schema = vol.Schema(
-            {
-                extension_key: TextSelector(),
-                pipeline_key: AssistPipelineSelector(),
-                vol.Required(
-                    CONF_ASSIST_ADVANCED_CALL_CONTEXT,
-                    default=advanced_call_context,
-                ): BooleanSelector(),
-            }
-        )
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            extension = str(user_input.get(CONF_ASSIST_EXTENSION) or "").strip()
-            if not extension.isdigit() or not 1 <= len(extension) <= 255:
-                errors["base"] = "assist_extension_invalid"
-            elif (
-                extension_conflicts(extension, existing)
-                or route_namespace_conflicts(
-                    candidate_routes=(extension,),
-                    existing=_entry_route_mappings(
-                        current_entry,
-                        existing,
-                        include_assist=False,
-                    ),
-                )
-            ):
-                errors["base"] = "assist_extension_conflict"
-            if not errors:
-                assert self._base_input is not None
-                self._base_input[CONF_ASSIST_EXTENSION] = extension
-                self._base_input[CONF_ASSIST_PIPELINE] = str(
-                    user_input.get(CONF_ASSIST_PIPELINE) or "preferred"
-                ).strip()
-                self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
-                    user_input.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
-                )
-                if self._base_input[CONF_TRUNK_ENABLED]:
-                    return await self.async_step_trunk_mode()
-                data = dict(self._base_input)
-                _disabled_trunk_data(data, existing)
-                current_entry, _existing = self._current_entry_data()
-                if current_entry is None:
-                    await self.async_set_unique_id(DOMAIN)
-                    self._abort_if_unique_id_configured()
-                return self._store_entry(data)
-        return self.async_show_form(step_id="assist", data_schema=schema, errors=errors)
+class TrunkFormMixin:
+    """Registered/static forms for native trunk entries."""
 
     async def async_step_trunk_mode(self, user_input=None):
         _entry, existing = self._current_entry_data()
@@ -655,20 +364,6 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             user_input[CONF_TRUNK_PASSWORD] = str(
                 user_input.get(CONF_TRUNK_PASSWORD) or ""
             )
-            trunk_fields_empty = not any(
-                user_input.get(k)
-                for k in (
-                    CONF_TRUNK_SERVER,
-                    CONF_TRUNK_USERNAME,
-                    CONF_TRUNK_AUTH_USERNAME,
-                    CONF_TRUNK_PASSWORD,
-                    CONF_TRUNK_DOMAIN,
-                    CONF_TRUNK_OUTBOUND_PROXY,
-                )
-            )
-            if trunk_fields_empty:
-                data = dict(self._base_input or _base_entry_data(existing))
-                return self._store_entry(_disabled_trunk_data(data, existing))
             if not user_input[CONF_TRUNK_SERVER]:
                 errors["base"] = "trunk_server_required"
             elif register and not user_input[CONF_TRUNK_USERNAME]:
@@ -676,7 +371,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             elif register and not user_input[CONF_TRUNK_PASSWORD]:
                 errors["base"] = "trunk_password_required"
             if not errors:
-                data = dict(self._base_input or _base_entry_data(existing))
+                data = dict(self._base_input or {})
                 data[CONF_TRUNK_ENABLED] = True
                 data.setdefault("sip_accounts", existing.get("sip_accounts", []))
                 data.setdefault(
@@ -687,8 +382,268 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 if current_entry is None:
                     await self.async_set_unique_id(DOMAIN)
                     self._abort_if_unique_id_configured()
-                return self._store_entry(data)
+                return await self._async_store_trunk(data)
         return self.async_show_form(step_id="trunk", data_schema=schema, errors=errors)
+
+
+    async def _async_store_trunk(self, data):
+        return self._store_entry(data)
+
+
+class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for VoIP Stack."""
+
+    VERSION = 6
+    MINOR_VERSION = 3
+    _base_input: dict | None = None
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Expose the native Add phone flow on the integration entry."""
+        from .contact_flow import ContactSubentryFlowHandler
+        from .trunk_flow import TrunkSubentryFlowHandler
+
+        return {PHONE_SUBENTRY_TYPE: PhoneSubentryFlowHandler, "contact": ContactSubentryFlowHandler,
+                "trunk": TrunkSubentryFlowHandler}
+
+    def _current_entry(self) -> ConfigEntry | None:
+        if self.source == SOURCE_RECONFIGURE:
+            return self._get_reconfigure_entry()
+        return next(iter(self._async_current_entries()), None)
+
+    def _current_entry_data(self) -> tuple[ConfigEntry | None, Mapping[str, Any]]:
+        current_entry = self._current_entry()
+        return current_entry, current_entry.data if current_entry is not None else {}
+
+    def _store_entry(self, data: dict):
+        current_entry, _existing = self._current_entry_data()
+        if current_entry is not None:
+            data = {**current_entry.data, **data}
+        if current_entry is None or current_entry.version >= 6:
+            data.pop(CONF_PHONEBOOK_CONTACTS, None)
+        if current_entry is not None:
+            # Phone permissions are managed by their action, not this wizard.
+            # Read the current entry so an action run while the form was open
+            # is preserved rather than replaced by an older form snapshot.
+            if EXTERNAL_CALL_BLOCKED_ENDPOINTS in current_entry.data:
+                data[EXTERNAL_CALL_BLOCKED_ENDPOINTS] = list(
+                    current_entry.data[EXTERNAL_CALL_BLOCKED_ENDPOINTS]
+                )
+            else:
+                data.pop(EXTERNAL_CALL_BLOCKED_ENDPOINTS, None)
+            return self.async_update_and_abort(
+                current_entry,
+                data=data,
+                reason="reconfigure_successful",
+            )
+        return self.async_create_entry(title="VoIP Stack", data=data)
+
+    async def async_step_reconfigure(self, user_input=None):
+        """Reconfigure the existing VoIP Stack entry from HA's native menu."""
+        return await self.async_step_user(user_input)
+
+    async def async_step_user(self, user_input=None):
+        """Handle install/reconfigure of the single VoIP Stack entry.
+
+        SIP is the only HA call-control protocol. HA is always both a
+        softphone and SIP router/B2BUA, and it listens on both SIP/UDP and
+        SIP/TCP like a normal SIP endpoint.
+        """
+        _current_entry, existing = self._current_entry_data()
+        defaults = {
+            "sip_port": existing.get("sip_port", VOIP_STACK_SIP_PORT),
+            "rtp_port": existing.get("rtp_port", VOIP_STACK_RTP_PORT),
+            "advertise_host": existing.get("advertise_host", ""),
+            CONF_ASSIST_INTENTS: existing.get(CONF_ASSIST_INTENTS, False),
+            CONF_ASSIST_ENDPOINT_ENABLED: existing.get(
+                CONF_ASSIST_ENDPOINT_ENABLED, False
+            ),
+            CONF_DEBUG_MODE: existing.get(CONF_DEBUG_MODE, False),
+            CONF_MEDIA_CAPTURE: existing.get(CONF_MEDIA_CAPTURE, False),
+            CONF_SIP_VIDEO: existing.get(CONF_SIP_VIDEO, False),
+            CONF_REGISTRAR_ENABLED: existing.get(CONF_REGISTRAR_ENABLED, False),
+        }
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "sip_port", default=defaults["sip_port"]
+                ): _port_selector(),
+                vol.Required(
+                    "rtp_port", default=defaults["rtp_port"]
+                ): _port_selector(),
+                vol.Optional("advertise_host", default=defaults["advertise_host"]): str,
+                vol.Required(
+                    CONF_ASSIST_INTENTS,
+                    default=defaults[CONF_ASSIST_INTENTS],
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_ASSIST_ENDPOINT_ENABLED,
+                    default=defaults[CONF_ASSIST_ENDPOINT_ENABLED],
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_DEBUG_MODE, default=defaults[CONF_DEBUG_MODE]
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_MEDIA_CAPTURE, default=defaults[CONF_MEDIA_CAPTURE]
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_SIP_VIDEO,
+                    default=defaults[CONF_SIP_VIDEO],
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_REGISTRAR_ENABLED, default=defaults[CONF_REGISTRAR_ENABLED]
+                ): BooleanSelector(),
+            }
+        )
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Number selectors hand floats; coerce to int once on the boundary.
+            for k in ("sip_port", "rtp_port"):
+                user_input[k] = int(user_input[k])
+            for k in ("advertise_host",):
+                user_input[k] = (user_input.get(k) or "").strip()
+            if user_input["sip_port"] == user_input["rtp_port"]:
+                errors["base"] = "sip_rtp_port_conflict"
+
+            if not errors:
+                self._base_input = dict(user_input)
+                if user_input[CONF_SIP_VIDEO]:
+                    return await self.async_step_video()
+                self._base_input[CONF_VIDEO_TRANSCODING] = False
+                self._base_input[CONF_VIDEO_CAMERA_SEND] = False
+                if user_input[CONF_ASSIST_ENDPOINT_ENABLED]:
+                    return await self.async_step_assist()
+                self._base_input[CONF_ASSIST_EXTENSION] = str(
+                    existing.get(CONF_ASSIST_EXTENSION) or ""
+                ).strip()
+                self._base_input[CONF_ASSIST_PIPELINE] = str(
+                    existing.get(CONF_ASSIST_PIPELINE) or ""
+                ).strip()
+                self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
+                    existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
+                )
+                data = dict(self._base_input)
+                current_entry, _existing = self._current_entry_data()
+                if current_entry is None:
+                    await self.async_set_unique_id(DOMAIN)
+                    self._abort_if_unique_id_configured()
+                return self._store_entry(data)
+
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_video(self, user_input=None):
+        """Configure optional browser video features without affecting audio."""
+
+        _current_entry, existing = self._current_entry_data()
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_VIDEO_TRANSCODING,
+                    default=bool(existing.get(CONF_VIDEO_TRANSCODING, False)),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_VIDEO_CAMERA_SEND,
+                    default=bool(existing.get(CONF_VIDEO_CAMERA_SEND, False)),
+                ): BooleanSelector(),
+            }
+        )
+        if user_input is not None:
+            assert self._base_input is not None
+            self._base_input[CONF_VIDEO_TRANSCODING] = bool(
+                user_input[CONF_VIDEO_TRANSCODING]
+            )
+            self._base_input[CONF_VIDEO_CAMERA_SEND] = bool(
+                user_input[CONF_VIDEO_CAMERA_SEND]
+            )
+            if self._base_input[CONF_ASSIST_ENDPOINT_ENABLED]:
+                return await self.async_step_assist()
+            self._base_input[CONF_ASSIST_EXTENSION] = str(
+                existing.get(CONF_ASSIST_EXTENSION) or ""
+            ).strip()
+            self._base_input[CONF_ASSIST_PIPELINE] = str(
+                existing.get(CONF_ASSIST_PIPELINE) or ""
+            ).strip()
+            self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
+                existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
+            )
+            data = dict(self._base_input)
+            current_entry, _existing = self._current_entry_data()
+            if current_entry is None:
+                await self.async_set_unique_id(DOMAIN)
+                self._abort_if_unique_id_configured()
+            return self._store_entry(data)
+        return self.async_show_form(step_id="video", data_schema=schema)
+
+    async def async_step_assist(self, user_input=None):
+        """Configure the optional local Assist pipeline extension."""
+        current_entry, existing = self._current_entry_data()
+        suggested = str(existing.get(CONF_ASSIST_EXTENSION) or "").strip()
+        pipeline = str(existing.get(CONF_ASSIST_PIPELINE) or "").strip()
+        advanced_call_context = bool(
+            existing.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
+        )
+        extension_key = (
+            vol.Required(CONF_ASSIST_EXTENSION, default=suggested)
+            if suggested
+            else vol.Required(CONF_ASSIST_EXTENSION)
+        )
+        # HA's native selector represents "Preferred assistant" as an empty
+        # selection, while named pipelines carry their concrete pipeline ID.
+        pipeline_key = (
+            vol.Optional(
+                CONF_ASSIST_PIPELINE, description={"suggested_value": pipeline}
+            )
+            if pipeline and pipeline != "preferred"
+            else vol.Optional(CONF_ASSIST_PIPELINE)
+        )
+        schema = vol.Schema(
+            {
+                extension_key: TextSelector(),
+                pipeline_key: AssistPipelineSelector(),
+                vol.Required(
+                    CONF_ASSIST_ADVANCED_CALL_CONTEXT,
+                    default=advanced_call_context,
+                ): BooleanSelector(),
+            }
+        )
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            extension = str(user_input.get(CONF_ASSIST_EXTENSION) or "").strip()
+            if not extension.isdigit() or not 1 <= len(extension) <= 255:
+                errors["base"] = "assist_extension_invalid"
+            elif (
+                extension_conflicts(extension, existing)
+                or route_namespace_conflicts(
+                    candidate_routes=(extension,),
+                    existing=_entry_route_mappings(
+                        current_entry,
+                        existing,
+                        include_assist=False,
+                    ),
+                )
+            ):
+                errors["base"] = "assist_extension_conflict"
+            if not errors:
+                assert self._base_input is not None
+                self._base_input[CONF_ASSIST_EXTENSION] = extension
+                self._base_input[CONF_ASSIST_PIPELINE] = str(
+                    user_input.get(CONF_ASSIST_PIPELINE) or "preferred"
+                ).strip()
+                self._base_input[CONF_ASSIST_ADVANCED_CALL_CONTEXT] = bool(
+                    user_input.get(CONF_ASSIST_ADVANCED_CALL_CONTEXT, False)
+                )
+                data = dict(self._base_input)
+                current_entry, _existing = self._current_entry_data()
+                if current_entry is None:
+                    await self.async_set_unique_id(DOMAIN)
+                    self._abort_if_unique_id_configured()
+                return self._store_entry(data)
+        return self.async_show_form(step_id="assist", data_schema=schema, errors=errors)
+
 
 
 class PhoneSubentryFlowHandler(ConfigSubentryFlow):

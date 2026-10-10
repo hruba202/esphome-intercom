@@ -77,6 +77,7 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
             vol.Optional("call_id", default=""): SHORT_TEXT,
             vol.Required("destination"): URI_TEXT,
             vol.Optional("source_automation"): vol.All(cv.string, vol.Length(min=1, max=255)),
+            vol.Optional("trunk_id"): IDENTIFIER_TEXT,
             vol.Optional("answer_timeout", default=30): vol.All(vol.Coerce(float), vol.Range(min=1, max=120)),
             vol.Optional("ha_bridge", default=False): cv.boolean,
             vol.Optional("send_video", default=False): cv.boolean,
@@ -122,6 +123,7 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
             **phone_selector_fields,
             vol.Optional("call_id", default=""): SHORT_TEXT,
             vol.Required("destination"): URI_TEXT,
+            vol.Optional("trunk_id"): IDENTIFIER_TEXT,
             vol.Optional("ha_bridge", default=False): cv.boolean,
             vol.Optional("on_failure", default="resume"): vol.In(
                 ["resume", "terminate", "busy"]
@@ -262,6 +264,7 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         vol.Optional("ringing_timeout"): vol.All(vol.Coerce(float), vol.Range(min=0, max=3600)),
         vol.Optional("no_answer_action"): vol.In(["hangup", "forward"]),
         vol.Optional("no_answer_to"): URI_TEXT,
+        vol.Optional("outbound_trunk"): IDENTIFIER_TEXT,
     }, extra=vol.PREVENT_EXTRA)
     sip_account_create_schema = vol.Schema(
         {

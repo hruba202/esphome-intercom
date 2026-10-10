@@ -373,7 +373,7 @@ class AutomationCall:
             execution.dtmf_result = result
         return result
 
-    async def forward(self, destination: str, *, on_failure: str = "resume") -> None:
+    async def forward(self, destination: str, *, on_failure: str = "resume", trunk_id: str = "") -> None:
         self.require_current()
         if self.outgoing:
             raise ServiceValidationError("Forward is supported for incoming automation calls")
@@ -390,6 +390,7 @@ class AutomationCall:
                 call_id=self.session.call_id,
                 destination=destination,
                 on_failure=on_failure,
+                **({"trunk_id": trunk_id} if trunk_id else {}),
             )
         except BaseException:
             self.arm_deadline()
@@ -624,7 +625,8 @@ async def async_forward_automation_call(call: ServiceCall) -> bool:
     await async_require_service_admin(call.hass, call)
     application.claim(call)
     await application.forward(
-        call.data["destination"], on_failure=call.data.get("on_failure", "resume")
+        call.data["destination"], on_failure=call.data.get("on_failure", "resume"),
+        trunk_id=str(call.data.get("trunk_id") or ""),
     )
     return True
 

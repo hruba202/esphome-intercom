@@ -417,6 +417,22 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests)), [["voip_stack", "s
   device_id: "device-kitchen", forward_to: "",
 }}]]);
 assert.equal(routingCard._routingSettingsBusy, false);
+// Trunk choices reuse HA's device registry and keep missing selections explicit.
+routingCard._hass.devices = {{ line: {{ model: "SIP trunk", name: "Office",
+  identifiers: [["voip_stack", "trunk:work"]] }} }};
+routingCard._els.trunkRow = {{ hidden: true }};
+let trunkOptions = [];
+routingCard._els.trunkSelect = {{ value: "", dataset: {{}}, replaceChildren(...items) {{ trunkOptions = items; }} }};
+routingCard._renderTrunkPreference({{ outbound_trunk_id: "work" }});
+assert.equal(routingCard._els.trunkSelect.value, "work");
+assert.equal(trunkOptions[1].textContent, "Office");
+routingCard._renderTrunkPreference({{ outbound_trunk_id: "removed-line" }});
+assert.equal(routingCard._els.trunkSelect.value, "removed-line");
+assert.equal(trunkOptions.at(-1).textContent, "Unavailable trunk");
+await routingCard._setPhoneRouting("outbound_trunk", "work");
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.pop())), [
+  "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen", outbound_trunk: "work" }},
+]);
 // Enabling a timeout requires an explicit outcome; disabling sends only zero.
 routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: true,
   seconds: "25", action: "", destination: "Renamed bedroom" }};

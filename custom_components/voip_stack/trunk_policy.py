@@ -5,6 +5,51 @@ from __future__ import annotations
 import ipaddress
 
 
+def select_trunk_id(configs, default_id: str, *, requested_id: str = "", phone_trunk_id: str = "") -> str:
+    """Resolve an explicit choice, phone preference or default without failover."""
+    selected = str(requested_id or phone_trunk_id or default_id or "").strip()
+    if not selected:
+        if configs:
+            raise ValueError("Select a default trunk or choose a trunk for this call")
+        return ""
+    if selected not in configs:
+        raise ValueError("The selected trunk no longer exists")
+    if not configs[selected].get("trunk_enabled", False):
+        raise ValueError("The selected trunk is disabled")
+    return selected
+
+
+def validate_static_trunk_sources(configs) -> None:
+    """Reject overlapping source rules on the same signaling transport."""
+    seen = []
+    for identity, config in configs.items():
+        if not config.get("trunk_enabled", False) or config.get("trunk_register", True):
+            continue
+        transport = str(config.get("trunk_transport") or "udp").casefold()
+        for network in trusted_networks(config.get("trunk_allowed_ips")):
+            for previous_id, previous_transport, previous in seen:
+                if (previous_id != identity and previous_transport == transport
+                        and previous.version == network.version and previous.overlaps(network)):
+                    raise ValueError("Static trunks on the same transport need non-overlapping incoming networks")
+            seen.append((identity, transport, network))
+
+
+def identify_inbound_trunk(clients, host: str, port: int, transport: str, *, flow_trunk_id: str = "", contact_line: str = "") -> str:
+    """Bind an owned flow, or require one unambiguous trusted source match."""
+    if flow_trunk_id:
+        client = clients.get(flow_trunk_id)
+        return flow_trunk_id if client is not None and trunk_available(client) else ""
+    matches = [identity for identity, client in clients.items()
+               if trunk_available(client) and client.accepts_inbound_source(host, port, transport)]
+    if contact_line and matches:
+        matches = [identity for identity in matches if getattr(clients[identity], "contact_line", "") == contact_line]
+        if not matches:
+            raise ValueError("Incoming SIP Contact identifies an inactive trunk registration")
+    if len(matches) > 1:
+        raise ValueError("Incoming SIP source matches multiple trunks")
+    return matches[0] if matches else ""
+
+
 def trusted_networks(values):
     """Validate literal IPs/CIDRs; never infer inbound trust from SIP headers."""
     if isinstance(values, str):
@@ -53,6 +98,17 @@ def call_external_call_denied(runtime, call_id: str, *endpoint_ids) -> str:
             return denied
         call_id = str((session.metadata or {}).get("source_call_id") or "")
     return ""
+
+
+def is_any_trunk_uri(runtime, uri) -> bool:
+    """Access restrictions cover every configured provider, including non-default lines."""
+    configs = getattr(runtime, "trunk_configs", {}) or {"": runtime.trunk_config}
+    calls = getattr(runtime, "sip", None)
+    for identity, config in configs.items():
+        client = calls.component(f"trunk:{identity}" if identity else "trunk") if calls is not None else None
+        if is_trunk_uri(uri, config, getattr(client, "active_registrar_target", None)):
+            return True
+    return False
 
 
 def is_trunk_uri(uri, trunk_config, active_target=None) -> bool:

@@ -27,6 +27,7 @@ def _runtime(*, blocked=True, remote="sip:desk@192.0.2.20", entries=None):
             "external_call_blocked_endpoints": ["sip:restricted"] if blocked else [],
         },
         trunk_config={"trunk_server": "provider.example", "trunk_port": 5060},
+        trunk_configs={}, default_trunk_id="",
         sip=SimpleNamespace(
             get_session=lambda _call_id: session,
             component=lambda _name: None,

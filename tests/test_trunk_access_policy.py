@@ -23,6 +23,44 @@ def test_no_restrictions_preserves_default_access(policy):
     assert policy.external_call_denied({policy.EXTERNAL_CALL_BLOCKED_ENDPOINTS: []}, "restricted") == ""
 
 
+@pytest.mark.parametrize(("requested", "phone", "expected"), [
+    ("work", "home", "work"), ("", "work", "work"), ("", "", "home"),
+])
+def test_trunk_selection_has_explicit_phone_default_precedence(policy, requested, phone, expected):
+    configs = {identity: {"trunk_enabled": True} for identity in ("home", "work")}
+    assert policy.select_trunk_id(configs, "home", requested_id=requested, phone_trunk_id=phone) == expected
+
+
+@pytest.mark.parametrize("requested", ["missing", "disabled"])
+def test_explicit_invalid_trunk_never_falls_back_to_default(policy, requested):
+    with pytest.raises(ValueError):
+        policy.select_trunk_id({"home": {"trunk_enabled": True}, "disabled": {"trunk_enabled": False}},
+                               "home", requested_id=requested)
+
+
+def test_static_trunk_source_overlap_requires_same_transport(policy):
+    first = {"trunk_enabled": True, "trunk_register": False, "trunk_transport": "udp",
+             "trunk_allowed_ips": ["192.0.2.0/24", "2001:db8::/64"]}
+    second = {**first, "trunk_allowed_ips": ["192.0.2.10"]}
+    with pytest.raises(ValueError, match="non-overlapping"):
+        policy.validate_static_trunk_sources({"one": first, "two": second})
+    policy.validate_static_trunk_sources({"one": first, "two": {**second, "trunk_transport": "tcp"}})
+    policy.validate_static_trunk_sources({"one": first, "two": {**second, "trunk_enabled": False}})
+    with pytest.raises(ValueError, match="non-overlapping"):
+        policy.validate_static_trunk_sources({"one": first, "two": {**second, "trunk_allowed_ips": ["2001:db8::1"]}})
+
+
+def test_inbound_trunk_identity_uses_owned_flow_or_unique_trusted_source(policy):
+    clients = {identity: SimpleNamespace(ready=True, accepts_inbound_source=lambda *_args: True)
+               for identity in ("home", "work")}
+    with pytest.raises(ValueError, match="multiple trunks"):
+        policy.identify_inbound_trunk(clients, "192.0.2.10", 5060, "UDP")
+    assert policy.identify_inbound_trunk(clients, "192.0.2.10", 5060, "UDP", flow_trunk_id="work") == "work"
+    clients["work"].ready = False
+    assert policy.identify_inbound_trunk(clients, "192.0.2.10", 5060, "UDP", flow_trunk_id="work") == ""
+    assert policy.identify_inbound_trunk(clients, "192.0.2.10", 5060, "UDP") == "home"
+
+
 @pytest.mark.parametrize("key", ["source_endpoint_id", "dest_endpoint_id", "endpoint_id"])
 def test_authoritative_endpoint_identity_preserves_restriction(policy, key):
     config = {policy.EXTERNAL_CALL_BLOCKED_ENDPOINTS: ["stable-phone"]}

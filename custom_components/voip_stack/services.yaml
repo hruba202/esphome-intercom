@@ -132,6 +132,14 @@ call:
         administrator or automation access; no response variable is needed.
       selector:
         text:
+    trunk_id:
+      name: Outgoing SIP trunk
+      description: Optional line for a Home Assistant phone or backend announcement. Omit to use the phone preference or default trunk. No automatic fallback to another line.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: SIP trunk
     answer_timeout:
       name: Wait for answer
       description: >-
@@ -199,6 +207,14 @@ forward:
             - resume
             - terminate
             - busy
+    trunk_id:
+      name: Outgoing SIP trunk
+      description: Optional line for an external forwarding destination. Omit to retain the call's trunk choice or phone preference.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: SIP trunk
     advanced:
       name: Advanced options
       description: Select a specific concurrent call or reject stale automation decisions.
@@ -752,6 +768,14 @@ set_phone_settings:
       description: Phonebook name, extension or SIP address. Leave empty to disable forwarding.
       selector:
         text:
+    outbound_trunk:
+      name: Preferred outgoing SIP trunk
+      description: Select the line used for this phone's external calls. An explicit choice in the call action takes precedence. An empty value clears the preference.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+              model: SIP trunk
     busy_to:
       name: When busy or Do not disturb
       description: Destination to try when this phone is busy or has Do not disturb enabled.

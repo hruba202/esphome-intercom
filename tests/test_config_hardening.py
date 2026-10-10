@@ -244,11 +244,11 @@ def test_everyday_call_actions_hide_technical_fields_in_collapsed_sections() -> 
     document = yaml.safe_load(SERVICES_YAML.read_text())
 
     expected_primary = {
-        "call": {"device_id", "destination", "send_video", "source_automation", "answer_timeout"},
+        "call": {"device_id", "destination", "send_video", "source_automation", "answer_timeout", "trunk_id"},
         "answer": {"device_id", "send_video"},
         "decline": {"device_id"},
         "hangup": {"device_id"},
-        "forward": {"device_id", "destination", "on_failure"},
+        "forward": {"device_id", "destination", "on_failure", "trunk_id"},
         "select_inbound_destination": {"destination"},
     }
     for service, primary in expected_primary.items():
@@ -439,10 +439,9 @@ def test_phone_and_assist_flows_share_one_complete_route_namespace() -> None:
         flow_source.index("def _entry_route_mappings(") :
         flow_source.index("def _port_selector(")
     ]
-    assist = flow_source[
-        flow_source.index("async def async_step_assist(") :
-        flow_source.index("async def async_step_trunk(")
-    ]
+    assist_node = next(node for node in ast.walk(ast.parse(flow_source))
+                       if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_step_assist")
+    assist = ast.get_source_segment(flow_source, assist_node)
     phone_aliases = flow_source[
         flow_source.index("    def _validate_aliases(") :
         flow_source.index("    def _normalized_common(")

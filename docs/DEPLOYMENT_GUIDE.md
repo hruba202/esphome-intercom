@@ -241,16 +241,18 @@ its C6 firmware/resource notes before changing LVGL or audio features.
 
 ![Waveshare P4 touch profile](images/p4-touch-overview.jpg)
 
-## Optional SIP trunk
+## Optional SIP trunks
 
-The trunk is disabled by default. Leave it disabled for local-only VoIP
-installs; no registration, external route or DTMF collector is started.
+Local-only installations need no trunk. Add a named line through **Add SIP
+trunk** on the integration page when you want to connect a provider or another
+PBX. Choose registration or static source-IP authorization as required by that
+peer. Each line has independent credentials and incoming routing.
 
-Enable it only when HA must register to a SIP provider or PBX. The trunk setup
-asks for provider transport, server, credentials, optional outbound proxy,
-default inbound target and optional DTMF digit collection.
+Choose a default outgoing line, then optionally override it in phone settings
+or a call action. An unavailable selected line never silently switches to a
+different provider. See [SIP trunks](SIP_TRUNK.md) for setup and examples.
 
-Inbound provider calls are answered by HA so it can collect DTMF digits through
+With DTMF extension selection enabled, HA answers the incoming call to collect digits through
 RTP `telephone-event` or compatible legacy SIP INFO. Normal mobile dialers can use
 post-dial pauses, for example a contact that dials the provider number, waits,
 and sends `100`. If no digits arrive, HA resolves the configured default target
@@ -258,6 +260,7 @@ and sends `100`. If no digits arrive, HA resolves the configured default target
 central phonebook `extension` values.
 If digits arrive and do not resolve, HA terminates the answered leg with
 `route_not_found`.
+Direct mode routes the incoming call without this digit-collection step.
 
 ## Media
 

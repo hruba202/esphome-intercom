@@ -1,4 +1,7 @@
 const PT_BR = {
+  "Outgoing SIP trunk": "Tronco SIP de saída",
+  "Use default trunk": "Usar tronco padrão",
+  "Unavailable trunk": "Tronco indisponível",
   "Enable ringing timeout": "Ativar tempo limite de toque",
   "Seconds before no-answer action": "Segundos antes da ação sem resposta",
   "When nobody answers": "Quando ninguém atende",
@@ -118,6 +121,9 @@ const PT_BR = {
 };
 
 const DE = {
+  "Outgoing SIP trunk": "Ausgehender SIP-Trunk",
+  "Use default trunk": "Standard-Trunk verwenden",
+  "Unavailable trunk": "Trunk nicht verfügbar",
   "Enable ringing timeout": "Klingelzeit begrenzen",
   "Seconds before no-answer action": "Sekunden bis zur Aktion bei Nichtannahme",
   "When nobody answers": "Wenn niemand abnimmt",

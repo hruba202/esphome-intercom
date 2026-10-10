@@ -20,7 +20,7 @@ from .core.codec_capabilities import common_sip_codecs
 from .config import assist_config, trunk_config, trunk_enabled
 from .peer import Peer
 from .router import resolve_ha_router
-from .runtime_data import endpoint_directory, preferred_browser_phone, sip_trunk
+from .runtime_data import endpoint_directory, preferred_browser_phone, sip_trunk, runtime_data
 from .store import manual_roster_entries
 
 _LOGGER = logging.getLogger(__name__)
@@ -211,9 +211,16 @@ def is_ha_target(hass: HomeAssistant, value: str) -> bool:
     return same_route_name(value, _ha_peer_name(hass)) or same_route_name(value, "ha")
 
 
-def ha_router_decision(hass: HomeAssistant, target: str, entries: list):
+def ha_router_decision(hass: HomeAssistant, target: str, entries: list, *, source_endpoint_id: str = "", trunk_id: str = ""):
     """Resolve one target against the canonical HA dial plan."""
 
+    runtime = runtime_data(hass)
+    if source_endpoint_id or trunk_id or (runtime is not None and runtime.trunk_configs):
+        from .trunk_selection import select_call_trunk
+
+        selected = select_call_trunk(hass, endpoint_id=source_endpoint_id, inherited=trunk_id)
+        decision = resolve_ha_router(target, entries, trunk_ready=selected.available)
+        return replace(decision, trunk_id=selected.identity)
     trunk = sip_trunk(hass)
     configured_trunk = trunk_config(hass)
     trunk_ready = trunk_enabled(configured_trunk) and bool(
@@ -284,12 +291,26 @@ class EndpointRouteResolver:
     hass: HomeAssistant
     local_ip: str
     sip_port: int
+    source_endpoint_id: str = ""
+    trunk_id: str = ""
+
+    def for_call(self, call_id: str, *, trunk_id: str = ""):
+        from .endpoint_lifecycle import call_registry
+        from .trunk_selection import select_call_trunk
+
+        session = call_registry(self.hass).get_session(call_id)
+        metadata = session.metadata if session is not None else {}
+        source_id = str(metadata.get("source_endpoint_id") or self.source_endpoint_id)
+        selection = select_call_trunk(self.hass, requested=trunk_id, endpoint_id=source_id,
+                                      inherited=str(metadata.get("outbound_trunk_id") or self.trunk_id))
+        return replace(self, source_endpoint_id=source_id, trunk_id=selection.identity)
 
     def is_ha_target(self, value: str) -> bool:
         return is_ha_target(self.hass, value)
 
     def route(self, target: str, entries: list):
-        return ha_router_decision(self.hass, target, entries)
+        return ha_router_decision(self.hass, target, entries, source_endpoint_id=self.source_endpoint_id,
+                                  trunk_id=self.trunk_id)
 
     def is_local_listener_uri(self, uri) -> bool:
         return is_local_listener_uri(

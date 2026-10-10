@@ -16,11 +16,13 @@ pytestmark = pytest.mark.ha
 
 
 def _runtime() -> call_forwarder.ForwardRuntime:
+    resolver = Mock()
+    resolver.for_call.return_value = resolver
     return call_forwarder.ForwardRuntime(
         hass=SimpleNamespace(),
         config={},
         local_ip="127.0.0.1",
-        route_resolver=Mock(),
+        route_resolver=resolver,
         browser_leg_for_member=Mock(),
         defer_invite_to_softphone=Mock(),
         prepare_outbound_leg=Mock(),
@@ -48,6 +50,7 @@ def _registry(
         ),
         event_context=Mock(return_value=context),
         resource_for=lambda *_args: None,
+        component=lambda _name: None,
     )
 
 

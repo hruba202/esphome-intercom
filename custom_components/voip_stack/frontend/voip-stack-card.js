@@ -2085,6 +2085,9 @@ class VoipStackCard extends HTMLElement {
     for (const [field, controls] of Object.entries(els.routingControls || {})) {
       controls.input.onchange = (event) => this._setPhoneRouting(field, event.target.value);
     }
+    if (els.trunkSelect) {
+      els.trunkSelect.onchange = (event) => this._setPhoneRouting("outbound_trunk", event.target.value);
+    }
     if (els.ringingControls) {
       for (const field of ["enabled", "seconds", "action", "destination"]) {
         els.ringingControls[field].oninput = () => this._editRingingPolicy();
@@ -2995,6 +2998,36 @@ class VoipStackCard extends HTMLElement {
       this._populateGroupSuggestions(controls.input, controls.options, names, destination?.name || target);
     }
     this._renderRingingControls(deviceId, policy, entries);
+    this._renderTrunkPreference(policy);
+  }
+
+  _renderTrunkPreference(policy) {
+    const select = this._els?.trunkSelect;
+    if (!select) return;
+    const choices = Object.values(this._hass?.devices || {}).flatMap((device) => {
+      if (device.model !== "SIP trunk" || device.disabled_by) return [];
+      const identity = (device.identifiers || []).find(([domain, value]) =>
+        domain === "voip_stack" && String(value).startsWith("trunk:"));
+      return identity ? [{ value: identity[1].slice(6), label: device.name_by_user || device.name }] : [];
+    }).sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    const selected = policy.outbound_trunk_id || "";
+    this._els.trunkRow.hidden = !choices.length && !selected;
+    choices.unshift({ value: "", label: this._t("Use default trunk") });
+    if (selected && !choices.some((item) => item.value === selected)) {
+      choices.push({ value: selected, label: this._t("Unavailable trunk") });
+    }
+    const signature = JSON.stringify(choices);
+    if (select.dataset.options !== signature) {
+      select.replaceChildren(...choices.map(({ value, label }) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }));
+      select.dataset.options = signature;
+    }
+    select.value = selected;
+    select.disabled = !!this._routingSettingsBusy;
   }
 
   _renderRingingControls(deviceId, policy, entries) {

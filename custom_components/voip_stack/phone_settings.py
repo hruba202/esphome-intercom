@@ -23,6 +23,10 @@ async def async_set_phone_settings(call: ServiceCall) -> None:
     if entry is None:
         raise ServiceValidationError("VoIP Stack configuration is unavailable")
     updates = {}
+    if "outbound_trunk" in call.data:
+        from .trunk_selection import resolve_trunk_selector
+
+        updates["outbound_trunk_id"] = resolve_trunk_selector(call.hass, call.data["outbound_trunk"])
     for field, slot in (
         ("forward_to", "always"),
         ("busy_to", "busy"),

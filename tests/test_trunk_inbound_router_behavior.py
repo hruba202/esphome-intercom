@@ -41,6 +41,7 @@ async def test_inbound_bridge_constructs_client_with_trunk_transport(
         sip_uri_transport=uri_transport, ha_peer_name=lambda *_: "HA",
     )
     invite = SimpleNamespace(
+        trunk_id="",
         call_id="esp-trunk-108", caller="ESP", routing_caller="ESP",
         target="12345", routing_target="12345", source_host="192.0.2.20",
         source_port=5060, signaling_transport=incoming_transport, video_format=None,
@@ -127,6 +128,7 @@ def test_dtmf_preanswer_video_direction_respects_offer_answer_contract(
     from custom_components.voip_stack.inbound_routing import trunk
 
     invite = SimpleNamespace(
+        trunk_id="",
         video_format=SimpleNamespace(direction=offer_direction)
     )
 
@@ -169,7 +171,7 @@ async def test_source_bye_before_routing_leaves_cleanup_to_session_owner(
     )
     registry = Mock()
     ports = SimpleNamespace(ports=(40000, 40002), release=Mock())
-    invite = SimpleNamespace(call_id="call-1", caller="Alice", target="Casa")
+    invite = SimpleNamespace(call_id="call-1", caller="Alice", target="Casa", trunk_id="")
     route = Mock()
     monkeypatch.setattr(
         trunk_inbound_router,
@@ -235,6 +237,7 @@ async def test_unknown_route_terminates_answered_source_through_session_owner(
     terminate = AsyncMock(return_value=True)
     ports = SimpleNamespace(ports=(40000, 40002), release=Mock())
     invite = SimpleNamespace(
+        trunk_id="",
         call_id="call-reject",
         caller="Wildix caller",
         target="Casa",
@@ -314,6 +317,7 @@ def test_dtmf_preanswer_creates_call_owner_before_attaching_artifacts(
         wire_token=lambda: "pt=8:PCMA/8000/1",
     )
     invite = SimpleNamespace(
+        trunk_id="",
         call_id="trunk-call-1",
         caller="Wildix caller",
         source_host="192.0.2.10",

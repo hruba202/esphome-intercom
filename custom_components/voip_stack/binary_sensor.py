@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .endpoint_device import (
     async_link_endpoint_entity,
@@ -41,6 +42,61 @@ async def async_setup_entry(
     register_endpoint_entity_manager(
         entry, "endpoint_connectivity_entity_manager", manager
     )
+    from .trunk_config import TRUNK_UPDATE_SIGNAL, trunk_subentries
+
+    trunk_entities = {}
+
+    @callback
+    def update_trunks(identity=""):
+        records = {str(record.data.get("trunk_id") or record.subentry_id): record for record in trunk_subentries(entry)}
+        for removed in trunk_entities.keys() - records.keys():
+            trunk_entities.pop(removed)
+        for trunk_id, record in records.items():
+            if trunk_id not in trunk_entities:
+                entity = TrunkReadyBinarySensor(hass, trunk_id, record.title)
+                trunk_entities[trunk_id] = entity
+                async_add_entities([entity], config_subentry_id=record.subentry_id)
+            elif not identity or identity == trunk_id:
+                trunk_entities[trunk_id].refresh_state()
+
+    entry.async_on_unload(async_dispatcher_connect(hass, TRUNK_UPDATE_SIGNAL, update_trunks))
+    update_trunks()
+
+
+class TrunkReadyBinarySensor(BinarySensorEntity):
+    """Registration readiness, or configured static routing, without polling."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "trunk_ready"
+
+    def __init__(self, hass, identity, name):
+        from .const import DOMAIN
+        from .trunk_config import TRUNK_DEVICE_MODEL
+
+        self._runtime_hass = hass
+        self.identity = identity
+        self._attr_unique_id = f"trunk_{identity}_ready"
+        self._attr_device_info = {"identifiers": {(DOMAIN, f"trunk:{identity}")}, "name": name,
+                                  "manufacturer": "VoIP Stack", "model": TRUNK_DEVICE_MODEL}
+        self.refresh_state()
+
+    @callback
+    def refresh_state(self):
+        from .config import trunk_config
+        from .runtime_data import sip_trunk
+
+        config = trunk_config(self._runtime_hass, self.identity)
+        client = sip_trunk(self._runtime_hass, self.identity)
+        self._attr_is_on = bool(client is not None and client.ready)
+        self._attr_extra_state_attributes = {
+            "registration_enabled": bool(config.get("trunk_register", True)),
+            "transport": str(config.get("trunk_transport", "")),
+            "last_status_code": int(getattr(client, "status_code", 0)),
+        }
+        if self.hass is not None:
+            self.async_write_ha_state()
 
 
 class PhoneEndpointConnectivityBinarySensor(BinarySensorEntity):
