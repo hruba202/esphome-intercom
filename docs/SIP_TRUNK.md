@@ -87,6 +87,9 @@ rather than assuming every provider supports the same list.
   does not install a decoder or enable a new transcoder.
 - An empty video selection disables video on this trunk. Selecting video
   codecs does not enable the integration's video option or the caller's camera.
+- On video-capable calls, **Send Camera** controls transmission. With the
+  camera off, the phone can still negotiate video reception (`recvonly`).
+  Enabling the camera during the call updates its sending direction.
 - The selections are allowlists. Existing codec preferences, RTP payload
   mappings, clock rates and supported H.264 profiles determine the offer.
 - DTMF telephone events are negotiated separately from the audio codec list.

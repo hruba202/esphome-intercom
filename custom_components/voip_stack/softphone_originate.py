@@ -537,8 +537,7 @@ async def async_originate_browser_call(
         "video"
     )
     target_video_enabled = bool(
-        not esphome_sip_endpoint
-        or (
+        (
             target_endpoint is not None
             and target_endpoint.supports("video")
         )
@@ -546,6 +545,8 @@ async def async_originate_browser_call(
             str(value).strip().lower()
             for value in entry_metadata.get("capabilities", [])
         }
+    ) if esphome_sip_endpoint else (
+        target_endpoint is None or target_endpoint.supports("video")
     )
     video_capable = (
         bool(cfg.get(CONF_SIP_VIDEO, False))
@@ -576,7 +577,7 @@ async def async_originate_browser_call(
         and target_video_codec.upper() in {"", "H264"}
         and (target_endpoint is None or target_endpoint.supports("video"))
     )
-    video_enabled = camera_send_enabled or dahua_receive_only
+    video_enabled = video_capable
     video_reservation = None
     video_rtp_socket = None
     video_rtcp_socket = None
@@ -607,8 +608,8 @@ async def async_originate_browser_call(
         video_offer_formats_for_target_codec,
     )
 
-    # Ordinary outgoing calls retain explicit camera intent. The scoped
-    # receive-only profile below does not change the browser camera setting.
+    # Camera permission controls transmission; capable phones can receive
+    # video with their camera off.
     offered_video_formats = (
         tuple(
             item for item in DEFAULT_VIDEO_FORMATS if browser_video_send_supported(item)

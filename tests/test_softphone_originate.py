@@ -395,16 +395,16 @@ def test_offline_browser_phone_remains_a_local_ringing_destination(
         ('dahua', False, True, True, '', True, True, 'recvonly_mode0'),
         ('dahua', False, True, True, 'sip_account', True, True, 'recvonly_mode0'),
         ('dahua', True, True, True, '', True, True, 'sendrecv_mode1'),
-        ('', False, True, True, '', True, True, 'audio_only'),
+        ('', False, True, True, '', True, True, 'recvonly_mode1'),
         ('', True, True, True, '', True, True, 'sendrecv_mode1'),
         ('dahua', False, False, True, '', True, True, 'audio_only'),
         ('dahua', False, True, False, '', True, True, 'audio_only'),
         ('dahua', False, True, True, 'sip_account', False, True, 'audio_only'),
         ('', True, True, True, 'esphome', False, True, 'audio_only'),
         ('', True, True, True, 'esphome', True, True, 'sendrecv_mode1'),
-        ('dahua', False, True, True, 'esphome', True, True, 'audio_only'),
+        ('dahua', False, True, True, 'esphome', True, True, 'recvonly_mode1'),
         ('dahua', False, True, True, '', True, False, 'recvonly_mode0'),
-        ('', True, True, True, '', True, False, 'audio_only'),
+        ('', True, True, True, '', True, False, 'recvonly_mode1'),
     ],
 )
 def test_outgoing_dahua_receive_only_offer_is_scoped(
@@ -464,7 +464,7 @@ def test_outgoing_dahua_receive_only_offer_is_scoped(
             assert fmt.profile_level_id == '42001f'
             assert not fmt.level_asymmetry_allowed
         else:
-            assert captured['video_direction'] == 'sendrecv'
+            assert captured['video_direction'] == ('recvonly' if expected == 'recvonly_mode1' else 'sendrecv')
             assert fmt.packetization_mode == 1
 
 
@@ -561,7 +561,8 @@ def test_static_dahua_contact_builds_full_offer_for_direct_and_trunk(
     assert "profile-level-id=42001f" in offer
 
 
-def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_originate):
+@pytest.mark.parametrize("allow_video", [True, False])
+def test_trunk_video_reception_is_independent_from_camera_capture(softphone_originate, allow_video):
     module = softphone_originate
     endpoint = SimpleNamespace(
         endpoint_id="caller", device_id="browser", sip_uri_user="browser",
@@ -575,8 +576,9 @@ def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_origi
     module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, route.target, None))
     module._get_transport_config = Mock(return_value={"sip_port": 5060, "sip_video": True, "video_camera_send": True})
-    module._get_trunk_config = Mock(return_value={"trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha"})
+    module._get_trunk_config = Mock(return_value={"trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha", "trunk_video_codecs": ["H264"] if allow_video else []})
     module._trunk_enabled = Mock(return_value=True)
+    module.reserve_sip_video_media = Mock(return_value=(SimpleNamespace(ports=(40000, 40002)), object(), object()))
     captured = {}
 
     class OfferCaptured(Exception):
@@ -591,11 +593,13 @@ def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_origi
         asyncio.run(module.async_originate_browser_call(
             _call(hass, destination=route.target, send_video=False), endpoint_id="caller", browser_endpoint=endpoint,
         ))
-    assert captured["video_formats"] == ()
-    assert captured["local_video_rtp_port"] == 0
+    assert bool(captured["video_formats"]) is allow_video
+    assert captured["local_video_rtp_port"] == (40002 if allow_video else 0)
+    assert captured["video_direction"] == "recvonly"
     assert captured["include_dahua_pcm"] is False
     assert {fmt.frame_ms for fmt in captured["supported_send_formats"]} == {20}
-    module.reserve_sip_video_media.assert_not_called()
+    if not allow_video:
+        module.reserve_sip_video_media.assert_not_called()
 
 
 @pytest.mark.parametrize("action", [_RouteAction.ASSIST, _RouteAction.AUTOMATION, _RouteAction.VOICEMAIL, _RouteAction.PARKING])
