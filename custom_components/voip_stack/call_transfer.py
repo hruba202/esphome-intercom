@@ -220,6 +220,30 @@ async def async_transfer_target(
 ) -> SipTransferResult:
     """Relay an inbound REFER to the unique opposite SIP leg."""
 
+    if hass is not None and target.replaces is None and runtime.sip is not None:
+        from .parking import parking_address, park_established_sip_call, ParkingError
+        from .endpoint_routing import is_local_listener_uri
+
+        uri = sip.parse_sip_uri(target.uri)
+        listener = runtime.sip.component("udp_listener")
+        local_host = str(getattr(listener, "local_ip", ""))
+        if is_local_listener_uri(uri, local_ip=local_host, sip_port=int(runtime.transport_config["sip_port"])):
+            address = parking_address(hass, uri.user)
+            if address is not None:
+                session = runtime.sip.get_session(runtime.sip.resolve_session_id(call_id))
+                if session is None:
+                    return SipTransferResult(False, 481, "call_not_found")
+                from_callee = (source_client.dialog_ids.call_id == session.metadata.get("bridge_dest_call_id")
+                               if source_client is not None else call_id == session.metadata.get("bridge_dest_call_id"))
+                parker = str(session.metadata.get("dest_endpoint_id" if from_callee else "source_endpoint_id") or "")
+                try:
+                    import asyncio
+                    await park_established_sip_call(hass, call_id, parker, slot=address[1], referrer=source_client,
+                                                   refer_transaction=asyncio.current_task())
+                except ParkingError:
+                    return SipTransferResult(False, 486, "parking_unavailable")
+                return SipTransferResult(True, 200, "parked")
+
     client = _client_for_call(runtime, call_id)
     server = None
     if source_client is not None:

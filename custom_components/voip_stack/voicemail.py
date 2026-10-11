@@ -179,7 +179,7 @@ async def start_voicemail_application(hass, session, invite, endpoint, local_ip,
         settings={**settings, **voice}, **options,
     )
     if previous is not None:
-        previous.cancel_deadline()
+        await previous.close("forwarded")
         registry.release_resource(session.call_id, f"{previous.owner}:{session.call_id}", value=previous)
     context = copy_context()
     context.run(current_execution.set, None)

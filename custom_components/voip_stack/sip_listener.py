@@ -3100,6 +3100,10 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             return None
         return dialog.invite
 
+    def invite_for_call(self, call_id: str) -> SipInvite | None:
+        dialog = self.active_dialogs.get(call_id)
+        return dialog.invite if dialog is not None else None
+
     def dialog_key(self, call_id: str) -> DialogKey | None:
         dialog = self.active_dialogs.get(call_id)
         return DialogKey.for_uas_dialog(dialog.request, local_tag=dialog.to_tag) if dialog is not None else None

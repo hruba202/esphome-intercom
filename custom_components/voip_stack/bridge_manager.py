@@ -14,6 +14,19 @@ from .fsm import TerminalReason, sip_public_state, sip_terminal_reason
 _LOGGER = logging.getLogger(__name__)
 
 
+async def async_watch_owned_sip_dialog(registry, call_id, client, generation):
+    """End the current logical owner when one retained dialog terminates."""
+    try:
+        reason = await client.wait_for_dialog_termination()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        reason = "signaling_failed"
+    if (registry.is_generation_current(call_id, generation)
+            and registry.sip_client_for(client.dialog_ids.call_id) is client):
+        await registry.terminate_call_wait(call_id, reason=reason)
+
+
 async def async_watch_sip_bridge_destination(
     hass: HomeAssistant,
     *,

@@ -1,0 +1,62 @@
+"""Parking configuration and feature addresses, independent of call state."""
+
+import math
+import re
+
+DEFAULT_SLOTS = tuple(str(number) for number in range(701, 721))
+_ADDRESS = re.compile(r"[A-Za-z0-9*#_-]{1,64}")
+
+
+def parking_settings(hass):
+    from .store import config_entry
+
+    entry = config_entry(hass)
+    return normalize_parking_config(dict(entry.data.get("parking", {}))) if entry is not None else {"enabled": False}
+
+
+def normalize_parking_config(value):
+    if not isinstance(value, dict) or not value.get("enabled", False):
+        return {"enabled": False}
+    access = str(value.get("access") or "700").strip()
+    slots = tuple(str(item).strip() for item in value.get("slots", DEFAULT_SLOTS))
+    if (not _ADDRESS.fullmatch(access) or not slots or len(slots) > 100
+            or any(not _ADDRESS.fullmatch(slot) for slot in slots)
+            or len({slot.casefold() for slot in slots}) != len(slots)
+            or {access.casefold(), "park"} & {slot.casefold() for slot in slots}):
+        raise ValueError("Choose a parking access code and up to 100 distinct slots")
+    result = {"enabled": True, "access": access, "slots": list(slots)}
+    for name, default in (("timeout", 180), ("return_timeout", 30)):
+        number = value.get(name, default)
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not 1 <= number <= 3600:
+            raise ValueError("Parking and return timeouts must be between 1 and 3600 seconds")
+        result[name] = number
+    for name in ("return_destination", "hold_media"):
+        item = value.get(name, "")
+        if not isinstance(item, str) or len(item) > 2048:
+            raise ValueError("Invalid parking destination or hold media")
+        result[name] = item.strip()
+    return result
+
+
+def parse_parking_address(settings, target):
+    if not settings.get("enabled"):
+        return None
+    raw = str(target or "").strip().casefold()
+    if "@" in raw or raw.startswith(("sip:", "sips:")):
+        return None
+    slots = {str(slot).casefold(): str(slot) for slot in settings.get("slots", DEFAULT_SLOTS)}
+    if raw in {str(settings.get("access") or "700").casefold(), "park"}:
+        return "deposit", ""
+    for prefix, mode in (("park.", "deposit"), ("pickup.", "pickup")):
+        if raw.startswith(prefix):
+            slot = slots.get(raw[len(prefix):])
+            return (mode, slot) if slot else None
+    return ("pickup", slots[raw]) if raw in slots else None
+
+
+def parking_namespace_conflicts(settings, mappings):
+    from .config_validation import ROUTE_ALIAS_FIELDS, mapping_group_values
+
+    return any(parse_parking_address(settings, value) is not None
+               for item in mappings
+               for value in (*(item.get(field) for field in ROUTE_ALIAS_FIELDS), *mapping_group_values(item)))

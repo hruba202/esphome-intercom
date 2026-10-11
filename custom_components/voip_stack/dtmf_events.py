@@ -38,10 +38,12 @@ async def handle_sip_info(
     queue = artifacts.trunk_info_queue if artifacts is not None else None
     if queue is None:
         registry = call_registry(hass)
-        relay = registry.resource_for(call_id, "relay")
+        session_id = registry.resolve_session_id(call_id)
+        side = "right" if session_id != call_id else "left"
+        relay = registry.resource_for(session_id, "relay")
         callback = getattr(relay, "on_dtmf", None)
         if callback is not None:
-            callback("left", digit, "sip_info")
+            callback(side, digit, "sip_info")
             if getattr(relay, "private_dtmf", False):
                 return
             _LOGGER.info(
@@ -51,15 +53,15 @@ async def handle_sip_info(
                 transport,
             )
             return
-        if relay is not None or registry.resource_for(call_id, "softphone_media"):
+        if relay is not None or registry.resource_for(session_id, "softphone_media"):
             session = registry.sessions.get(registry.resolve_session_id(call_id))
             publish_dtmf_event(
                 hass,
-                call_id=call_id,
-                dest_call_id=registry.bridge_link_for(call_id),
+                call_id=session_id,
+                dest_call_id=registry.bridge_link_for(session_id),
                 caller=session.caller if session is not None else "",
                 callee=session.callee if session is not None else "",
-                side="left",
+                side=side,
                 digit=digit,
                 transport="sip_info",
             )
@@ -181,6 +183,9 @@ def attach_dtmf_event_bridge(
         if source_side == "left" and client is not None:
             send = getattr(client, "send_dtmf_info", None)
             return bool(callable(send) and await send(digit))
+        if source_side == "left" and dest_call_id:
+            endpoint = sip_endpoint_manager(hass)
+            return bool(endpoint is not None and await endpoint.async_send_dtmf_info(dest_call_id, digit))
         if source_side == "right":
             if source_client is not None:
                 return bool(await source_client.send_dtmf_info(digit))

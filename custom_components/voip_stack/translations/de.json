@@ -15,7 +15,8 @@
           "experimental_sip_video": "Aktivieren Sie SIP-Video für das Home Assistant-Softphone",
           "sip_registrar_enabled": "Aktivieren Sie lokale SIP-Konten",
           "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk",
-          "voicemail_enabled": "Anrufbeantworter aktivieren"
+          "voicemail_enabled": "Anrufbeantworter aktivieren",
+          "parking_enabled": "Anrufparken aktivieren"
         },
         "data_description": {
           "sip_port": "Abhörport für den HA-SIP-Endpunkt. HA akzeptiert SIP-Signalisierung über UDP und TCP an diesem Port.",
@@ -120,6 +121,18 @@
         "data": {
           "voice": "Stimme"
         }
+      },
+      "parking": {
+        "title": "Anrufparken",
+        "data": {
+          "access": "Parkzugang",
+          "slots": "Parkplätze, durch Kommas getrennt",
+          "timeout": "Maximale Parkdauer",
+          "return_timeout": "Klingeldauer beim Rückruf",
+          "return_destination": "Rückrufziel",
+          "hold_media": "Wartemusik",
+          "clear_hold_media": "Gespeicherte Wartemusik entfernen"
+        }
       }
     },
     "error": {
@@ -133,7 +146,9 @@
       "voicemail_tts_unavailable": "Wählen Sie eine verfügbare TTS-Entität.",
       "voicemail_language_unsupported": "Diese Sprache wird nicht von den Ansagen und dem gewählten TTS unterstützt.",
       "voicemail_route_conflict": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Voicemail-Adresse (*97, *98, mailbox, mailbox.*, voicemail.* oder *60 mit Nebenstelle). Benennen Sie dieses Ziel vor dem Aktivieren um.",
-      "voicemail_voice_unavailable": "Wählen Sie eine Stimme, die die gewählte TTS-Engine und Sprache unterstützt."
+      "voicemail_voice_unavailable": "Wählen Sie eine Stimme, die die gewählte TTS-Engine und Sprache unterstützt.",
+      "parking_configuration_invalid": "Wählen Sie eindeutige Parkcodes und Zeiten zwischen 1 und 3600 Sekunden.",
+      "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",

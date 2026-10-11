@@ -506,6 +506,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     from .mailbox import async_set_voicemail_settings
     from .voicemail import async_send_to_voicemail
     from .mailbox_actions import async_transcribe_voicemail, async_get_voicemail
+    from .parking import async_park_call
 
     await async_register_services(
         hass,
@@ -532,6 +533,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "wait_for_dtmf": async_wait_for_dtmf,
             "wait_unanswered": async_wait_unanswered,
             "transfer": _handle_sip_transfer_service,
+            "park": async_park_call,
             "route": _handle_sip_route_service,
             "select_inbound_destination": _handle_select_inbound_destination_service,
             "set_deadline": _handle_sip_set_deadline_service,

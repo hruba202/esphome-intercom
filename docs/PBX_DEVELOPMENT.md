@@ -635,3 +635,37 @@ the HA suite passes 484 tests. This includes the controlled consultation race,
 both native incoming-leg termination directions and the existing voicemail,
 transfer and Automation scenarios. Public parking controls and pickup media
 handoff remain unfinished.
+
+
+### Parking media and public action, qualification in progress
+
+Native SIP callers can park through REFER to the configured access number and
+retrieve a slot by dialing its number. Browser pickup uses the existing phone
+call/answer operations. Parking that browser again retains the established SIP
+dialog and its bound RTP socket; it does not dial the caller again. The public
+`voip_stack.park` action selects a phone and optionally a slot, and returns the
+actual slot and call identity. An explicit stale generation or an unrelated
+phone cannot control that call.
+
+The return route retires the previous application capability. This permits a
+returned conversation to be parked again without colliding with its old slot or
+controller. The receiver's existing RTP and codec contracts survive the media
+handoff. Tests use real baresip peers, captured decoded audio and both hangup
+sides. Browser media in these tests uses a WebSocket adapter fixture; a real
+Chromium check remains necessary. Browser-to-browser parking and card controls
+are still pending. Active video is refused before handoff.
+
+Protocol reference: [RFC 5359 call parking](https://www.rfc-editor.org/rfc/rfc5359.html#section-2.15).
+The RFC explicitly allows B2BUA implementations. The PBX therefore retains its
+existing dialogs while moving the local media owner, instead of requiring every
+phone to implement a new signaling extension. Configurable slots and return
+policy follow the conventional [Asterisk parking model](https://docs.asterisk.org/Configuration/Features/Call-Parking/).
+
+
+Parking checkpoint: the software suite passes 1,981 tests and 181 subtests
+(four deselected); the HA suite passes 506 tests. A subsequent public-action
+witness exposed an internal return-type mismatch for SIP phone parking: the
+coordinator returned a slot string while the action expected its application.
+The SIP and browser coordinators now return the same call-owned application;
+the action alone constructs the public response. The real SIP service test
+fails before this correction. This does not alter REFER signaling.

@@ -55,11 +55,6 @@ from .media_ports import (
     allocate_sip_rtp_port as _allocate_sip_rtp_port,
     reserve_sip_video_media,
 )
-from .media_offer_answer import validate_direct_video_reoffer
-from .media_session_updates import (
-    commit_audio_session_update,
-    commit_video_session_update,
-)
 from .outbound_lifecycle import (
     observe_outbound_call_result,
     attach_outbound_connected_identity_state,
@@ -92,7 +87,6 @@ from .softphone_commands import (
     bind_service_call_controller as _bind_service_call_controller,
 )
 from .websocket_api import (
-    _fire_call_event,
     _ha_softphone_store,
 )
 
@@ -332,6 +326,12 @@ async def async_originate_browser_call(
         # available to normal controllers.
         await async_require_service_admin(hass, call)
     display_target = route.entry.display_name if route.entry is not None else target
+    if route.action is RouteAction.PARKING and route.entry.metadata.get("parking_mode") == "pickup":
+        from .parking import pickup_browser_call
+
+        await _async_prepare_ha_outbound_call(hass, endpoint_id)
+        await pickup_browser_call(call, browser_endpoint, route.entry.metadata["parking_slot"])
+        return
     if (
         force_ha_bridge or bool(call.data.get("ha_bridge", False))
     ) and route.action not in {
@@ -693,105 +693,8 @@ async def async_originate_browser_call(
         video_rtcp_socket=video_rtcp_socket,
     )
 
-    async def _prepare_softphone_media_update(previous, updated, method):
-        """Stage one peer re-offer for the live HA browser media owner."""
-
-        call_id = client.dialog_ids.call_id
-        session = registry.sessions.get(registry.resolve_session_id(call_id))
-        if session is None:
-            return None
-        call_generation = session.generation
-        browser_media = require_runtime_data(hass).media
-        audio_session = browser_media.sessions_for("audio").get((call_id, endpoint_id))
-        previous_video = previous.video_format
-        updated_video = updated.video_format
-        video_offer = validate_direct_video_reoffer(
-            previous_video,
-            previous.recv_video_format,
-            updated_video,
-            updated.recv_video_format,
-        )
-        if not video_offer.accepted:
-            return None
-        video_session = browser_media.sessions_for("video").get((call_id, endpoint_id))
-
-        async def _commit() -> None:
-            if not registry.is_generation_current(call_id, call_generation):
-                raise RuntimeError(
-                    "SIP softphone media update belongs to a terminated call"
-                )
-            if audio_session is not None:
-                commit_audio_session_update(
-                    audio_session,
-                    updated,
-                    dtmf_payload_type=updated.dtmf_payload_type,
-                    dtmf_events=updated.dtmf_events,
-                )
-            if video_session is not None and updated_video is not None:
-                registry.clear_video_parameter_sets(call_id)
-                commit_video_session_update(
-                    video_session,
-                    updated,
-                    local_direction=updated.local_video_direction,
-                )
-            elif video_session is not None:
-                video_session.removed = True
-                video_session.media_generation += 1
-                video_session.update_event.set()
-            store = _ha_softphone_store(hass, endpoint_id)
-            if str(store.get("call_id") or "") == call_id:
-                store.update(
-                    {
-                        "audio_direction": updated.local_audio_direction,
-                        "audio_connection_held": updated.remote_audio_connection_held,
-                        "video_active": bool(
-                            updated_video is not None
-                            and updated.local_video_direction != "inactive"
-                        ),
-                        "video_requested": bool(updated_video is not None),
-                        "video_negotiated": bool(updated_video is not None),
-                        "video_status": (
-                            "active"
-                            if updated_video is not None
-                            and updated.local_video_direction != "inactive"
-                            else "inactive"
-                        ),
-                        "video_failure_reason": "",
-                        "video_format": (
-                            updated_video.wire_token() if updated_video else ""
-                        ),
-                        "video_send_format": (
-                            updated.send_video_format.wire_token()
-                            if updated.send_video_format is not None
-                            else ""
-                        ),
-                        "video_receive_format": (
-                            updated.recv_video_format.wire_token()
-                            if updated.recv_video_format is not None
-                            else ""
-                        ),
-                        "video_direction": updated.local_video_direction,
-                        "video_connection_held": updated.remote_video_connection_held,
-                        "last_sip_event": method,
-                        "media_renegotiations": int(
-                            store.get("media_renegotiations") or 0
-                        )
-                        + 1,
-                    }
-                )
-                _fire_call_event(
-                    hass,
-                    dict(
-                        store,
-                        endpoint_id=endpoint_id,
-                        device_id=source_device_id,
-                    ),
-                    "session",
-                )
-
-        return _commit
-
-    client.on_media_update = _prepare_softphone_media_update
+    from .browser_dialog_updates import attach_browser_dialog_updates
+    attach_browser_dialog_updates(hass, client, endpoint_id, source_device_id)
     if use_trunk and trunk is not None:
         from .trunk_signaling import reuse_registered_trunk_flow
 

@@ -388,6 +388,12 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         schema=sip_transfer_schema,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(DOMAIN, "park", handler_for("park"),
+        schema=vol.Schema({**phone_selector_fields,
+            vol.Optional("call_id", default=""): SHORT_TEXT,
+            vol.Optional("slot", default=""): IDENTIFIER_TEXT,
+            vol.Optional("expected_generation"): SEQUENCE,
+        }, extra=vol.PREVENT_EXTRA), supports_response=SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "route", handler_for("route"), schema=sip_route_schema)
     hass.services.async_register(
         DOMAIN,

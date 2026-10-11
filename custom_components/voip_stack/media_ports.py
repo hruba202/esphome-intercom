@@ -44,6 +44,19 @@ class RtpPortReservation:
         used.difference_update(previous - set(retained))
         return cls(hass=hass, ports=retained)
 
+    @classmethod
+    def adopt_bound_source(cls, hass: HomeAssistant, source_port: int) -> "RtpPortReservation":
+        """Reserve a spare leg beside a browser's existing, unpooled RTP socket."""
+        used = require_runtime_data(hass).rtp_port_pool.get("used", set())
+        if source_port in used:
+            raise RuntimeError("The source RTP port already belongs to another reservation")
+        temporary = cls.allocate(hass)
+        used = require_runtime_data(hass).rtp_port_pool["used"]
+        used.add(source_port)
+        used.remove(temporary.ports[1])
+        temporary.detach()
+        return cls(hass, (source_port, temporary.ports[0]))
+
     def detach(self) -> tuple[int, int]:
         self.released = True
         return self.ports

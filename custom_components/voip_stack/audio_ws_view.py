@@ -131,6 +131,7 @@ class _SoftphoneMediaSession:
     rtp_source: rtp.AudioRtpSenderState | None = None
     media_generation: int = 0
     update_event: asyncio.Event = field(default_factory=asyncio.Event)
+    handoff_transport: Callable[[Callable], Any] | None = None
 
 
 def _rx_queue_frame_limit(frame_ms: int) -> int:
@@ -525,10 +526,12 @@ def _active_softphone_media_session(
             if not isinstance(rtp_source, rtp.AudioRtpSenderState):
                 rtp_source = rtp.AudioRtpSenderState.create()
                 item["audio_rtp_source"] = rtp_source
-            from .core.sdp import offered_dtmf_formats
+            from .local_call_media import ApplicationCallSource, source_dtmf_formats
 
-            dtmf_formats = offered_dtmf_formats(invite.remote_sdp)
+            dtmf_formats = source_dtmf_formats(invite)
             dtmf_format = dtmf_formats[0] if dtmf_formats else None
+            retained_source = isinstance(invite, ApplicationCallSource)
+            source_client = registry.source_sip_client_for(call_id) if retained_source else None
             return _SoftphoneMediaSession(
                 call_id=invite.call_id,
                 local_rtp_port=local_rtp_port,
@@ -537,6 +540,8 @@ def _active_softphone_media_session(
                 send_format=invite.send_format,
                 recv_format=invite.recv_format,
                 recv_formats=getattr(invite, "recv_formats", ()),
+                send_formats=getattr(invite, "send_formats", ()),
+                match_received_codec=getattr(invite, "match_received_codec", False),
                 signaling_host=invite.source_host,
                 local_audio_direction=str(invite.local_audio_direction),
                 remote_audio_connection_held=bool(
@@ -549,14 +554,15 @@ def _active_softphone_media_session(
                     dtmf_format.events if dtmf_format is not None else frozenset()
                 ),
                 send_dtmf_payload_type=(
-                    dtmf_format.payload_type if dtmf_format is not None else None
+                    invite.send_dtmf_payload_type if retained_source else dtmf_format.payload_type if dtmf_format is not None else None
                 ),
                 send_dtmf_clock_rate=(
-                    dtmf_format.sample_rate if dtmf_format is not None else 8000
+                    int(invite.send_dtmf_clock_rate or 8000) if retained_source else dtmf_format.sample_rate if dtmf_format is not None else 8000
                 ),
                 send_dtmf_events=(
-                    dtmf_format.events if dtmf_format is not None else frozenset()
+                    invite.send_dtmf_events or frozenset() if retained_source else dtmf_format.events if dtmf_format is not None else frozenset()
                 ),
+                send_dtmf_info=source_client.send_dtmf_info if source_client is not None else None,
                 on_dtmf=_dtmf_callback("left"),
                 rtp_source=rtp_source,
             )
@@ -1115,6 +1121,21 @@ async def _run_audio_session(
     active_sessions = require_runtime_data(hass).media.sessions_for("audio")
     active_key = (session.call_id, endpoint_id)
     active_sessions[active_key] = session
+    transport_detached = False
+
+    def handoff_transport(adopt):
+        nonlocal transport_detached
+        if closed.is_set() or transport_detached or active_sessions.get(active_key) is not session:
+            raise RuntimeError("The browser media owner changed before handoff")
+        result = adopt(transport, remote_rtp_host, remote_rtp_port, rtp_source)
+        transport_detached = True
+        closed.set()
+        if handoff_requested is not None:
+            handoff_requested.set()
+        call_ended.set()
+        return result
+
+    session.handoff_transport = handoff_transport
 
     async def session_updates_to_ws() -> None:
         """Apply a committed re-INVITE and notify the attached browser."""
@@ -1403,13 +1424,15 @@ async def _run_audio_session(
     finally:
         closed.set()
         remove_call_listener()
+        session.handoff_transport = None
         if active_sessions.get(active_key) is session:
             active_sessions.pop(active_key, None)
         for task in (rx_task, browser_task, lifetime_task, update_task):
             task.cancel()
         for task in tuple(dtmf_tasks):
             task.cancel()
-        transport.close()
+        if not transport_detached:
+            transport.close()
         caller_cancelled = False
         try:
             await async_wait_for_cleanup(

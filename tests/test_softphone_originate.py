@@ -34,13 +34,14 @@ class _RouteAction(Enum):
     ASSIST = "assist"
     AUTOMATION = "automation"
     VOICEMAIL = "voicemail"
+    PARKING = "parking"
     DIRECT = "direct"
     FORWARD = "forward"
     BRIDGE = "bridge"
 
     @property
     def is_local_application(self):
-        return self in {self.ASSIST, self.AUTOMATION, self.VOICEMAIL}
+        return self in {self.ASSIST, self.AUTOMATION, self.VOICEMAIL, self.PARKING}
 
 
 class _Availability(Enum):
@@ -597,7 +598,7 @@ def test_unprofiled_trunk_keeps_audio_only_offer_with_camera_off(softphone_origi
     module.reserve_sip_video_media.assert_not_called()
 
 
-@pytest.mark.parametrize("action", [_RouteAction.ASSIST, _RouteAction.AUTOMATION, _RouteAction.VOICEMAIL])
+@pytest.mark.parametrize("action", [_RouteAction.ASSIST, _RouteAction.AUTOMATION, _RouteAction.VOICEMAIL, _RouteAction.PARKING])
 def test_every_local_application_uses_configured_pbx_listener_without_phonebook_hack(softphone_originate, action):
     from dataclasses import dataclass
     import importlib

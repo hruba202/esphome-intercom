@@ -2,14 +2,14 @@
 
 import asyncio
 import pytest
+from custom_components.voip_stack import media_call_lifetime
+from custom_components.voip_stack.websocket_api import CALL_EVENT
 
 pytestmark = pytest.mark.ha
 
 
 async def test_browser_media_end_notification_runs_on_ha_loop(hass,monkeypatch):
     import threading
-    from custom_components.voip_stack import media_call_lifetime
-    from custom_components.voip_stack.websocket_api import CALL_EVENT
 
     monkeypatch.setattr(media_call_lifetime,'_ha_softphone_store',lambda *_args:{'call_id':'call','state':'in_call'})
     ended,unsubscribe=media_call_lifetime.listen_for_media_call_end(hass,'call','browser')

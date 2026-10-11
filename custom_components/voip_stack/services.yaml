@@ -1379,3 +1379,36 @@ send_to_voicemail:
             number:
               min: 1
               mode: box
+
+park:
+  name: Park call
+  description: Leave an established audio call in a parking slot. Another phone retrieves it by calling the slot number.
+  fields:
+    device_id:
+      name: Phone
+      description: The phone leaving the conversation. A native call trigger can select it automatically.
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    slot:
+      name: Parking slot
+      description: Leave empty to use the first available configured slot.
+      selector:
+        text:
+    advanced:
+      name: Advanced options
+      collapsed: true
+      fields:
+        call_id:
+          name: Call ID
+          description: Optional explicit call belonging to the selected phone.
+          selector:
+            text:
+        expected_generation:
+          name: Call generation
+          selector:
+            number:
+              min: 1
+              mode: box

@@ -146,6 +146,15 @@ class CallRuntimeApi:
             if leg.dialog is not None
         )
 
+    def source_sip_client_for(self, call_id: str) -> Any | None:
+        session = self.get_session(self.resolve_session_id(call_id))
+        if session is None:
+            return None
+        clients = [leg.dialog for leg in session.legs.values()
+                   if leg.role == "caller" and leg.dialog is not None
+                   and leg.phase not in {LegPhase.CLOSING, LegPhase.CLOSED}]
+        return clients[0] if len(clients) == 1 else None
+
     def bridge_link_for(self, call_id: str) -> str:
         session = self.get_session(call_id)
         return (

@@ -263,6 +263,9 @@ async def route_invite(
             to_tag="",
             decline_reason="capacity_exhausted",
         )
+    if not trunk_direct_preprocessed and decision.action is RouteAction.PARKING:
+        from .parking import route_parking_call
+        return await route_parking_call(runtime, invite, decision, registry, source_endpoint)
     if not trunk_direct_preprocessed and decision.action is RouteAction.VOICEMAIL:
         from .voicemail import route_voicemail_call
         return await route_voicemail_call(runtime, invite, decision, registry, source_endpoint)
@@ -369,6 +372,9 @@ async def route_invite(
             })))
         # Dispatch the selected destination after the automation window,
         # including a direct trunk's unchanged phonebook/fallback decision.
+        if decision.action is RouteAction.PARKING:
+            from .parking import route_parking_call
+            return await route_parking_call(runtime, invite, decision, registry, source_endpoint)
         if decision.action is RouteAction.VOICEMAIL:
             from .voicemail import route_voicemail_call
             return await route_voicemail_call(runtime, invite, decision, registry, source_endpoint)

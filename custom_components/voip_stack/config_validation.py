@@ -6,6 +6,7 @@ from typing import Any
 from .const import CONF_PHONEBOOK_CONTACTS
 from .roster import normalize_roster_key
 from .mailbox_address import parse_mailbox_address
+from .parking_config import parse_parking_address
 
 
 ROUTE_ALIAS_FIELDS = ("id", "name", "extension", "number", "username")
@@ -87,6 +88,10 @@ def route_namespace_conflicts(
     for item in existing:
         if not isinstance(item, Mapping):
             continue
+        if item.get("parking_feature_routes") and any(
+            parse_parking_address(item["parking_feature_routes"], value) is not None for value in raw_routes | raw_groups
+        ):
+            return True
         if item.get("mailbox_feature_routes") and any(
             parse_mailbox_address(value) is not None for value in raw_routes | raw_groups
         ):

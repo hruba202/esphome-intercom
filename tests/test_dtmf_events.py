@@ -259,6 +259,11 @@ def test_sip_info_prefers_the_live_relay_callback(monkeypatch) -> None:
     )
 
     assert received == [("left", "5", "sip_info")]
+    registry.resolve_session_id = lambda call_id: "call-1" if call_id == "pickup" else call_id
+    asyncio.run(dtmf_events.handle_sip_info(
+        hass, _InfoRequest("pickup", "6"), ("192.0.2.11", 5060), "udp",
+    ))
+    assert received == [("left", "5", "sip_info"), ("right", "6", "sip_info")]
 
 
 def test_sip_info_queues_trunk_digits_without_touching_the_relay(

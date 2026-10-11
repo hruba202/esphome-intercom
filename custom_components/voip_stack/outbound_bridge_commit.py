@@ -74,6 +74,7 @@ class BridgeCommitData:
     detach_reservations: tuple[Any, ...]
     enable_video_transcoding: bool = False
     local_endpoint_id: str = ""
+    source_client: Any | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,7 +208,15 @@ async def async_commit_outbound_bridge(
             _require_current()
 
         failure_reason = TerminalReason.TRANSPORT_UNREACHABLE.value
-        if policy.local_source:
+        if data.source_client is not None:
+            from .sip_bridge import dialog_rtp_peer
+            from .sip_rtp_bridge import SipRtpRelay
+            if data.source_client.dialog is None:
+                raise RuntimeError("The retained source dialog ended")
+            relay = SipRtpRelay(left=dialog_rtp_peer(data.source_client.dialog), right=dialog_rtp_peer(client.dialog),
+                left_port=data.source_relay_port, right_port=data.dest_relay_port,
+                debug=debug_mode(hass), debug_capture=media_capture_enabled(hass), on_release=_release_ports)
+        elif policy.local_source:
             relay = build_local_client_relay(
                 client=client,
                 local_host=data.local_ip,
@@ -251,6 +260,9 @@ async def async_commit_outbound_bridge(
             source_video_send_format=invite.send_video_format,
             source_video_receive_format=invite.recv_video_format,
         )
+        if data.source_client is not None:
+            BridgeMediaUpdateBinder(hass).attach_audio_side(data.source_client, relay,
+                source_call_id=invite.call_id, side="left")
         attach_dtmf_event_bridge(
             hass,
             relay,
@@ -259,6 +271,7 @@ async def async_commit_outbound_bridge(
             caller=policy.caller,
             callee=policy.connected_party,
             client=client,
+            source_client=data.source_client,
         )
         if policy.local_source:
             registry.attach_media(

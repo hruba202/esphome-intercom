@@ -475,6 +475,11 @@ class SipEndpointManager:
                    if (invite := endpoint.invite_for_replaces(replaces)) is not None]
         return matches[0] if len(matches) == 1 else None
 
+    def invite_for_call(self, call_id):
+        matches = [invite for endpoint in self._dialog_endpoints()
+                   if (invite := endpoint.invite_for_call(call_id)) is not None]
+        return matches[0] if len(matches) == 1 else None
+
     def dialog_key(self, call_id):
         for endpoint in self._dialog_endpoints():
             if (key := endpoint.dialog_key(call_id)) is not None:

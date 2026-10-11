@@ -255,10 +255,10 @@ def automation_call(hass, call_id: str) -> AutomationCall | None:
     return call_registry(hass).resource_for(call_id, "automation")
 
 
-def attach_automation_application(hass, session, invite, contact, local_ip, *, controller="", local_source=None) -> AutomationCall:
+def attach_automation_application(hass, session, invite, contact, local_ip, *, controller="", local_source=None, previous=None) -> AutomationCall:
     """Attach Automation control to the shared local application media owner."""
     return attach_local_application(AutomationCall, hass, session, invite, contact, local_ip,
-                                    controller=controller, local_source=local_source)
+                                    controller=controller, local_source=local_source, previous=previous)
 
 
 def queue_automation_request(application: AutomationCall) -> None:

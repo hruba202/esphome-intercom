@@ -626,6 +626,8 @@ def validate_sip_account_namespace(
     from .contact_config import contact_dicts
 
     existing: list[Mapping[str, Any]] = contact_dicts(entry)
+    if entry.data.get("parking", {}).get("enabled"):
+        existing.append({"parking_feature_routes": entry.data["parking"]})
     if entry.data.get("voicemail", {}).get("enabled"):
         existing.append({"mailbox_feature_routes": True})
     existing.extend(

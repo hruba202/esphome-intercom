@@ -15,7 +15,8 @@
           "experimental_sip_video": "Enable SIP video for the Home Assistant softphone",
           "sip_registrar_enabled": "Enable local SIP accounts",
           "trunk_enabled": "Enable optional SIP trunk",
-          "voicemail_enabled": "Enable voicemail"
+          "voicemail_enabled": "Enable voicemail",
+          "parking_enabled": "Enable call parking"
         },
         "data_description": {
           "sip_port": "Listen port for the HA SIP endpoint. HA accepts SIP signaling over both UDP and TCP on this port.",
@@ -120,6 +121,18 @@
         "data": {
           "voice": "Voice"
         }
+      },
+      "parking": {
+        "title": "Call parking",
+        "data": {
+          "access": "Parking access code",
+          "slots": "Parking slots, separated by commas",
+          "timeout": "Parking timeout",
+          "return_timeout": "Return ringing timeout",
+          "return_destination": "Return destination",
+          "hold_media": "Hold audio",
+          "clear_hold_media": "Remove the saved hold audio"
+        }
       }
     },
     "error": {
@@ -133,7 +146,9 @@
       "voicemail_tts_unavailable": "Select an available TTS entity.",
       "voicemail_language_unsupported": "This language is not supported by both the voicemail prompts and the selected TTS engine.",
       "voicemail_route_conflict": "An existing phone, contact or group uses a voicemail address (*97, *98, mailbox, mailbox.*, voicemail.* or *60 plus an extension). Rename that route before enabling voicemail.",
-      "voicemail_voice_unavailable": "Select a voice supported by the chosen TTS engine and language."
+      "voicemail_voice_unavailable": "Select a voice supported by the chosen TTS engine and language.",
+      "parking_configuration_invalid": "Choose distinct parking codes and timeouts between 1 and 3600 seconds.",
+      "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",

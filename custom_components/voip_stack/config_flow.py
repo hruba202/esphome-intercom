@@ -17,6 +17,7 @@ from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
+    MediaSelector,
     AssistPipelineSelector,
     NumberSelector,
     NumberSelectorConfig,
@@ -118,6 +119,8 @@ def _entry_route_mappings(
     )
     if data.get("voicemail", {}).get("enabled"):
         mappings.append({"mailbox_feature_routes": True})
+    if data.get("parking", {}).get("enabled"):
+        mappings.append({"parking_feature_routes": data["parking"]})
     mappings.extend(
         item
         for item in data.get("sip_accounts", []) or []
@@ -501,6 +504,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_REGISTRAR_ENABLED, default=defaults[CONF_REGISTRAR_ENABLED]
                 ): BooleanSelector(),
                 vol.Optional("voicemail_enabled", default=bool(existing.get("voicemail", {}).get("enabled", False))): BooleanSelector(),
+                vol.Optional("parking_enabled", default=bool(existing.get("parking", {}).get("enabled", False))): BooleanSelector(),
             }
         )
         errors: dict[str, str] = {}
@@ -657,7 +661,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
         if enabled:
             return await self.async_step_voicemail()
         data["voicemail"] = {**existing.get("voicemail", {}), "enabled": False}
-        return self._store_entry(data)
+        return await self._finish_parking(data)
 
     async def async_step_voicemail(self, user_input=None):
         """Choose the shared IVR voice before enabling any mailbox service."""
@@ -704,7 +708,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 voices = getattr(entity, "async_get_supported_voices", lambda _language: None)(language)
                 if voices:
                     return await self.async_step_voicemail_voice()
-                return self._store_entry(dict(self._base_input))
+                return await self._finish_parking(dict(self._base_input))
         return self.async_show_form(step_id="voicemail_language", errors=errors, data_schema=vol.Schema({
             vol.Required("language", default=default or ""):
                 SelectSelector(SelectSelectorConfig(options=languages, mode="dropdown")),
@@ -738,10 +742,61 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                     settings["voice"] = voice
                 else:
                     settings.pop("voice", None)
-                return self._store_entry(dict(self._base_input))
+                return await self._finish_parking(dict(self._base_input))
         return self.async_show_form(step_id="voicemail_voice", errors=errors, data_schema=vol.Schema({
             vol.Required("voice", default=current if current in valid else ""):
                 SelectSelector(SelectSelectorConfig(options=choices, mode="dropdown")),
+        }))
+
+
+    async def _finish_parking(self, data):
+        self._base_input = data
+        _entry, existing = self._current_entry_data()
+        enabled = data.pop("parking_enabled", bool(existing.get("parking", {}).get("enabled", False)))
+        if enabled:
+            return await self.async_step_parking()
+        if "parking" in existing:
+            data["parking"] = {**existing["parking"], "enabled": False}
+        return self._store_entry(data)
+
+    async def async_step_parking(self, user_input=None):
+        from .parking_config import DEFAULT_SLOTS, normalize_parking_config, parking_namespace_conflicts
+        from .runtime_data import runtime_data
+
+        entry, existing = self._current_entry_data()
+        current = existing.get("parking", {})
+        slots = current.get("slots") or DEFAULT_SLOTS
+        options = [{"value": "", "label": "Phone that parked the call"}]
+        runtime = runtime_data(self.hass)
+        if runtime is not None:
+            options.extend({"value": phone.endpoint_id, "label": phone.name} for phone in runtime.endpoints.endpoints)
+        errors = {}
+        if user_input is not None:
+            try:
+                candidate = normalize_parking_config({
+                    "enabled": True, "access": user_input["access"],
+                    "slots": str(user_input["slots"]).replace("\n", ",").split(","),
+                    "timeout": user_input["timeout"], "return_timeout": user_input["return_timeout"],
+                    "return_destination": user_input.get("return_destination", ""),
+                    "hold_media": "" if user_input.get("clear_hold_media") else
+                        user_input.get("hold_media", {}).get("media_content_id", current.get("hold_media", "")),
+                })
+                mappings = _entry_route_mappings(entry, existing)
+                if parking_namespace_conflicts(candidate, mappings):
+                    errors["base"] = "parking_route_conflict"
+                else:
+                    self._base_input["parking"] = candidate
+                    return self._store_entry(dict(self._base_input))
+            except (TypeError, ValueError):
+                errors["base"] = "parking_configuration_invalid"
+        return self.async_show_form(step_id="parking", errors=errors, data_schema=vol.Schema({
+            vol.Required("access", default=current.get("access", "700")): str,
+            vol.Required("slots", default=", ".join(slots)): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Required("timeout", default=current.get("timeout", 180)): NumberSelector(NumberSelectorConfig(min=1, max=3600, mode="box", unit_of_measurement="s")),
+            vol.Required("return_timeout", default=current.get("return_timeout", 30)): NumberSelector(NumberSelectorConfig(min=1, max=3600, mode="box", unit_of_measurement="s")),
+            vol.Optional("return_destination", default=current.get("return_destination", "")): SelectSelector(SelectSelectorConfig(options=options, custom_value=True, mode="dropdown")),
+            vol.Optional("hold_media"): MediaSelector({"accept": ["audio/*"]}),
+            vol.Optional("clear_hold_media", default=False): BooleanSelector(),
         }))
 
 

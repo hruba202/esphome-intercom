@@ -319,15 +319,8 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
                     commit()
                 return apply
             client.on_media_update = update_media
-            async def watch():
-                try:
-                    reason = await client.wait_for_dialog_termination()
-                    await registry.terminate_call_wait(call_id, reason=reason)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    await registry.terminate_call_wait(call_id, reason='signaling_failed')
-            watcher = hass.async_create_task(watch())
+            from .bridge_manager import async_watch_owned_sip_dialog
+            watcher = hass.async_create_task(async_watch_owned_sip_dialog(registry, call_id, client, session.generation))
             registry.attach_client_watcher(client.dialog_ids.call_id, watcher)
             application.require_current()
             # Teardown must cancel preparation before closing its media/ports.

@@ -1,13 +1,92 @@
 """Audio handoff preserves transport addresses, RTP clocks and ownership."""
 
+import asyncio
+from dataclasses import replace
+import socket
 import struct
 import unittest
 import pytest
 
 from custom_components.voip_stack.core import audio_format, sdp, rtp
 from custom_components.voip_stack import sip_rtp_bridge
+from custom_components.voip_stack.local_media_bridge import LocalMediaBridge, adopt_relay_for_application
+from .test_automation_call import application
 
 pytestmark = pytest.mark.ha
+
+
+async def test_application_pickup_keeps_bound_socket_and_bidirectional_audio(application):
+    app, registry, caller, released = application
+    picker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    picker.bind(("127.0.0.1", 0))
+    picker.setblocking(False)
+    handoff = None
+    try:
+        await app.answer()
+        media = app.media
+        transport = media.transport
+        pickup = replace(app.invite, call_id="pickup", remote_rtp_port=picker.getsockname()[1])
+        abandoned = await LocalMediaBridge.prepare(media, pickup)
+        await abandoned.rollback()
+        assert media.transport is transport and not media.closed.is_set()
+        assert released == []
+        handoff = await LocalMediaBridge.prepare(media, pickup)
+        source_ssrc = media.rtp_source.ssrc
+        relay = handoff.commit()
+        registry.release_resource(app.session.call_id, f"relay:{app.session.call_id}", value=media)
+        registry.attach_relay(app.session.call_id, relay)
+        app.media = None
+        await media.stop()
+        assert relay.left_transport is transport and not transport.is_closing()
+        assert released == []
+
+        async def exchange(sender, target, port, sample, source_ssrc):
+            payload = struct.pack("!320h", *([sample] * 320))
+            packet = rtp.build_packet(rtp.RtpPacket(96, 1, 320, source_ssrc, payload))
+            await asyncio.get_running_loop().sock_sendto(sender, packet, ("127.0.0.1", port))
+            async with asyncio.timeout(2):
+                while True:
+                    received = rtp.parse_packet(await asyncio.get_running_loop().sock_recv(target, 2048))
+                    if received.payload == payload:
+                        return received
+        await exchange(caller, picker, relay.left_port, 1700, 123)
+        received = await exchange(picker, caller, relay.right_port, -2100, 456)
+        assert received.ssrc == source_ssrc
+        async def complete(_reason):
+            raise AssertionError("Retaining the caller must not terminate it")
+        parked_again = adopt_relay_for_application(app.hass, relay, "left", media.invite, media.reservation, complete)
+        parked_again.release_reservation_on_stop = False
+        registry.release_resource(app.session.call_id, f"relay:{app.session.call_id}", value=relay)
+        registry.attach_relay(app.session.call_id, parked_again)
+        app.media = parked_again
+        await relay.stop()
+        assert parked_again.transport is transport and not transport.is_closing()
+        assert parked_again.rtp_source.ssrc == source_ssrc and not released
+        await registry.terminate_call_wait(app.session.call_id, reason="test_complete")
+        assert len(released) == 1 and not registry.sessions
+        assert transport.is_closing()
+    finally:
+        if handoff is not None:
+            await handoff.rollback()
+        await registry.shutdown()
+        picker.close()
+
+
+async def test_application_pickup_rejects_changed_contract_without_detaching(application):
+    app, registry, _caller, released = application
+    await app.answer()
+    media = app.media
+    handoff = await LocalMediaBridge.prepare(media, app.invite)
+    try:
+        media.invite = replace(media.invite, remote_rtp_port=49999)
+        with pytest.raises(RuntimeError, match="changed"):
+            handoff.commit()
+        await handoff.rollback()
+        assert media.transport is handoff.transport and not media.closed.is_set()
+        assert not handoff.transport.is_closing() and released == []
+    finally:
+        await handoff.rollback()
+        await registry.shutdown()
 
 
 class Transport:

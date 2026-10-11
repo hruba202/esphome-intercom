@@ -280,8 +280,10 @@ class HaSoftphoneBackendContractTest(unittest.TestCase):
         outbound = _function_body(
             self.softphone_originate, "async_originate_browser_call"
         )
-        self.assertIn("commit_audio_session_update(", outbound)
-        self.assertNotIn("audio_contract_changed", outbound)
+        self.assertIn("attach_browser_dialog_updates(hass, client, endpoint_id, source_device_id)", outbound)
+        updates = (SOFTPHONE_ORIGINATE.parent / "browser_dialog_updates.py").read_text()
+        self.assertIn("commit_audio_session_update(", updates)
+        self.assertNotIn("audio_contract_changed", updates)
 
         inbound = MEDIA_RENEGOTIATION.read_text()
         self.assertIn("commit_audio_session_update(", inbound)
@@ -843,6 +845,8 @@ class HaSoftphoneBackendContractTest(unittest.TestCase):
         outbound = _function_body(
             self.softphone_originate, "async_originate_browser_call"
         )
+        self.assertIn("attach_browser_dialog_updates(hass, client, endpoint_id, source_device_id)", outbound)
+        outbound = (SOFTPHONE_ORIGINATE.parent / "browser_dialog_updates.py").read_text()
         self.assertIn("async def _prepare_softphone_media_update", outbound)
         self.assertIn(
             "client.on_media_update = _prepare_softphone_media_update",

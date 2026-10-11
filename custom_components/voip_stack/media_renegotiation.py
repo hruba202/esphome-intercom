@@ -369,9 +369,12 @@ async def async_prepare_media_update(
     """Validate and stage one in-dialog offer without mutating live media."""
 
     registry = _call_registry(hass)
-    call_id = updated.call_id
-    if call_id != previous.call_id:
+    wire_call_id = updated.call_id
+    if wire_call_id != previous.call_id:
         return SipInviteResult(481, "Call/Transaction Does Not Exist")
+    call_id = registry.resolve_session_id(wire_call_id)
+    side = "right" if call_id != wire_call_id else "left"
+    opposite = "left" if side == "right" else "right"
 
     preanswered = registry.resource_for(call_id, "preanswered")
     if isinstance(preanswered, dict):
@@ -798,7 +801,7 @@ async def async_prepare_media_update(
             commit=_commit_assist_update,
         )
 
-    right_peer = relay.right
+    right_peer = getattr(relay, opposite)
     audio_direction = constrained_media_direction(
         updated.remote_audio_direction,
         allow_send=(
@@ -823,6 +826,8 @@ async def async_prepare_media_update(
     )
     video_relay_missing = updated.video_format is not None and video_relay is None
     if video_presence_changed or video_direction_changed or video_relay_missing:
+        if side == "right":
+            return SipInviteResult(488, "Not Acceptable Here")
         return await _prepare_bridge_video_contract_change(
             hass,
             local_ip,
@@ -841,13 +846,13 @@ async def async_prepare_media_update(
             previous.video_format,
             updated.video_format,
             updated.recv_video_format,
-            peer_send=video_relay.right.send_format,
-            peer_recv=video_relay.right.recv_format,
-            peer_direction=video_relay.right.video_format,
-            peer_held=video_relay.right.connection_held,
+            peer_send=getattr(video_relay, opposite).send_format,
+            peer_recv=getattr(video_relay, opposite).recv_format,
+            peer_direction=getattr(video_relay, opposite).video_format,
+            peer_held=getattr(video_relay, opposite).connection_held,
             updated_held=updated.remote_video_connection_held,
-            caller_to_peer_transcoding=video_relay.transcodes_from("left"),
-            peer_to_caller_transcoding=video_relay.transcodes_from("right"),
+            caller_to_peer_transcoding=video_relay.transcodes_from(side),
+            peer_to_caller_transcoding=video_relay.transcodes_from(opposite),
         )
         if not video_offer.accepted:
             _LOGGER.warning(
@@ -864,19 +869,19 @@ async def async_prepare_media_update(
         video_direction = constrained_video_direction(
             updated.video_format.direction,
             allow_send=(
-                remote_can_send(video_relay.right.video_format)
+                remote_can_send(getattr(video_relay, opposite).video_format)
                 and not updated.remote_video_connection_held
             ),
             allow_receive=remote_can_receive(
-                video_relay.right.video_format,
-                connection_held=video_relay.right.connection_held,
+                getattr(video_relay, opposite).video_format,
+                connection_held=getattr(video_relay, opposite).connection_held,
             ),
         )
-        local_video_port = int(video_relay.left_port)
+        local_video_port = int(getattr(video_relay, f"{side}_port"))
     answer = build_answer_directional(
         local_ip,
         local_ip,
-        int(relay.left_port),
+        int(getattr(relay, f"{side}_port")),
         updated.send_format,
         updated.recv_format,
         dtmf=first_offered_dtmf_format(updated.remote_sdp),
@@ -887,14 +892,14 @@ async def async_prepare_media_update(
         video_direction=video_direction,
     )
     try:
-        previous_audio_peer = relay.left
+        previous_audio_peer = getattr(relay, side)
         commit_audio = relay.prepare_peer_reconfiguration(
-            "left", invite_rtp_peer(updated)
+            side, invite_rtp_peer(updated)
         )
-        previous_video_peer = video_relay.left if video_relay is not None else None
+        previous_video_peer = getattr(video_relay, side) if video_relay is not None else None
         commit_video = (
             video_relay.prepare_peer_reconfiguration(
-                "left", invite_video_rtp_peer(updated)
+                side, invite_video_rtp_peer(updated)
             )
             if video_relay is not None and updated.video_format is not None
             else None
@@ -907,10 +912,10 @@ async def async_prepare_media_update(
             raise RuntimeError(
                 "SIP relay media update belongs to a terminated call"
             )
-        if registry.resource_for(call_id, "relay") is not relay or relay.left is not previous_audio_peer or (
+        if registry.resource_for(call_id, "relay") is not relay or getattr(relay, side) is not previous_audio_peer or (
             video_relay is not None
             and previous_video_peer is not None
-            and video_relay.left is not previous_video_peer
+            and getattr(video_relay, side) is not previous_video_peer
         ):
             raise RuntimeError("SIP relay media owner changed before commit")
         commit_audio()

@@ -87,6 +87,26 @@ class FakeHass:
 
 
 class MediaPortPoolTest(unittest.TestCase):
+    def test_adopt_bound_source_reserves_only_source_and_spare(self):
+        hass = FakeHass()
+        with patch.object(media_ports, "rtp_port_available", return_value=True):
+            owner = media_ports.RtpPortReservation.adopt_bound_source(hass, 39000)
+            self.assertEqual(owner.ports[0], 39000)
+            self.assertEqual(hass.runtime.rtp_port_pool["used"], set(owner.ports))
+            other = media_ports.RtpPortReservation.allocate(hass)
+            owner.release()
+            owner.release()
+            self.assertEqual(hass.runtime.rtp_port_pool["used"], set(other.ports))
+            other.release()
+            self.assertFalse(hass.runtime.rtp_port_pool["used"])
+
+    def test_adopt_bound_source_rejects_owned_source_without_mutation(self):
+        hass = FakeHass()
+        hass.runtime.rtp_port_pool = {"used": {39000, 39002}}
+        with self.assertRaises(RuntimeError):
+            media_ports.RtpPortReservation.adopt_bound_source(hass, 39000)
+        self.assertEqual(hass.runtime.rtp_port_pool["used"], {39000, 39002})
+
     def test_merge_keeps_live_ports_and_does_not_release_their_new_neighbors(self):
         hass = FakeHass()
         hass.runtime.rtp_port_pool = {"used": {40000, 40002, 40004, 40006}}

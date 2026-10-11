@@ -226,6 +226,7 @@ class BareSip:
         headless_audio: bool = False,
         dtmf_mode: str = "",
         video_codec: str = "",
+        wait_for_registration: bool = True,
     ) -> None:
         TEST_CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
         if dtmf_mode and dtmf_mode not in {"auto", "info", "rtpevent"}:
@@ -323,7 +324,7 @@ class BareSip:
         self.output = ""
         self.call_established = False
         try:
-            self.wait_for("registered successfully", 8)
+            self.wait_for("registered successfully" if wait_for_registration else "baresip is ready.", 8)
         except BaseException:
             # Construction failures occur before callers can append this
             # instance to their cleanup list. Own the child from the moment it

@@ -496,3 +496,15 @@ implementation boundary. SIP mailbox access and MWI use the common PBX call
 and subscription owners. The dedicated message-list controls are still being
 completed; the existing HA softphone dialpad can already dial *97 and send the
 same DTMF menu commands as a conventional SIP phone.
+
+
+## Park an established call
+
+`voip_stack.park` parks the selected phone's current audio call. `device_id`
+selects the phone, `slot` optionally selects a configured parking slot, and
+`call_id` / `expected_generation` can identify a specific current call. The
+optional action response contains `slot`, `call_id` and `generation`.
+The selected phone must own the call. Parking must be enabled in the integration
+configuration. Retrieve the caller through the normal call action or SIP dialer
+using the slot number. See [Call parking](CALL_PARKING.md) for configuration,
+examples and the current development verification boundary.

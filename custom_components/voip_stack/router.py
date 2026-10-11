@@ -20,13 +20,14 @@ class RouteAction(StrEnum):
     ASSIST = "assist"
     AUTOMATION = "automation"
     VOICEMAIL = "voicemail"
+    PARKING = "parking"
     REJECT = "reject"
     BUSY = "busy"
 
     @property
     def is_local_application(self) -> bool:
         """PBX applications are destinations regardless of the calling transport."""
-        return self in {self.ASSIST, self.AUTOMATION, self.VOICEMAIL}
+        return self in {self.ASSIST, self.AUTOMATION, self.VOICEMAIL, self.PARKING}
 
 
 class RouteReason(StrEnum):

@@ -32,6 +32,7 @@ class SipApplicationMethods:
     mailbox_unsubscribe: Callable[[], None] | None = None
     dialog_unsubscribe: Callable[[], None] | None = None
     endpoint_unsubscribe: Callable[[], None] | None = None
+    parking_unsubscribe: Callable[[], None] | None = None
 
     def __post_init__(self) -> None:
         self.publications = {}
@@ -60,16 +61,22 @@ class SipApplicationMethods:
             event = request.header("Event").partition(";")[0].strip().lower()
             if event == "dialog":
                 from .runtime_data import endpoint_directory
+                from .parking import parking_address
 
                 try:
-                    endpoint = endpoint_directory(self.hass).resolve(sip.parse_sip_uri(request.uri).user)
+                    target = sip.parse_sip_uri(request.uri).user
+                    endpoint = endpoint_directory(self.hass).resolve(target)
+                    parking = parking_address(self.hass, target)
                 except (ValueError, sip.SipError):
                     return SipRequestResult(400, "Bad Request")
-                if endpoint is None:
+                if parking is not None and parking[1]:
+                    dialog_endpoint_id = "parking:" + parking[1]
+                elif endpoint is not None:
+                    dialog_endpoint_id = endpoint.endpoint_id
+                else:
                     return SipRequestResult(404, "Not Found")
                 if request.body:
                     return SipRequestResult(415, "Unsupported Media Type")
-                dialog_endpoint_id = endpoint.endpoint_id
             if event == "message-summary":
                 from .mailbox import get_archive, mailbox_settings, EVENT_VOICEMAIL_CHANGED
                 from .runtime_data import endpoint_directory
@@ -104,6 +111,7 @@ class SipApplicationMethods:
 
                 self.dialog_unsubscribe = self.hass.bus.async_listen(CALL_EVENT, self._dialog_changed)
                 self.endpoint_unsubscribe = endpoint_directory(self.hass).subscribe(self._dialog_endpoint_changed)
+                self.parking_unsubscribe = self.hass.bus.async_listen("voip_stack.parking_changed", self._dialog_changed)
             return result
         return SipRequestResult(405, "Method Not Allowed")
 
@@ -347,6 +355,9 @@ class SipApplicationMethods:
             if subscription.event != "dialog" or (endpoint_id and endpoint_id != subscription.dialog_endpoint_id):
                 continue
             removed = runtime.endpoints.get(subscription.dialog_endpoint_id) is None
+            if subscription.dialog_endpoint_id.startswith("parking:"):
+                from .parking import parking_address
+                removed = parking_address(self.hass, subscription.dialog_endpoint_id.removeprefix("parking:")) is None
             if not removed and snapshot(runtime, subscription.dialog_endpoint_id, subscription.dialog_filter) == subscription.dialog_snapshot:
                 continue
             if removed:
@@ -363,7 +374,7 @@ class SipApplicationMethods:
     def _release_dialog_observers_if_unused(self):
         if any(item.event == "dialog" for item in (self.subscriptions or {}).values()):
             return
-        for name in ("dialog_unsubscribe", "endpoint_unsubscribe"):
+        for name in ("dialog_unsubscribe", "endpoint_unsubscribe", "parking_unsubscribe"):
             if (unsubscribe := getattr(self, name)) is not None:
                 unsubscribe()
                 setattr(self, name, None)
@@ -488,7 +499,7 @@ class SipApplicationMethods:
             self.mailbox_unsubscribe()
             self.mailbox_unsubscribe = None
         self.mailbox_archive = None
-        for name in ("dialog_unsubscribe", "endpoint_unsubscribe"):
+        for name in ("dialog_unsubscribe", "endpoint_unsubscribe", "parking_unsubscribe"):
             if (unsubscribe := getattr(self, name)) is not None:
                 unsubscribe()
                 setattr(self, name, None)

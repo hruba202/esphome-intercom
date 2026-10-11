@@ -214,7 +214,6 @@ async def async_answer_browser_call(
         browser_video_send_supported,
         build_answer_directional,
         constrained_video_direction,
-        offered_dtmf_formats,
     )
 
     local_rtp_port = int((preanswered or {}).get("local_rtp_port") or 0)
@@ -255,7 +254,8 @@ async def async_answer_browser_call(
         )
 
     answer_sdp = ""
-    dtmf_formats = offered_dtmf_formats(invite.remote_sdp)
+    from .local_call_media import source_dtmf_formats
+    dtmf_formats = source_dtmf_formats(invite)
     dtmf_format = dtmf_formats[0] if dtmf_formats else None
     response_already_sent = bool(
         preanswered is not None and preanswered.get("final_response_sent", True)
@@ -404,6 +404,14 @@ async def async_answer_browser_call(
             "sip_answer_failed",
             call_id=call_id,
         )
+
+    from .sip_client import SipCallClient
+    source_client = next((leg.dialog for leg in authoritative_session.legs.values()
+                          if leg.role == "caller" and isinstance(leg.dialog, SipCallClient)), None)
+    if source_client is not None:
+        from .browser_dialog_updates import attach_browser_dialog_updates
+        attach_browser_dialog_updates(hass, source_client, endpoint_id, endpoint_device_id,
+                                      source_call_id=call_id)
 
     registry.attach_media(call_id, softphone_media)
     if (

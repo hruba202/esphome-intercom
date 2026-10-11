@@ -39,6 +39,13 @@ def snapshot(runtime, endpoint_id, match=("", "", "")):
     calls = runtime.sip
     if calls is None:
         return ()
+    if endpoint_id.startswith("parking:"):
+        lot = calls.component("parking")
+        parked = lot.calls.get(endpoint_id.removeprefix("parking:")) if lot is not None else None
+        if parked is None or not parked.session.live or any(match):
+            return ()
+        return (DialogState(f"{parked.session.call_id}:{parked.session.generation}",
+                            "confirmed" if parked.session.answer_committed else "early", "recipient", held=True),)
     manager = calls.component("udp_listener")
     result = []
     for session in tuple(calls.sessions.values()):

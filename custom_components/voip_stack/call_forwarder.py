@@ -257,7 +257,7 @@ async def async_forward_existing_call(
             if decision.action in {
                 RouteAction.DIRECT, RouteAction.FORWARD, RouteAction.BRIDGE,
                 RouteAction.TRUNK, RouteAction.ASSIST, RouteAction.GROUP,
-                RouteAction.AUTOMATION, RouteAction.VOICEMAIL,
+                RouteAction.AUTOMATION, RouteAction.VOICEMAIL, RouteAction.PARKING,
             }:
                 from .local_softphone_runtime import PendingLocalSource
 
@@ -389,7 +389,7 @@ async def async_forward_existing_call(
                 source="automation",
             )
         session = registry.sessions.get(registry.resolve_session_id(call_id))
-        application = registry.resource_for(call_id, "automation")
+        application = registry.resource_for(call_id, "parking") or registry.resource_for(call_id, "automation")
         session_endpoint = browser_phone(
             hass,
             (local_source.call.caller_endpoint_id if local_source.outgoing else local_source.call.callee_endpoint_id)
@@ -502,7 +502,7 @@ async def async_forward_existing_call(
         resume_callee=original_callee,
         resume_route_kind=original_route_kind,
         transition_resume=session is not None,
-        resume_owner=("router" if local_source.outgoing else "local_bridge") if local_source is not None else "automation" if application else "ha_softphone",
+        resume_owner=("router" if local_source.outgoing else "local_bridge") if local_source is not None else application.owner if application else "ha_softphone",
         resume_state="remote_ringing" if local_source is not None and local_source.outgoing else "in_call" if application and application.answered else "ringing",
         publish_resume=application.resume if application else partial(
             runtime.publish_pending_ringing,
@@ -554,6 +554,16 @@ async def async_forward_existing_call(
         video_relay = None
         dest_call_id = ""
 
+        async def retire_application(*, pending_browser=False):
+            if application is None:
+                return
+            if application.owner == "parking":
+                claim = application.parked.claim
+                if pending_browser and claim is not None and claim.current:
+                    return
+            await application.close("forwarded")
+            registry.release_resource(call_id, f"{application.owner}:{call_id}", value=application)
+
         async def _cleanup_failed_route(reason: str) -> None:
             nonlocal video_relay
             attached_client = False
@@ -603,7 +613,8 @@ async def async_forward_existing_call(
                         role="destination",
                     )
                     target_claimed = not target_was_claimed
-                    if session_endpoint_id != endpoint.endpoint_id:
+                    source_id = str(session.metadata.get("source_endpoint_id") or "") if session is not None else ""
+                    if session_endpoint_id != endpoint.endpoint_id and not (application is not None and session_endpoint_id == source_id):
                         old_released = (
                             registry.release_endpoint_claim(
                                 call_id,
@@ -622,6 +633,7 @@ async def async_forward_existing_call(
                         sip_uri=decision.sip_uri,
                         last_sip_event="ROUTE_FORWARD",
                     )
+                    await retire_application(pending_browser=True)
                 except Exception:
                     if target_claimed:
                         registry.release_endpoint_claim(
@@ -635,6 +647,14 @@ async def async_forward_existing_call(
                             role="destination",
                         )
                     raise
+                return
+
+            if decision.action is RouteAction.PARKING:
+                from .parking import start_parking_application
+                if decision.entry.metadata["parking_mode"] != "deposit":
+                    raise RuntimeError("Forward calls to a parking destination, not a pickup slot")
+                await start_parking_application(hass, session, invite, local_ip,
+                    slot=decision.entry.metadata["parking_slot"], parker=session_endpoint_id, previous=application)
                 return
 
             if decision.action is RouteAction.VOICEMAIL:
@@ -663,10 +683,13 @@ async def async_forward_existing_call(
                 )
                 if claimed is None:
                     raise RuntimeError("Automation route ownership changed")
-                if application is None:
+                if application is None or application.owner != "automation":
                     next_application = attach_automation_application(
-                        hass, current, invite, decision.entry, local_ip, local_source=local_source,
+                        hass, current, invite, decision.entry, local_ip, local_source=local_source, previous=application,
                     )
+                    if application is not None:
+                        await application.close("forwarded")
+                        registry.release_resource(call_id, f"{application.owner}:{call_id}", value=application)
                 else:
                     # Transfer the existing media/application resource rather
                     # than binding a second receiver to its RTP port.
@@ -942,6 +965,7 @@ async def async_forward_existing_call(
                         )
                     finally:
                         call_artifacts.answer_commit = False
+                    await retire_application()
                     return
 
                 registry.take_pending_route(call_id)
@@ -977,6 +1001,7 @@ async def async_forward_existing_call(
                             cfg.get(CONF_VIDEO_TRANSCODING, False)
                         ),
                         local_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
+                        source_client=application.source_client if application is not None else None,
                     ),
                     BridgeCommitPolicy(
                         route_kind=GROUP_TYPE_RING,
@@ -1001,6 +1026,7 @@ async def async_forward_existing_call(
                 )
                 if committed is None:
                     raise RuntimeError(TerminalReason.CANCELLED.value)
+                await retire_application()
                 if local_source is not None:
                     local_source.connected(connected_party, GROUP_TYPE_RING)
                 if session is not None:
@@ -1025,6 +1051,8 @@ async def async_forward_existing_call(
                 return
 
             if decision.action is RouteAction.ASSIST:
+                if application is not None and application.owner == "parking":
+                    await application.stop_music()
                 current = registry.sessions.get(registry.resolve_session_id(call_id))
                 if current is not None:
                     claimed_assist = registry.transition(
@@ -1080,6 +1108,7 @@ async def async_forward_existing_call(
                 )
                 if not answer_result.committed:
                     raise RuntimeError(answer_result.reason)
+                await retire_application()
                 if local_source is not None:
                     local_source.connected(destination, decision.action.value)
                 return
@@ -1256,6 +1285,7 @@ async def async_forward_existing_call(
                     detach_reservations=(reservation,),
                     enable_video_transcoding=video_transcoding_enabled,
                     local_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
+                    source_client=application.source_client if application is not None else None,
                 ),
                 BridgeCommitPolicy(
                     route_kind=decision.action.value,
@@ -1284,6 +1314,7 @@ async def async_forward_existing_call(
             )
             if committed is None:
                 raise RuntimeError(TerminalReason.CANCELLED.value)
+            await retire_application()
             if local_source is not None:
                 local_source.connected(destination, decision.action.value)
             failure = committed.video_failure_reason or video_failure_reason

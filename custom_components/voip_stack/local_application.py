@@ -13,9 +13,9 @@ from .call_projection import publish_bridge_projection
 from .endpoint_lifecycle import call_registry
 from .endpoint_session import CleanupStage, EndpointCallSession, TerminationIntent
 from .inbound_answer import async_commit_runtime_answer
-from .local_call_media import LocalCallMedia
+from .local_call_media import ApplicationCallSource, LocalCallMedia, source_dtmf_formats
 from .media_ports import RtpPortReservation, take_delayed_offer_ports
-from .core.sdp import build_answer_directional, first_offered_dtmf_format
+from .core.sdp import build_answer_directional
 from .sip_runtime import send_final_response
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class LocalCallApplication:
     cleanup_stage: ClassVar[CleanupStage] = CleanupStage.MEDIA
     hass: HomeAssistant
     session: EndpointCallSession
-    invite: SipInvite | None
+    invite: SipInvite | ApplicationCallSource | None
     contact: RosterEntry
     local_ip: str
     media: LocalCallMedia | None = None
@@ -40,6 +40,7 @@ class LocalCallApplication:
     answered: bool = False
     outgoing: bool = False
     local_source: PendingLocalSource | None = None
+    source_client: object | None = None
 
     def require_current(self, generation: int | None = None) -> None:
         registry = call_registry(self.hass)
@@ -87,6 +88,10 @@ class LocalCallApplication:
             return
         if self.outgoing:
             raise ServiceValidationError("The outgoing automation call is not ready")
+        if self.source_client is not None:
+            self.invite = ApplicationCallSource.from_client(self.source_client,
+                call_id=self.session.call_id, caller=self.session.caller, target=self.contact.id,
+                trunk_id=str(self.session.metadata.get("inbound_trunk_id") or ""))
         registry = call_registry(self.hass)
         preanswered = registry.resource_for(self.session.call_id, "preanswered")
         reservation = (
@@ -120,10 +125,13 @@ class LocalCallApplication:
             self.require_current()
             registry.attach_relay(self.session.call_id, media)
             self.media = media
-            dtmf = first_offered_dtmf_format(self.invite.remote_sdp)
+            if self.source_client is not None:
+                bind_application_source_dialog(self)
+            formats = source_dtmf_formats(self.invite)
+            dtmf = formats[0] if formats else None
             if dtmf is not None:
                 dtmf = replace(dtmf, events=dtmf.events & frozenset(range(16)))
-            answer = build_answer_directional(
+            answer = "" if self.source_client is not None else build_answer_directional(
                 self.local_ip,
                 self.local_ip,
                 reservation.ports[0],
@@ -199,6 +207,8 @@ def attach_local_application(application_type, hass, session, invite, contact, l
     registry = call_registry(hass)
     preanswered = registry.resource_for(session.call_id, "preanswered")
     source = local_source or (previous.local_source if previous is not None else None)
+    if previous is not None and "source_client" not in settings:
+        settings["source_client"] = previous.source_client
     application = application_type(
         hass, session, invite, contact, local_ip,
         media=previous.media if previous is not None else None,
@@ -209,6 +219,11 @@ def attach_local_application(application_type, hass, session, invite, contact, l
     )
     registry.own_resource(session.call_id, f"{application.owner}:{session.call_id}", application, application.close,
                           stage=application.cleanup_stage, generation=session.generation)
+    if application.media is not None:
+        application.media.on_dtmf = application.handle_dtmf
+        application.media.private_dtmf = getattr(application, "private_dtmf", False)
+    if application.source_client is not None:
+        bind_application_source_dialog(application)
     if source is not None:
         if application.playback is None:
             application.playback = BrowserPlayback()
@@ -222,3 +237,32 @@ def attach_local_application(application_type, hass, session, invite, contact, l
         session.update_metadata(endpoint_id=str(session.metadata.get("source_endpoint_id") or ""),
                                 dest_endpoint_id="", target_endpoint_id="", ring_endpoint_ids=())
     return application
+
+
+def bind_application_source_dialog(application):
+    """Keep a retained outgoing SIP dialog attached to its current application."""
+    client = application.source_client
+    session = application.session
+    registry = call_registry(application.hass)
+    media = application.media
+    if media is None:
+        return
+    async def prepare(_previous, updated, _method):
+        if not session.live or registry.resource_for(session.call_id, "relay") is not media:
+            return None
+        source = ApplicationCallSource.from_peer_dialog(updated, call_id=session.call_id,
+            caller=session.caller, target=session.callee, trunk_id=str(session.metadata.get("inbound_trunk_id") or ""))
+        commit_media = media.prepare_media_update(source)
+        async def commit():
+            if (not registry.is_generation_current(session.call_id, session.generation)
+                    or registry.resource_for(session.call_id, "relay") is not media):
+                raise RuntimeError("The retained caller changed media owner")
+            commit_media()
+            if registry.artifact_for(session.call_id, "pending_invite") is not None:
+                registry.set_pending_invite(session.call_id, source)
+        return commit
+    client.on_media_update = prepare
+    def on_info(digit):
+        if registry.resource_for(session.call_id, "relay") is media and media.on_dtmf is not None:
+            media.on_dtmf("left", digit, "sip_info")
+    client.on_info_dtmf = on_info

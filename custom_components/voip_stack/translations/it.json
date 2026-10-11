@@ -15,7 +15,8 @@
           "experimental_sip_video": "Abilita video SIP per il softphone Home Assistant",
           "sip_registrar_enabled": "Abilita account softphone SIP locali",
           "trunk_enabled": "Abilita trunk SIP opzionale",
-          "voicemail_enabled": "Abilita segreteria telefonica"
+          "voicemail_enabled": "Abilita segreteria telefonica",
+          "parking_enabled": "Abilita parcheggio chiamate"
         },
         "data_description": {
           "sip_port": "Porta di ascolto dell'endpoint SIP HA. HA accetta signaling SIP sia su UDP sia su TCP su questa porta.",
@@ -120,6 +121,18 @@
         "data": {
           "voice": "Voce"
         }
+      },
+      "parking": {
+        "title": "Parcheggio chiamate",
+        "data": {
+          "access": "Codice di accesso al parcheggio",
+          "slots": "Posti del parcheggio, separati da virgole",
+          "timeout": "Tempo massimo nel parcheggio",
+          "return_timeout": "Durata dello squillo al ritorno",
+          "return_destination": "Destinazione al ritorno",
+          "hold_media": "Audio di attesa",
+          "clear_hold_media": "Rimuovi l'audio di attesa salvato"
+        }
       }
     },
     "error": {
@@ -133,7 +146,9 @@
       "voicemail_tts_unavailable": "Seleziona un'entità TTS disponibile.",
       "voicemail_language_unsupported": "Questa lingua non è supportata sia dai messaggi della segreteria sia dal motore TTS scelto.",
       "voicemail_route_conflict": "Un telefono, contatto o gruppo usa un indirizzo della segreteria (*97, *98, mailbox, mailbox.*, voicemail.* oppure *60 seguito da un interno). Rinomina quel percorso prima di abilitare la segreteria.",
-      "voicemail_voice_unavailable": "Seleziona una voce supportata dal motore TTS e dalla lingua scelti."
+      "voicemail_voice_unavailable": "Seleziona una voce supportata dal motore TTS e dalla lingua scelti.",
+      "parking_configuration_invalid": "Scegli codici distinti e tempi tra 1 e 3600 secondi.",
+      "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",

@@ -381,7 +381,8 @@ class VoipBackendRouteContractTest(unittest.TestCase):
             'client.on_info_dtmf = lambda digit: _emit("right", digit, "sip_info")',
             self.dtmf_events,
         )
-        self.assertIn('callback("left", digit, "sip_info")', self.dtmf_events)
+        # The behavioral INFO tests validate both native dialog roles. A
+        # listener-owned callee must not be hardcoded as the caller side.
         self.assertIn("relay.relay_dtmf(side, digit)", self.dtmf_events)
         self.assertNotIn("send_dtmf_info", self.source)
         # Established bridge families keep DTMF through shared primitives.

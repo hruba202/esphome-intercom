@@ -15,7 +15,8 @@
           "experimental_sip_video": "Ativar vídeo SIP para o softphone do Home Assistant",
           "sip_registrar_enabled": "Ativar contas SIP locais",
           "trunk_enabled": "Ativar tronco SIP opcional",
-          "voicemail_enabled": "Ativar correio de voz"
+          "voicemail_enabled": "Ativar correio de voz",
+          "parking_enabled": "Ativar estacionamento de chamadas"
         },
         "data_description": {
           "sip_port": "Porta de escuta do endpoint SIP do Home Assistant. O Home Assistant aceita sinalização SIP por UDP e TCP nessa porta.",
@@ -120,6 +121,18 @@
         "data": {
           "voice": "Voz"
         }
+      },
+      "parking": {
+        "title": "Estacionamento de chamadas",
+        "data": {
+          "access": "Código de acesso",
+          "slots": "Vagas, separadas por vírgulas",
+          "timeout": "Tempo máximo de espera",
+          "return_timeout": "Tempo de toque no retorno",
+          "return_destination": "Destino de retorno",
+          "hold_media": "Áudio de espera",
+          "clear_hold_media": "Remover áudio de espera salvo"
+        }
       }
     },
     "error": {
@@ -133,7 +146,9 @@
       "voicemail_tts_unavailable": "Selecione uma entidade TTS disponível.",
       "voicemail_language_unsupported": "Este idioma não é compatível com os avisos e o mecanismo TTS selecionado.",
       "voicemail_route_conflict": "Um telefone, contato ou grupo usa um endereço de correio de voz (*97, *98, mailbox, mailbox.*, voicemail.* ou *60 seguido de um ramal). Renomeie esse destino antes de ativar o correio de voz.",
-      "voicemail_voice_unavailable": "Selecione uma voz compatível com o mecanismo TTS e o idioma escolhidos."
+      "voicemail_voice_unavailable": "Selecione uma voz compatível com o mecanismo TTS e o idioma escolhidos.",
+      "parking_configuration_invalid": "Escolha códigos distintos e tempos entre 1 e 3600 segundos.",
+      "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",

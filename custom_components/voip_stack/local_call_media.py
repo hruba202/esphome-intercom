@@ -57,6 +57,62 @@ class LocalAudioContract:
         return cls(**{name: getattr(dialog, name) for name in cls.__dataclass_fields__ if name != "remote_sdp"})
 
 
+@dataclass(frozen=True, slots=True)
+class ApplicationCallSource(LocalAudioContract):
+    """An already established UAC peer retained by a PBX application.
+
+    These are media and routing fields from the actual dialog, not an incoming
+    SIP request. The existing client remains responsible for signaling.
+    """
+
+    caller: str = ""
+    routing_caller: str = ""
+    target: str = ""
+    source_host: str = ""
+    source_port: int = 0
+    remote_audio_direction: str = "sendrecv"
+    video_format: Any = None
+    send_video_format: Any = None
+    recv_video_format: Any = None
+    answer_video_format: Any = None
+    peer_profile: str = ""
+    received_via_trunk: bool = False
+    trunk_id: str = ""
+    send_dtmf_payload_type: int | None = None
+    send_dtmf_clock_rate: int | None = None
+    send_dtmf_events: frozenset[int] | None = None
+
+    @classmethod
+    def from_client(cls, client, *, call_id, caller, target="", trunk_id=""):
+        return cls.from_peer_dialog(client.dialog, call_id=call_id, caller=caller, target=target, trunk_id=trunk_id)
+
+    @classmethod
+    def from_peer_dialog(cls, dialog, *, call_id, caller, target="", trunk_id=""):
+        from .core.sip import parse_sip_uri
+
+        if dialog is None or dialog.video_format is not None:
+            raise ValueError("Retaining an application caller requires an established audio dialog")
+        base = LocalAudioContract.from_dialog(dialog)
+        fields = {name: getattr(base, name) for name in LocalAudioContract.__dataclass_fields__}
+        fields["call_id"] = call_id
+        return cls(**fields, caller=caller, routing_caller=parse_sip_uri(dialog.remote_uri).user,
+            target=target, source_host=dialog.remote_host, source_port=dialog.remote_sip_port,
+            received_via_trunk=bool(trunk_id), trunk_id=trunk_id,
+            remote_audio_direction=dialog.remote_audio_direction,
+            send_dtmf_payload_type=dialog.send_dtmf_payload_type,
+            send_dtmf_clock_rate=dialog.send_dtmf_clock_rate,
+            send_dtmf_events=dialog.send_dtmf_events)
+
+
+def source_dtmf_formats(source):
+    """Read negotiated events from a dialog contract or an actual SIP offer."""
+    from .core.sdp import RtpDtmfFormat, offered_dtmf_formats
+
+    if isinstance(source, LocalAudioContract):
+        return (RtpDtmfFormat(source.dtmf_payload_type, source.dtmf_clock_rate, source.dtmf_events),) if source.dtmf_payload_type is not None else ()
+    return tuple(offered_dtmf_formats(source.remote_sdp))
+
+
 class _LocalRtpProtocol(asyncio.DatagramProtocol):
     def __init__(self, session: "LocalCallMedia") -> None:
         self.session = session
@@ -219,6 +275,33 @@ class LocalCallMedia:
             self.invite.send_format.wire_token(),
             self.invite.recv_format.wire_token(),
         )
+
+    def detach_transport(self):
+        """Give the bound RTP socket to a prepared successor without rebinding."""
+        if self.closed.is_set() or self.transport is None or self.transport.is_closing():
+            raise RuntimeError("Local media transport is no longer available")
+        transport = self.transport
+        self.closed.set()
+        self.transport = None
+        self.release_reservation_on_stop = False
+        return transport
+
+    def adopt_transport(self, transport):
+        """Start application playback on an already owned, bound RTP socket."""
+        if self.transport is not None or self.closed.is_set() or transport.is_closing():
+            raise RuntimeError("Local media cannot adopt this transport")
+        previous = transport.get_protocol()
+        try:
+            transport.set_protocol(_LocalRtpProtocol(self))
+            self.transport = transport
+            self._tx_task = self.hass.async_create_task(self._send_loop())
+            self._start_application()
+        except BaseException:
+            self.transport = None
+            transport.set_protocol(previous)
+            if self._tx_task is not None:
+                self._tx_task.cancel()
+            raise
 
     async def stop(self) -> None:
         """Stop pipeline and RTP exactly once."""

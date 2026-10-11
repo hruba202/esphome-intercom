@@ -18,10 +18,10 @@ pytestmark = pytest.mark.ha
 NS = {"d": "urn:ietf:params:xml:ns:dialog-info"}
 
 
-def subscribe(*, tag="", event="dialog", expires=300, accept="application/dialog-info+xml", cseq=1, call_id="watch-101"):
-    return sip.parse_message(sip.build_request("SUBSCRIBE", "sip:101@127.0.0.1", [
+def subscribe(*, tag="", event="dialog", expires=300, accept="application/dialog-info+xml", cseq=1, call_id="watch-101", target="101"):
+    return sip.parse_message(sip.build_request("SUBSCRIBE", f"sip:{target}@127.0.0.1", [
         ("From", "<sip:watcher@127.0.0.1>;tag=watcher"),
-        ("To", "<sip:101@127.0.0.1>" + (f";tag={tag}" if tag else "")),
+        ("To", f"<sip:{target}@127.0.0.1>" + (f";tag={tag}" if tag else "")),
         ("Contact", "<sip:watcher@127.0.0.3:5060>"),
         ("Call-ID", call_id), ("CSeq", f"{cseq} SUBSCRIBE"),
         ("Event", event), ("Expires", str(expires)), ("Accept", accept),
@@ -192,3 +192,30 @@ async def test_sipp_observes_baresip_ring_answer_hangup_and_resource_removal(reg
         if process.returncode is None:
             process.terminate()
             await process.communicate()
+
+
+async def test_parking_slot_blf_tracks_reservation_without_a_fake_phone(lab, blf):
+    from custom_components.voip_stack.store import config_entry
+    from custom_components.voip_stack.parking import get_parking_lot
+
+    entry=config_entry(lab.hass)
+    lab.hass.config_entries.async_update_entry(entry,data={**entry.data,'parking':{'enabled':True}})
+    methods, notifications, send=blf
+    count=len(lab.runtime.endpoints.endpoints)
+    result=await methods.handle(subscribe(target='701'),('127.0.0.3',5060),'UDP',send)
+    assert result.status==200
+    assert not ElementTree.fromstring(result.follow_up.body).findall('d:dialog',NS)
+    lot=get_parking_lot(lab.hass)
+    session=lab.calls.upsert('parked-call',state='in_call',owner='parking')
+    session.claim_answer(session.token,lambda:True)
+    parked=lot.reserve(session)
+    busy=ElementTree.fromstring((await asyncio.wait_for(notifications.get(),1)).body)
+    assert busy.find('d:dialog/d:state',NS).text=='confirmed'
+    lot.release(parked)
+    idle=ElementTree.fromstring((await asyncio.wait_for(notifications.get(),1)).body)
+    assert not idle.findall('d:dialog',NS)
+    assert len(lab.runtime.endpoints.endpoints)==count
+    result=await methods.handle(subscribe(target='701',tag=result.to_tag,cseq=2,expires=0),('127.0.0.3',5060),'UDP',send)
+    assert result.status==200
+    assert methods.parking_unsubscribe is None and methods.dialog_unsubscribe is None
+    await lab.calls.terminate_call_wait(session.call_id,reason='test_complete')

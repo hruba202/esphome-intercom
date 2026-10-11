@@ -214,6 +214,11 @@ def is_ha_target(hass: HomeAssistant, value: str) -> bool:
 def ha_router_decision(hass: HomeAssistant, target: str, entries: list, *, source_endpoint_id: str = "", trunk_id: str = ""):
     """Resolve one target against the canonical HA dial plan."""
 
+    from .parking import resolve_parking_route
+    parking = resolve_parking_route(hass, target)
+    if parking is not None:
+        return parking
+
     if str(target or "").strip().casefold().startswith(("voicemail.", "mailbox", "*97", "*98", "*60")):
         from .mailbox import resolve_mailbox_route
 
