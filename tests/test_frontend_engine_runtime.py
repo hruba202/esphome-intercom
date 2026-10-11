@@ -239,8 +239,10 @@ await assert.rejects(
   /Microphone access is unavailable/,
 );
 let audioTrackStops = 0;
+const preparationOrder=[];
 context.navigator.mediaDevices = {{
   getUserMedia: async () => {{
+    preparationOrder.push("input");
     const track = {{ stop() {{ audioTrackStops++; }} }};
     return {{
       getAudioTracks() {{ return [track]; }},
@@ -248,8 +250,68 @@ context.navigator.mediaDevices = {{
     }};
   }},
 }};
-assert.equal(await audioPreflight.prepareAudioCall(), true);
-assert.equal(audioTrackStops, 1);
+let outputStarted;
+let contextCloses = 0;
+class PreparedContext {{
+  constructor() {{
+    this.audioWorklet = {{ addModule: async () => {{}} }};
+    preparationOrder.push("output");
+    this.state = "running"; this.sampleRate = 48000; this.destination = {{}};
+  }}
+  async resume() {{}}
+  createMediaStreamSource() {{ return {{ connect(node) {{ return node; }}, disconnect() {{}} }}; }}
+  createGain() {{ return {{ gain: {{value: 1}}, connect(node) {{return node;}}, disconnect() {{}} }}; }}
+  createBuffer() {{return {{}};}}
+  createBufferSource() {{
+    const source = {{connect() {{}}, disconnect() {{}}, stop() {{}}, start() {{ outputStarted=()=>source.onended(); }} }};
+    return source;
+  }}
+  async close() {{contextCloses++; this.state="closed";}}
+}}
+context.window.AudioContext = PreparedContext;
+const intentToken = {{}};
+audioPreflight._ownedSoftphoneCalls.clear();
+assert.equal(audioPreflight.tryAcquireMediaIntent("kitchen", intentToken),true);
+let prepared = false;
+const preparing = audioPreflight.prepareAudioCall().then(()=>{{prepared=true;}});
+for(let i=0;i<30;i++) await Promise.resolve();
+assert.equal(prepared, false, "Do not dial before the audio output has rendered");
+assert.equal(typeof outputStarted, "function");
+outputStarted();await preparing;
+assert.equal(audioTrackStops, 0, "Retain the initialized microphone for the call");
+assert.equal(audioPreflight._preparedAudio.ready, true);
+assert.deepEqual(preparationOrder,["input","output"]);
+await audioPreflight.close("switch", true, true);
+assert.equal(audioPreflight._preparedAudio.ready, true, "Opening media must preserve prepared devices");
+audioPreflight.claimSoftphoneSession("new-call", "kitchen");
+audioPreflight.releaseMediaIntent(intentToken);
+assert.equal(audioTrackStops, 0, "Keep audio ready while the destination rings");
+audioPreflight.releaseSoftphoneSession("new-call", "kitchen");
+for(let i=0;i<30;i++) await Promise.resolve();
+assert.equal(audioTrackStops, 1, "Release prepared capture when an unanswered call ends");
+assert.equal(contextCloses, 1);
+const cancelToken={{}};
+audioPreflight.tryAcquireMediaIntent("kitchen",cancelToken);
+const cancelPrepare=audioPreflight.prepareAudioCall();
+for(let i=0;i<30;i++) await Promise.resolve();
+audioPreflight.releaseMediaIntent(cancelToken);
+await assert.rejects(cancelPrepare,/cancelled|superseded/i);
+assert.equal(audioTrackStops,2);
+assert.equal(audioPreflight._preparedAudio,null);
+const originalInput=context.navigator.mediaDevices.getUserMedia;
+let grantInput;
+context.navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>{{grantInput=resolve;}});
+const lateToken={{}};audioPreflight.tryAcquireMediaIntent("kitchen",lateToken);
+const latePreparation=audioPreflight.prepareAudioCall();
+for(let i=0;i<30;i++) await Promise.resolve();
+audioPreflight.releaseMediaIntent(lateToken);
+let lateStops=0;
+grantInput({{getAudioTracks:()=>[{{}}],getTracks:()=>[{{stop(){{lateStops++;}}}}]}});
+await assert.rejects(latePreparation,/cancelled/i);
+assert.equal(lateStops,1,"A late microphone grant must be released after cancellation");
+assert.equal(audioPreflight._preparedAudio,null);
+context.navigator.mediaDevices.getUserMedia=originalInput;
+
 
 // sessionStorage is only a reload/handoff hint. A backend snapshot is
 // authoritative and must prune a claim whose call already ended, while a
@@ -873,11 +935,19 @@ context.navigator.mediaDevices = {{
 }};
 class RuntimeAudioContext {{
   constructor() {{
+    this.sampleRate = 48000;
     this.state = "running";
     this.destination = {{}};
-    this.audioWorklet = {{ addModule: async () => {{}} }};
+    this.loadedModules = [];
+    this.audioWorklet = {{ addModule: async (url) => {{this.loadedModules.push(url);}} }};
   }}
   async resume() {{ this.state = "running"; }}
+  createBuffer() {{ return {{}}; }}
+  createBufferSource() {{
+    const node = {{connect() {{}}, disconnect() {{}}, stop() {{}},
+      start() {{ Promise.resolve().then(()=>node.onended?.()); }} }};
+    return node;
+  }}
   createMediaStreamSource() {{
     return {{ connect(target) {{ return target; }}, disconnect() {{}} }};
   }}
@@ -897,6 +967,36 @@ class RuntimeWorkletNode {{
 }}
 context.window.AudioContext = RuntimeAudioContext;
 context.AudioWorkletNode = RuntimeWorkletNode;
+const preparedSession = new Engine();
+const loadWorklets = preparedSession._loadAudioWorklets.bind(preparedSession);
+let releaseModules;
+const modulesReady = new Promise(resolve => {{releaseModules = resolve;}});
+preparedSession._loadAudioWorklets = async (...args) => {{
+  await modulesReady;
+  return loadWorklets(...args);
+}};
+let readyToDial = false;
+const prepareSession = preparedSession.prepareAudioCall().then(() => {{readyToDial = true;}});
+for (let i=0;i<30;i++) await Promise.resolve();
+assert.equal(readyToDial, false, "A slow processor download must finish before SIP starts");
+releaseModules();
+await prepareSession;
+const preparedContext = preparedSession._preparedAudio.audioContext;
+const preparedStream = preparedSession._preparedAudio.mediaStream;
+const preparedRequests = microphoneRequests;
+assert.equal(preparedContext.loadedModules.length, 2, "Processors must load before dialing");
+preparedContext.audioWorklet.addModule = async () => {{throw new Error("Late worklet download after dialing");}};
+preparedSession._callId = "prepared-duplex";
+await preparedSession._setupAudio({{audio_mode: "full_duplex"}}, {{
+  call_id: "prepared-duplex", tx_format: "16000:s16le:1:20",
+  rx_format: "16000:s16le:1:20", audio_direction: "sendrecv",
+}});
+assert.equal(microphoneRequests, preparedRequests, "Reuse input instead of opening it twice");
+assert.equal(preparedSession._mediaStream, preparedStream);
+assert.equal(preparedSession._audioContext, preparedContext);
+assert.equal(preparedSession._preparedAudio, null);
+await preparedSession.close();
+microphoneRequests=0;stoppedTracks=0;
 const audio = new Engine();
 audio._callId = "directional";
 const pcm = {{
