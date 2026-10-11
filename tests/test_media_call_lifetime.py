@@ -43,6 +43,7 @@ def media_call_lifetime(monkeypatch):
     homeassistant.__path__ = []
     core = ModuleType("homeassistant.core")
     core.HomeAssistant = type("HomeAssistant", (), {})
+    core.callback = lambda function: function
     monkeypatch.setitem(sys.modules, "homeassistant", homeassistant)
     monkeypatch.setitem(sys.modules, "homeassistant.core", core)
 

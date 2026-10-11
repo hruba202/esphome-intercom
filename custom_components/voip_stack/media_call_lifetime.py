@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .runtime_data import call_projection
 from .websocket_api import CALL_EVENT, _ha_softphone_store
@@ -53,6 +53,7 @@ def listen_for_media_call_end(
 
     call_ended = asyncio.Event()
 
+    @callback
     def on_call_event(event: Any) -> None:
         payload = event.data
         if str(payload.get("call_id") or "") != call_id:
