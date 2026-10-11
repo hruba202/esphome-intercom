@@ -422,6 +422,10 @@
     "media_capture_enabled": {
       "title": "Private media capture is enabled",
       "description": "VoIP Stack is saving private call media for diagnostics. Disable media capture when troubleshooting is complete."
+    },
+    "default_trunk_missing": {
+      "title": "Choose the default outgoing SIP trunk",
+      "description": "No existing trunk is selected as the default. Open VoIP Stack, reconfigure the desired line and enable \"Use as the default outgoing trunk\". Alternatively, select a line in the phone options or call action. Deleting a line never silently selects another provider."
     }
   },
   "exceptions": {

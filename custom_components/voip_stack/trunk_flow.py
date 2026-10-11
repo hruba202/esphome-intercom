@@ -63,8 +63,7 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
     def _store_entry(self, data):
         entry = self._get_entry()
         data = {**normalized_trunk_config(data), "trunk_id": self._identity, "name": self._name}
-        if self._make_default or not trunk_subentries(entry):
-            self.hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_DEFAULT_TRUNK: self._identity})
+        self._make_default = self._make_default or not trunk_subentries(entry)
         if self._current is not None:
             result = self.async_update_and_abort(entry, self._current, data=data, title=self._name)
         else:
@@ -136,6 +135,11 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
             entry = self.hass.config_entries.async_get_entry(self.handler[0])
             if entry is not None:
                 from .trunk_runtime import async_reconcile_trunks
+
+                if self._make_default and self._identity in entry_trunk_configs(entry):
+                    self.hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, CONF_DEFAULT_TRUNK: self._identity}
+                    )
 
                 # Finish the validated client's ownership handoff after HA has
                 # persisted the subentry. The ordinary update listener may run

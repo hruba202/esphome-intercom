@@ -60,6 +60,12 @@ line or editing incoming routing does not replace its connection.
 An existing single trunk is migrated to a named **SIP trunk** entry, retaining
 its credentials, incoming routing and default selection.
 
+Deleting the default trunk clears that selection immediately and does not
+choose another provider, even when only one line remains. The integration also
+cleans up a stale selection at startup. Home Assistant Repairs explains how to
+choose a new default; selecting one clears the notice. Phone-specific or
+per-call selections of existing lines continue to work.
+
 ### Choose an outgoing line
 
 The selection order is:

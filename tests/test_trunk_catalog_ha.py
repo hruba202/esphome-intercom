@@ -383,7 +383,8 @@ async def test_native_trunk_readiness_updates_from_lifecycle_events_without_poll
 
 
 @pytest.mark.parametrize('with_listener', [True, False])
-async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(hass, catalog, registrar, monkeypatch, with_listener):
+@pytest.mark.parametrize('make_default', [True, False])
+async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(hass, catalog, registrar, monkeypatch, with_listener, make_default):
     from custom_components.voip_stack import trunk_flow
     from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
 
@@ -399,7 +400,7 @@ async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(has
     hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
     form = await hass.config_entries.subentries.async_init((catalog.entry_id, "trunk"), context={"source": "user"})
     form = await hass.config_entries.subentries.async_configure(form["flow_id"], {
-        "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": False,
+        "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": make_default,
     })
     result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
         "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only",
@@ -416,7 +417,7 @@ async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(has
         assert sip_trunk(hass, identity) is candidate
         assert len(peer.requests) == count
         assert ";line=" in candidate.contact_uri
-        assert catalog.runtime_data.default_trunk_id == "home"
+        assert catalog.runtime_data.default_trunk_id == (identity if make_default else "home")
     finally:
         unsubscribe()
         await async_stop_sip_trunk(hass)
@@ -441,3 +442,62 @@ async def test_sensor_exists_while_saved_trunk_waits_for_runtime_adoption(hass, 
     assert sensor.available is True
     assert sensor.is_on is False
     assert len([entity for entity in added if entity.identity=='pending'])==1
+
+
+@pytest.mark.parametrize('remaining', [0, 1, 2])
+async def test_removing_default_clears_saved_and_runtime_selection_without_failover(hass,catalog,monkeypatch,remaining):
+    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
+    from custom_components.voip_stack import peer_snapshot
+    monkeypatch.setattr(peer_snapshot,'async_advertise_host',AsyncMock(return_value='127.0.0.1'))
+    records=list(catalog.subentries.values())
+    if remaining==0:
+        hass.config_entries.async_remove_subentry(catalog,records[1].subentry_id)
+    if remaining==2:
+        hass.config_entries.async_add_subentry(catalog,ConfigSubentry(subentry_type='trunk',title='Other',
+            unique_id='trunk:other',data={'trunk_id':'other','trunk_enabled':False}))
+    hass.config_entries.async_remove_subentry(catalog,records[0].subentry_id)
+    try:
+        await async_reconcile_trunks(hass,catalog)
+        assert catalog.data['default_trunk_id']==''
+        assert catalog.runtime_data.default_trunk_id==''
+        assert entry_default_trunk(catalog,entry_trunk_configs(catalog))==''
+        assert not trunk_config(hass)['trunk_enabled']
+    finally:
+        await async_stop_sip_trunk(hass)
+
+
+async def test_native_subentry_delete_notifies_runtime_and_repairs_selection(hass,catalog,monkeypatch):
+    from custom_components.voip_stack.config_entry_runtime import async_config_entry_updated
+    from custom_components.voip_stack import peer_snapshot,mailbox
+    from homeassistant.helpers import issue_registry as ir
+    monkeypatch.setattr(peer_snapshot,'async_advertise_host',AsyncMock(return_value='127.0.0.1'))
+    monkeypatch.setattr(mailbox,'async_refresh_mailbox_state',AsyncMock())
+    unsubscribe=catalog.add_update_listener(async_config_entry_updated)
+    record=next(s for s in catalog.subentries.values() if s.data['trunk_id']=='home')
+    try:
+        hass.config_entries.async_remove_subentry(catalog,record.subentry_id)
+        await hass.async_block_till_done()
+        assert catalog.data['default_trunk_id']==''
+        assert catalog.runtime_data.default_trunk_id==''
+        assert ir.async_get(hass).async_get_issue('voip_stack','default_trunk_missing') is not None
+        hass.config_entries.async_update_entry(catalog,data={**catalog.data,'default_trunk_id':'work'})
+        await hass.async_block_till_done()
+        assert catalog.runtime_data.default_trunk_id=='work'
+        assert ir.async_get(hass).async_get_issue('voip_stack','default_trunk_missing') is None
+    finally:
+        unsubscribe()
+        await async_stop_sip_trunk(hass)
+
+
+async def test_startup_heals_saved_deleted_default_without_selecting_survivor(hass,catalog):
+    record=next(s for s in catalog.subentries.values() if s.data['trunk_id']=='home')
+    hass.config_entries.async_remove_subentry(catalog,record.subentry_id)
+    catalog.runtime_data.trunk_configs=entry_trunk_configs(catalog)
+    try:
+        await async_start_sip_trunk(hass,local_ip='127.0.0.1')
+        assert catalog.data['default_trunk_id']==''
+        assert catalog.runtime_data.default_trunk_id==''
+        assert sip_trunk(hass) is None
+        assert sip_trunk(hass,'work').ready
+    finally:
+        await async_stop_sip_trunk(hass)

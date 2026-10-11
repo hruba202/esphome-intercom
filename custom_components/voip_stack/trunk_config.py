@@ -24,9 +24,18 @@ def entry_trunk_configs(entry) -> dict[str, dict]:
 
 def entry_default_trunk(entry, configs) -> str:
     selected = str(entry.data.get(CONF_DEFAULT_TRUNK) or "")
-    if selected:
-        return selected
+    if CONF_DEFAULT_TRUNK in entry.data:
+        return selected if selected in configs else ""
     return next(iter(configs)) if len(configs) == 1 else ""
+
+
+def clear_removed_trunk_default(hass, entry, configs) -> None:
+    """Forget a deleted provider without silently selecting a replacement."""
+    selected = str(entry.data.get(CONF_DEFAULT_TRUNK) or "")
+    if selected and selected not in configs:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_DEFAULT_TRUNK: ""}
+        )
 
 
 def migrate_legacy_trunk(hass, entry) -> None:

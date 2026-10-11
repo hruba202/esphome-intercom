@@ -422,6 +422,10 @@
     "media_capture_enabled": {
       "title": "La cattura dei media privati è attiva",
       "description": "VoIP Stack sta salvando i media privati delle chiamate per la diagnostica. Disattiva la cattura dei media al termine della verifica."
+    },
+    "default_trunk_missing": {
+      "title": "Scegli il trunk predefinito per le chiamate in uscita",
+      "description": "Nessun trunk esistente è selezionato come predefinito. Apri VoIP Stack, riconfigura la linea desiderata e abilita \"Usa come trunk predefinito in uscita\". Puoi anche scegliere una linea nelle opzioni del telefono o nella singola azione di chiamata. La cancellazione di una linea non seleziona automaticamente un altro provider."
     }
   },
   "exceptions": {

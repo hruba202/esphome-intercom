@@ -62,3 +62,13 @@ def async_sync_esphome_action_issue(hass: HomeAssistant, device: dict) -> None:
             "actions": ", ".join(missing),
         },
     )
+
+
+def async_sync_trunk_default_issue(hass, configs, default_id) -> None:
+    """Make a missing global line choice actionable without provider failover."""
+    if configs and default_id not in configs:
+        ir.async_create_issue(hass, DOMAIN, 'default_trunk_missing', is_fixable=False,
+            is_persistent=False, severity=ir.IssueSeverity.WARNING,
+            translation_key='default_trunk_missing')
+    else:
+        ir.async_delete_issue(hass, DOMAIN, 'default_trunk_missing')

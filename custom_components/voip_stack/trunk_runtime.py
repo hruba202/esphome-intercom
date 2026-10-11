@@ -7,7 +7,7 @@ import logging
 
 from homeassistant.core import HomeAssistant
 
-from .config import transport_config, trunk_config, trunk_enabled
+from .config import normalized_trunk_config, transport_config, trunk_config, trunk_enabled
 from .const import (
     CONF_TRUNK_REGISTER,
     CONF_TRUNK_ALLOWED_IPS,
@@ -71,6 +71,16 @@ def create_trunk_client(hass: HomeAssistant, cfg: dict, *, local_ip: str, trunk_
 
 async def async_start_sip_trunk(hass: HomeAssistant, *, local_ip: str) -> bool:
     runtime = runtime_data(hass)
+    from .store import config_entry
+    from .trunk_config import clear_removed_trunk_default
+    from .repairs import async_sync_trunk_default_issue
+    entry = config_entry(hass)
+    if runtime is not None and entry is not None:
+        clear_removed_trunk_default(hass, entry, runtime.trunk_configs)
+        if runtime.default_trunk_id and runtime.default_trunk_id not in runtime.trunk_configs:
+            runtime.default_trunk_id = ""
+            runtime.trunk_config = normalized_trunk_config({})
+        async_sync_trunk_default_issue(hass, runtime.trunk_configs, runtime.default_trunk_id)
     configs = runtime.trunk_configs if runtime is not None and runtime.trunk_configs else {"": trunk_config(hass)}
     enabled = {identity: cfg for identity, cfg in configs.items() if trunk_enabled(cfg)}
     if not enabled:
@@ -129,14 +139,17 @@ def trunk_has_calls(hass: HomeAssistant, identity: str, client) -> bool:
 async def async_reconcile_trunks(hass: HomeAssistant, entry) -> None:
     """Adopt validated replacements without reloading other phones or trunks."""
     from .peer_snapshot import async_advertise_host
-    from .trunk_config import entry_trunk_configs, entry_default_trunk, sync_trunk_devices
+    from .trunk_config import entry_trunk_configs, entry_default_trunk, sync_trunk_devices, clear_removed_trunk_default
 
     runtime = runtime_data(hass)
     if runtime is None or runtime.sip is None:
         return
     async with runtime.trunk_update_lock:
         configs = entry_trunk_configs(entry)
+        clear_removed_trunk_default(hass, entry, configs)
         default = entry_default_trunk(entry, configs)
+        from .repairs import async_sync_trunk_default_issue
+        async_sync_trunk_default_issue(hass, configs, default)
         sync_trunk_devices(hass, entry)
         if configs == runtime.trunk_configs and default == runtime.default_trunk_id:
             return
@@ -194,7 +207,7 @@ async def async_reconcile_trunks(hass: HomeAssistant, entry) -> None:
                 owner.adopt_component(name, candidate, closer=candidate.stop)
         runtime.trunk_configs = configs
         runtime.default_trunk_id = default
-        runtime.trunk_config = configs.get(default, {})
+        runtime.trunk_config = configs.get(default, normalized_trunk_config({}))
         from homeassistant.helpers.dispatcher import async_dispatcher_send
         from .trunk_config import TRUNK_UPDATE_SIGNAL
         async_dispatcher_send(hass, TRUNK_UPDATE_SIGNAL, "")
