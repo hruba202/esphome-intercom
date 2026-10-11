@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class BrowserMediaRuntime:
     """Entry-owned browser transports, separate from authoritative call state."""
 
-    active_sessions: dict[str, dict[str, Any]] = field(
+    active_sessions: dict[str, dict[tuple[str, str], Any]] = field(
         default_factory=lambda: {"audio": {}, "video": {}}
     )
     owners: dict[str, dict[str, Any]] = field(
@@ -43,7 +43,7 @@ class BrowserMediaRuntime:
     debug_capture_tasks: set[asyncio.Future[Any]] = field(default_factory=set)
     debug_capture_dropped_writes: int = 0
 
-    def sessions_for(self, channel: str) -> dict[str, Any]:
+    def sessions_for(self, channel: str) -> dict[tuple[str, str], Any]:
         """Return live sessions for one supported media channel."""
 
         return self.active_sessions[channel]

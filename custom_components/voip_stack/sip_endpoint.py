@@ -364,6 +364,19 @@ class SipEndpointManager:
                 return True
         return False
 
+    async def async_send_bye(self, call_id: str = "") -> bool:
+        """Wait for the existing dialog owner's BYE transaction and cleanup."""
+        candidates = [endpoint for endpoint in self._dialog_endpoints()
+                      if call_id in endpoint.active_dialogs]
+        if not call_id:
+            candidates = [endpoint for endpoint in self._dialog_endpoints()
+                          if endpoint.active_dialogs]
+            if sum(len(endpoint.active_dialogs) for endpoint in candidates) != 1:
+                return False
+        if len(candidates) != 1:
+            return False
+        return await candidates[0].async_send_bye(call_id)
+
     def _dialog_endpoints(self):
         for server in self.servers:
             endpoint = getattr(server, "endpoint", None)

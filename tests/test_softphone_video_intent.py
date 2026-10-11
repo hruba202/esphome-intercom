@@ -135,6 +135,7 @@ async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypa
     session = SimpleNamespace(
         media_generation=3, update_event=asyncio.Event(), camera_send_enabled=not enabled,
     )
+    other_phone = SimpleNamespace(media_generation=9, update_event=asyncio.Event(), camera_send_enabled=not enabled)
     registry = _Registry(None)
     registry.resource_for = lambda *_args: media
     prepared = SimpleNamespace(candidate=candidate, commit=Mock(return_value=True))
@@ -145,7 +146,9 @@ async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypa
     monkeypatch.setattr(module, "call_registry", lambda _hass: registry)
     monkeypatch.setattr(module, "sip_endpoint_manager", lambda _hass: manager)
     monkeypatch.setattr(module, "require_runtime_data", lambda _hass: SimpleNamespace(
-        media=SimpleNamespace(sessions_for=lambda _kind: {"call-1": session}),
+        media=SimpleNamespace(sessions_for=lambda _kind: {
+            ("call-1", "phone"): session, ("call-1", "other-phone"): other_phone,
+        }),
     ))
     assert await module.async_apply_send_video_intent(object(), "phone", enabled)
     assert session.camera_send_enabled is enabled
@@ -153,6 +156,7 @@ async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypa
     assert session.remote_rtp_port == 44002
     assert session.media_generation == 4
     assert session.update_event.is_set()
+    assert other_phone.media_generation == 9 and not other_phone.update_event.is_set()
 
 
 async def test_rejected_video_addition_releases_staged_media_and_keeps_audio(

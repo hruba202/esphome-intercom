@@ -238,20 +238,6 @@ class AutomationCall(LocalCallApplication):
             self.arm_deadline()
             raise
 
-    async def release_media_for_forward(self) -> None:
-        """Release a local transport only when another media owner will bind it."""
-        if self.media is None:
-            return
-        media = self.media
-        await media.stop()
-        call_registry(self.hass).release_resource(
-            self.session.call_id,
-            f"relay:{self.session.call_id}",
-            value=media,
-            generation=self.session.generation,
-        )
-        self.media = None
-
     async def resume(self) -> None:
         if self.answered and self.media is None:
             await self.answer()

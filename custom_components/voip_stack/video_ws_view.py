@@ -1396,7 +1396,8 @@ async def _run_video_session(
         await close_setup_resources()
         raise
     active_sessions = require_runtime_data(hass).media.sessions_for("video")
-    active_sessions[session.call_id] = session
+    active_key = (session.call_id, endpoint_id)
+    active_sessions[active_key] = session
     _LOGGER.info(
         "HA softphone video websocket attached call_id=%s local_rtp=%s remote=%s:%s format=%s direction=%s",
         session.call_id,
@@ -1987,8 +1988,8 @@ async def _run_video_session(
                 local_addr=("0.0.0.0", int(session.local_rtp_port) + 1),
             )
     except asyncio.CancelledError:
-        if active_sessions.get(session.call_id) is session:
-            active_sessions.pop(session.call_id, None)
+        if active_sessions.get(active_key) is session:
+            active_sessions.pop(active_key, None)
         await close_setup_resources()
         raise
     except (OSError, RuntimeError, ValueError) as err:
@@ -1997,8 +1998,8 @@ async def _run_video_session(
             session.rtcp_socket = None
         _LOGGER.debug("SIP video RTCP disabled call_id=%s: %s", session.call_id, err)
     except BaseException:
-        if active_sessions.get(session.call_id) is session:
-            active_sessions.pop(session.call_id, None)
+        if active_sessions.get(active_key) is session:
+            active_sessions.pop(active_key, None)
         await close_setup_resources()
         raise
 
@@ -2400,8 +2401,8 @@ async def _run_video_session(
             browser_task.result()
     finally:
         closed.set()
-        if active_sessions.get(session.call_id) is session:
-            active_sessions.pop(session.call_id, None)
+        if active_sessions.get(active_key) is session:
+            active_sessions.pop(active_key, None)
         remove_call_listener()
         tasks = [
             rx_task,

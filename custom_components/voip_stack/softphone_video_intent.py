@@ -280,7 +280,7 @@ async def async_apply_send_video_intent(
             else "inactive"
         )
         media["video_direction"] = negotiated_direction
-        video_session = require_runtime_data(hass).media.sessions_for("video").get(call_id)
+        video_session = require_runtime_data(hass).media.sessions_for("video").get((call_id, endpoint_id))
         if video_session is not None and prepared.candidate.video_format is not None:
             video_session.camera_send_enabled = bool(enabled)
             commit_video_session_update(

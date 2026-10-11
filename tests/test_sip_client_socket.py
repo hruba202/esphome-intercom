@@ -215,6 +215,50 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await manager.async_send_dtmf_info("incoming", "7"))
         owner.send_dtmf_info.assert_awaited_once_with("incoming", "7")
 
+    async def test_endpoint_manager_waits_for_owned_bye_and_preserves_other_dialog(self) -> None:
+        sent = asyncio.Queue()
+        peer = ("192.0.2.20", 5060)
+        endpoint = sip_listener.SipUdpEndpoint(
+            local_ip="192.0.2.10", local_rtp_port=40000,
+            supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)],
+            on_invite=lambda _: None,
+            send_override=lambda raw, addr: sent.put_nowait((raw, addr)),
+        )
+        for identity in ("parked", "unrelated"):
+            request = sip.parse_message(sip.build_request("INVITE", "sip:700@192.0.2.10", [
+                ("Via", f"SIP/2.0/UDP 192.0.2.20:5060;branch=z9hG4bK-{identity}"),
+                ("From", "<sip:desk@192.0.2.20>;tag=remote"),
+                ("To", "<sip:700@192.0.2.10>"),
+                ("Contact", "<sip:desk@192.0.2.20:5060>"),
+                ("Call-ID", identity), ("CSeq", "1 INVITE"),
+            ]))
+            endpoint.active_dialogs[identity] = sip_listener._ActiveDialog(request, peer, "local", 2, "UDP")
+        manager = object.__new__(sip_endpoint.SipEndpointManager)
+        manager._dialog_endpoints = lambda: iter((endpoint,))
+        self.assertFalse(await manager.async_send_bye())
+        self.assertFalse(await manager.async_send_bye("missing"))
+        self.assertTrue(sent.empty())
+        task = asyncio.create_task(manager.async_send_bye("parked"))
+        try:
+            raw, address = await asyncio.wait_for(sent.get(), 1)
+            bye = sip.parse_message(raw)
+            self.assertEqual((bye.method, bye.header("Call-ID"), address), ("BYE", "parked", peer))
+            self.assertFalse(task.done())
+            self.assertIn("parked", endpoint.active_dialogs)
+            response = sip.build_response(200, "OK", [
+                (name, bye.header(name)) for name in ("Via", "From", "To", "Call-ID", "CSeq")
+            ])
+            await endpoint._handle_datagram(response, peer)
+            self.assertTrue(await asyncio.wait_for(task, 1))
+            self.assertEqual(set(endpoint.active_dialogs), {"unrelated"})
+            self.assertFalse(await manager.async_send_bye("parked"))
+            self.assertTrue(sent.empty())
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            endpoint.active_dialogs.clear()
+
     async def test_rfc5168_keyframe_request_uses_dialog_route_and_cseq(self) -> None:
         sent: list[tuple[bytes, tuple[str, int]]] = []
         pcm = sdp.RtpPcmFormat(96, "L16", 16000, 1, 20)

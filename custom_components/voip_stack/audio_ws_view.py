@@ -1113,7 +1113,8 @@ async def _run_audio_session(
         hass, session.call_id, endpoint_id
     )
     active_sessions = require_runtime_data(hass).media.sessions_for("audio")
-    active_sessions[session.call_id] = session
+    active_key = (session.call_id, endpoint_id)
+    active_sessions[active_key] = session
 
     async def session_updates_to_ws() -> None:
         """Apply a committed re-INVITE and notify the attached browser."""
@@ -1402,8 +1403,8 @@ async def _run_audio_session(
     finally:
         closed.set()
         remove_call_listener()
-        if active_sessions.get(session.call_id) is session:
-            active_sessions.pop(session.call_id, None)
+        if active_sessions.get(active_key) is session:
+            active_sessions.pop(active_key, None)
         for task in (rx_task, browser_task, lifetime_task, update_task):
             task.cancel()
         for task in tuple(dtmf_tasks):

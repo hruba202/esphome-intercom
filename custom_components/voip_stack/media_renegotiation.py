@@ -508,10 +508,10 @@ async def async_prepare_media_update(
         if not local_rtp_port:
             return SipInviteResult(488, "Not Acceptable Here")
         browser_media = require_runtime_data(hass).media
-        audio_session = browser_media.sessions_for("audio").get(call_id)
+        audio_session = browser_media.sessions_for("audio").get((call_id, media_endpoint_id))
         previous_video = previous.video_format
         updated_video = updated.video_format
-        video_session = browser_media.sessions_for("video").get(call_id)
+        video_session = browser_media.sessions_for("video").get((call_id, media_endpoint_id))
         new_video_reservation = None
         new_video_rtp_socket = None
         new_video_rtcp_socket = None

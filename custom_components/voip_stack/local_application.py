@@ -69,6 +69,18 @@ class LocalCallApplication:
                            caller=self.session.caller, callee=self.session.callee,
                            side=side, digit=digit, transport=transport)
 
+    async def release_media_for_forward(self) -> None:
+        """Release the local receiver before the next media owner binds it."""
+        if self.media is None:
+            return
+        media = self.media
+        await media.stop()
+        call_registry(self.hass).release_resource(
+            self.session.call_id, f"relay:{self.session.call_id}", value=media,
+            generation=self.session.generation,
+        )
+        self.media = None
+
     async def answer(self) -> None:
         self.require_current()
         if self.answered and self.media is not None:

@@ -581,3 +581,29 @@ subtests (four deselected) and 476 HA tests. Port ownership remains a single
 retained pair across repeated transfers; later cleanup cannot release reused
 ports belonging to another call. The newly added relay tests use real HA
 imports rather than depending on the old protocol harness's import order.
+
+### Parking ownership, implementation in progress
+
+The slot reservation belongs to the parked call's existing session. Picking up
+and returning a timed-out call compete for the same reservation. A failed pickup
+releases its claim; if the parking deadline has already expired, the return
+proceeds without another polling task or an additional timeout. Hangup revokes
+the reservation and cancels its session-owned timer. Old cleanup cannot release
+a slot already reused by another call.
+
+Browser audio and video adapters are now indexed by call and endpoint together.
+Two phones participating in the same logical call must retain independent
+media updates and cleanup. A camera change on one phone cannot select the other
+phone's adapter merely because their Call-ID is shared.
+
+The reservation tests and existing application/media regressions pass. This is
+internal groundwork: parking is not yet exposed as a working user feature.
+The SIP pickup, audio handoff, return route and public controls still need
+implementation and end-to-end qualification.
+
+This foundation passes 1,976 software tests (178 subtests) and 480 HA tests.
+The SIP endpoint manager also exposes the listener's existing awaited BYE
+operation. Call cleanup can wait for that transaction instead of receiving only
+confirmation that BYE was scheduled. A protocol test with two active dialogs
+checks exact selection, response-before-completion and repeated cleanup. The
+28-test real-call subset covers transfers and mailbox access after this change.

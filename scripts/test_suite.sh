@@ -102,6 +102,7 @@ ha_tests=(
   tests/test_voicemail_baresip_ha.py
   tests/test_sip_phone_transfers_ha.py
   tests/test_audio_splice_ha.py
+  tests/test_parking_lot_ha.py
   tests/test_dialog_info_ha.py
   tests/test_automation_originate_ha.py
   tests/test_announcement_media_ha.py

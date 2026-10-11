@@ -702,7 +702,7 @@ async def async_originate_browser_call(
             return None
         call_generation = session.generation
         browser_media = require_runtime_data(hass).media
-        audio_session = browser_media.sessions_for("audio").get(call_id)
+        audio_session = browser_media.sessions_for("audio").get((call_id, endpoint_id))
         previous_video = previous.video_format
         updated_video = updated.video_format
         video_offer = validate_direct_video_reoffer(
@@ -713,7 +713,7 @@ async def async_originate_browser_call(
         )
         if not video_offer.accepted:
             return None
-        video_session = browser_media.sessions_for("video").get(call_id)
+        video_session = browser_media.sessions_for("video").get((call_id, endpoint_id))
 
         async def _commit() -> None:
             if not registry.is_generation_current(call_id, call_generation):
