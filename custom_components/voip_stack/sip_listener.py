@@ -1339,34 +1339,16 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         dialog.local_video_reinvite_reason = ""
         try:
             current_local_sdp = dialog.local_sdp_body or dialog.answer_sdp
-            current_local = sdp.parse_sdp(current_local_sdp)
-            current_audio_formats = tuple(
-                sdp.offered_pcm_formats(
-                    current_local_sdp,
-                    allow_dahua_pcm=previous.peer_profile == "dahua",
-                )
-            )
+            current_audio_formats = tuple(sdp.offered_pcm_formats(
+                current_local_sdp, allow_dahua_pcm=previous.peer_profile == "dahua",
+            ))
             if not current_audio_formats:
                 return None
-            offer = sdp.build_offer_directional(
-                self.local_ip,
-                self.local_ip,
-                int(current_local["media_port"]),
-                [previous.send_format.audio_format],
-                [previous.recv_format.audio_format],
+            offer = sdp.build_video_reoffer(
+                current_local_sdp,
                 video_port=int(local_video_rtp_port),
-                video_formats=video_formats,
-                audio_direction=previous.local_audio_direction,
+                video_formats=dialog.codec_policy.video_formats(tuple(video_formats)),
                 video_direction=direction,
-                # A video-only renegotiation preserves the audio mapping from
-                # the local SDP that this UAS already committed.  Rebuilding
-                # it from directional runtime fields can select the opposite
-                # wire format on asymmetric ESP endpoints.
-                audio_rtp_formats=current_audio_formats,
-                codec_policy=dialog.codec_policy,
-                allow_directional_payloads=(
-                    sdp.has_directional_audio_flow_attributes(current_local_sdp)
-                ),
             )
             next_version = int(dialog.local_sdp_session_version)
             offer = sdp.rewrite_sdp_origin(

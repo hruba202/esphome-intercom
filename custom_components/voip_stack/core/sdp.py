@@ -1642,6 +1642,37 @@ def build_offer_directional(
     return "\r\n".join(lines) + "\r\n"
 
 
+def build_video_reoffer(
+    local_sdp: str,
+    *,
+    video_port: int,
+    video_formats: tuple[RtpVideoFormat, ...],
+    video_direction: str,
+) -> str:
+    """Update video while preserving the existing session and other media."""
+    parse_sdp(local_sdp)
+    replacement = _video_media_lines_many(
+        int(video_port), _unique_video_payloads(video_formats),
+        direction=normalize_direction(video_direction),
+    )
+    lines = []
+    in_video = False
+    replaced = False
+    for line in local_sdp.replace("\r\n", "\n").splitlines():
+        if line.startswith("m="):
+            in_video = line.startswith("m=video ")
+            if in_video:
+                if replaced:
+                    raise SdpError("Multiple video streams are not supported")
+                lines.extend(replacement)
+                replaced = True
+        if not in_video:
+            lines.append(line)
+    if not replaced:
+        lines.extend(replacement)
+    return "\r\n".join(lines) + "\r\n"
+
+
 def _unique_video_payloads(
     formats: tuple[RtpVideoFormat, ...] | list[RtpVideoFormat],
 ) -> tuple[RtpVideoFormat, ...]:

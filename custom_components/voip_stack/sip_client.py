@@ -3603,54 +3603,11 @@ class SipCallClient:
                     current.local_sdp_session_id or self._sdp_session_id
                 )
                 session_version = int(current.local_sdp_session_version)
-                current_audio_formats = tuple(
-                    sdp.offered_pcm_formats(
-                        current.local_sdp_body,
-                        allow_dahua_pcm=self.include_dahua_pcm,
-                    )
-                )
-                if not current_audio_formats:
-                    return None
-                current_send_rtp_formats = None
-                current_recv_rtp_formats = None
-                current_common_rtp_formats = current_audio_formats
-                if self.allow_directional_audio_payloads:
-                    flows = sdp.audio_flow_attributes(current.local_sdp_body)
-                    if flows:
-                        current_send_rtp_formats = tuple(
-                            item
-                            for item in current_audio_formats
-                            if flows.get(item.payload_type) in {"send", "sendrecv"}
-                        )
-                        current_recv_rtp_formats = tuple(
-                            item
-                            for item in current_audio_formats
-                            if flows.get(item.payload_type) in {"recv", "sendrecv"}
-                        )
-                        current_common_rtp_formats = None
-                offer = sdp.build_offer_directional(
-                    self.local_ip,
-                    self.local_ip,
-                    self.local_rtp_port,
-                    [current.send_format.audio_format],
-                    [current.recv_format.audio_format],
+                offer = sdp.build_video_reoffer(
+                    current.local_sdp_body,
                     video_port=local_video_port,
                     video_formats=offered_video,
-                    audio_direction=current.local_audio_direction,
-                    video_direction=(
-                        "inactive" if removing_video else video_direction
-                    ),
-                    # An in-dialog offer preserves the negotiated RTP wire
-                    # codec and payload type. Converting PCMA, PCMU, G.722 or
-                    # Opus back through their decoded PCM shape would turn
-                    # them into L16 and can make a standards-compliant peer
-                    # reject an otherwise valid video-only session update.
-                    audio_rtcp=not self.match_received_codec,
-                    audio_rtp_formats=current_common_rtp_formats,
-                    send_rtp_formats=current_send_rtp_formats,
-                    recv_rtp_formats=current_recv_rtp_formats,
-                    allow_directional_payloads=self.allow_directional_audio_payloads,
-                    codec_policy=self.codec_policy,
+                    video_direction="inactive" if removing_video else video_direction,
                 )
                 offer = sdp.rewrite_sdp_origin(
                     offer, session_id, session_version

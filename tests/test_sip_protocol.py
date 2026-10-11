@@ -2747,6 +2747,31 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(client.dialog, current)
         self.assertEqual(negotiated.sample_rate, 16000)
 
+    async def test_video_reinvite_preserves_trunk_audio_and_dtmf_payloads(self) -> None:
+        from .test_sdp_video_reoffer import audio_section
+        from custom_components.voip_stack.core.audio_format import HA_TRUNK_AUDIO_FORMATS
+
+        client, current, sent, _negotiated = self._confirmed_audio_client()
+        current.local_sdp_body = sdp.build_offer_directional(
+            "127.0.0.1", "127.0.0.1", 41000,
+            list(HA_TRUNK_AUDIO_FORMATS), list(HA_TRUNK_AUDIO_FORMATS),
+            include_common_codecs=True,
+        )
+        original_audio = audio_section(current.local_sdp_body)
+        prepared = asyncio.create_task(client.async_prepare_video_reinvite(
+            local_video_rtp_port=43000, video_formats=sdp.DEFAULT_VIDEO_FORMATS,
+        ))
+        request = await self._wait_for_sent_request(sent, "INVITE")
+        try:
+            self.assertEqual(audio_section(request.body), original_audio)
+        finally:
+            client.queue.put_nowait((
+                self._response_to_request(request, 488, "Not Acceptable Here"),
+                ("127.0.0.2", 5060),
+            ))
+            self.assertIsNone(await asyncio.wait_for(prepared, timeout=0.2))
+        self.assertIs(client.dialog, current)
+
     async def test_local_reinvite_pracks_reliable_early_video_answer(self) -> None:
         client, current, sent, negotiated = self._confirmed_audio_client()
         jpeg = sdp.DEFAULT_VIDEO_FORMATS[3]
