@@ -735,3 +735,18 @@ The selected phone must own the call. Parking must be enabled in the integration
 configuration. Retrieve the caller through the normal call action or SIP dialer
 using the slot number. See [Call parking](CALL_PARKING.md) for configuration,
 examples and the current development verification boundary.
+
+
+## Conversation recording
+
+`voip_stack.start_recording` records the selected phone's established call,
+with an optional `max_seconds` limit (1 through 3600). `voip_stack.stop_recording`
+finishes that recording without hanging up. Both accept `device_id`, optional
+`call_id` and `expected_generation`; native call triggers supply call identity.
+`voip_stack.get_recording` takes `device_id` and `recording_id` and returns the
+saved file's `file_path` and `media_source_id`, without copying it. The normal
+HA event `voip_stack.recording_finished` identifies completed or partial files.
+See [Record a conversation](CALL_RECORDING.md) for examples and media scope.
+
+`voip_stack.delete_recording` accepts the same `device_id` and `recording_id`
+and removes the recording together with its metadata.

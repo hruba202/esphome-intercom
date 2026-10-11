@@ -921,6 +921,8 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "last_terminal_dialed_target", ""
     )
     call_id = store.get("call_id", "") or store.get("last_terminal_call_id", "")
+    recording = entry_runtime.sip.resource_for(call_id, "recording") if entry_runtime is not None and entry_runtime.sip is not None else None
+    recording_active = recording is not None and not recording.stopped.is_set()
     registry = call_registry(hass)
     media_debug = dict(store.get("media_debug") or {}) if debug_mode else {}
     if debug_mode:
@@ -1016,6 +1018,9 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "dnd": _ha_softphone_dnd(hass, endpoint_id),
         "voicemail": dict(store.get("voicemail") or {"enabled": False, "new": 0, "old": 0, "total": 0}),
         "parking": {"enabled": bool(parking.get("enabled"))},
+        "recording": {"active": recording_active,
+                      "finishing": recording is not None and recording.stopped.is_set(),
+                      "owned": recording_active and recording.endpoint.endpoint_id == endpoint_id},
         "extension": _ha_softphone_extension(hass, endpoint_id),
         "groups": _ha_softphone_groups(hass, endpoint_id),
         "busy": bool(store.get("session_device_id") and active_softphone),

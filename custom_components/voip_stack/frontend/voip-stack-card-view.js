@@ -788,6 +788,12 @@ export function buildMainCardSkeleton(cardVersion) {
     parkBtn.textContent = translate("Park call");
     parkBtn.hidden = true;
     runtimeControls.appendChild(parkBtn);
+    const recordBtn = document.createElement("button");
+    recordBtn.type = "button";
+    recordBtn.className = "settings-btn";
+    recordBtn.textContent = translate("Record call");
+    recordBtn.hidden = true;
+    runtimeControls.appendChild(recordBtn);
     const parkingNotice = document.createElement("span");
     parkingNotice.hidden = true;
     runtimeControls.appendChild(parkingNotice);
@@ -1059,7 +1065,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice,
+      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, recordBtn,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,

@@ -1955,6 +1955,13 @@ class VoipStackCard extends HTMLElement {
       els.parkingNotice.hidden = !this._parkedSlot || established;
       els.parkingNotice.textContent = this._parkedSlot ? `${this._t("Parked in slot")}: ${this._parkedSlot}` : "";
     }
+    if (els.recordBtn) {
+      const recording = this._softphoneSnapshot?.recording;
+      els.recordBtn.hidden = !softphoneMode || !this.config?.show_recording_controls || this._softphoneSnapshot?.state !== "in_call";
+      els.recordBtn.disabled = !!this._recordingBusy || !!recording?.finishing || (!!recording?.active && !recording?.owned);
+      els.recordBtn.textContent = this._t(recording?.finishing ? "Finishing recording" : recording?.active ? "Stop recording" : "Record call");
+      els.recordBtn.setAttribute("aria-pressed", String(!!recording?.active));
+    }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
     els.autoAnswerRow.hidden = !(showSettingsPanel && autoAnswerAvailable);
     els.autoAnswerCheckbox.checked = softphoneMode
@@ -2102,6 +2109,7 @@ class VoipStackCard extends HTMLElement {
     if (!els) return;
     if (els.keypadBtn) els.keypadBtn.onclick = () => this._toggleKeypad();
     if (els.parkBtn) els.parkBtn.onclick = () => this._parkCall();
+    if (els.recordBtn) els.recordBtn.onclick = () => this._toggleRecording();
     if (els.voicemailBtn) els.voicemailBtn.onclick = async () => {
       this._mailboxOpen = !this._mailboxOpen;
       if (this._mailboxOpen) await this._loadMailbox();
@@ -3021,6 +3029,25 @@ class VoipStackCard extends HTMLElement {
       void this._refreshMediaDeviceOptions();
     } else if (this._settingsOpen && this._hass?.connection?.sendMessagePromise) {
       void this._loadAvailableDevices();
+    }
+  }
+
+  async _toggleRecording() {
+    if (this._recordingBusy) return;
+    const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
+    const callId = this._softphoneSnapshot?.call_id;
+    if (!deviceId || !callId || this._softphoneSnapshot?.state !== "in_call") return;
+    const service = this._softphoneSnapshot?.recording?.active ? "stop_recording" : "start_recording";
+    this._recordingBusy = true;
+    this._render();
+    try {
+      await this._hass.callService("voip_stack", service, {device_id: deviceId, call_id: callId});
+      await this._loadSoftphoneState();
+    } catch (err) {
+      this._showError(err.message || String(err));
+    } finally {
+      this._recordingBusy = false;
+      this._render();
     }
   }
 

@@ -707,3 +707,33 @@ retained caller instead. The permanent regression covers both original phones
 retrieving their own parked calls. The test harness separately handles the
 existing pulsing Answer button and waits for integration assets after lab
 startup; those required no production changes.
+
+### Conversation recording
+
+The shared archive now finalizes both captured directions into one WAV on their
+recorded timeline, retaining the highest native sample format. Recording taps
+attach to the existing SIP decoder, browser adapter or local bridge. Passthrough
+RTP stays passthrough; capture decoding cannot prevent forwarding a packet.
+A call-connected automation may register a pending tap before browser media is
+ready. The existing adapter binds it at startup without polling.
+
+Recording has its own bounded disk queue and session-owned cleanup. A concurrent
+start cannot create another writer for the same call. Stop, hangup, timeout and
+media handoff detach the tap and finish storage. A disk/capture error leaves the
+conversation alive and permits a clean retry. Storage reserves finalization
+headroom before accepting frames, so quota exhaustion preserves a partial WAV.
+Phone-specific get/delete actions reuse the archive and native HA media paths;
+recordings do not contribute to voicemail or MWI counts.
+
+The optional card control is off by default and mirrors backend state. Two real
+Chromium phones recorded their 440 Hz and 660 Hz input signals into one WAV,
+stopped recording while remaining connected, then completed two parking/pickup
+cycles and hangup. The laboratory returned to zero call-scoped resources.
+
+Qualification passes 1,982 software tests and 181 subtests (four deselected),
+plus 523 HA tests. Targeted tests cover real baresip audio, browser/SIP and local
+browser capture, setup/hangup races, concurrent starts, wrong-phone access,
+recording decoder/binding failures, disk failure/retry, duration and quota limits,
+original-file retrieval/deletion and existing voicemail regressions.
+Conference recording and recording across a changed media owner are outside
+this first conversation-recording contract; the ordinary call continues.

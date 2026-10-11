@@ -108,6 +108,7 @@ async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_
         bus=SimpleNamespace(async_listen=lambda *_args: lambda: None),
     )
     monkeypatch.setattr(view, "require_runtime_data", lambda _: SimpleNamespace(
+        sip=None,
         media=SimpleNamespace(sessions_for=lambda _: sessions),
     ))
     try:

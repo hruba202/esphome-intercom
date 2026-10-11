@@ -256,6 +256,7 @@ class _LocalCall:
     caller_media: _EndpointMedia
     callee_media: _EndpointMedia
     closed: asyncio.Event = field(default_factory=asyncio.Event)
+    audio_observers: dict = field(default_factory=dict)
 
     def media_for(self, endpoint_id: str) -> _EndpointMedia:
         if endpoint_id.casefold() == self.caller_endpoint_id.casefold():
@@ -535,6 +536,7 @@ class LocalSoftphoneBridge:
         snapshot = call.snapshot()
         self._calls.pop(call.call_id)
         call.closed.set()
+        self._end_audio_observers(call)
         for media in (call.caller_media, call.callee_media):
             media.clear_queued_media()
             if media.lease is not None:
@@ -804,6 +806,23 @@ class LocalSoftphoneBridge:
             for call in tuple(self._calls.values())
         )
 
+    def observe_audio(self, call_id, callback, on_end=None):
+        """Observe the existing local audio frames without another media queue."""
+        call = self._require_internal(call_id)
+        call.audio_observers[callback] = on_end
+        return lambda: call.audio_observers.pop(callback, None)
+
+    @staticmethod
+    def _end_audio_observers(call):
+        observers = tuple(call.audio_observers.values())
+        call.audio_observers.clear()
+        for on_end in observers:
+            if on_end is not None:
+                try:
+                    on_end("media_ended")
+                except Exception:
+                    _LOGGER.debug("Local audio observer cleanup failed", exc_info=True)
+
     def send_audio(
         self,
         call_id: object,
@@ -1066,6 +1085,13 @@ class LocalSoftphoneBridge:
             return True
         queue = peer_media.audio if kind is LocalMediaKind.AUDIO else peer_media.video
         dropped = put_drop_oldest(queue, bytes(payload))
+        if kind is LocalMediaKind.AUDIO and call.audio_observers:
+            for observer in tuple(call.audio_observers):
+                try:
+                    observer(endpoint, bytes(payload))
+                except Exception:
+                    call.audio_observers.pop(observer, None)
+                    _LOGGER.debug("Local audio observer failed", exc_info=True)
         if dropped:
             if kind is LocalMediaKind.AUDIO:
                 peer_media.audio_dropped += 1
@@ -1137,6 +1163,7 @@ class LocalSoftphoneBridge:
         call.caller_state = LocalCallState.IDLE
         call.callee_state = LocalCallState.IDLE
         call.closed.set()
+        self._end_audio_observers(call)
         for media in (call.caller_media, call.callee_media):
             if media.lease is not None:
                 media.lease.released.set()

@@ -2038,6 +2038,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         audio_ws_view = _load_audio_ws_runtime_module()
         audio_sessions: dict[str, object] = {}
         audio_ws_view.require_runtime_data = lambda _hass: types.SimpleNamespace(
+            sip=None,
             media=types.SimpleNamespace(
                 sessions_for=lambda _channel: audio_sessions,
             )
@@ -2273,6 +2274,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         audio_ws_view = _load_audio_ws_runtime_module()
         audio_sessions: dict[str, object] = {}
         audio_ws_view.require_runtime_data = lambda _hass: types.SimpleNamespace(
+            sip=None,
             media=types.SimpleNamespace(
                 sessions_for=lambda _channel: audio_sessions,
             )

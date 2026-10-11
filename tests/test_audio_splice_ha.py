@@ -49,9 +49,24 @@ async def test_application_pickup_keeps_bound_socket_and_bidirectional_audio(app
                     received = rtp.parse_packet(await asyncio.get_running_loop().sock_recv(target, 2048))
                     if received.payload == payload:
                         return received
+        recorded, errors = [], []
+        assert relay.left_to_right_passthrough and relay.right_to_left_passthrough
+        detach_recording = relay.observe_audio(lambda side, pcm, fmt: recorded.append((side, pcm, fmt)), errors.append)
         await exchange(caller, picker, relay.left_port, 1700, 123)
         received = await exchange(picker, caller, relay.right_port, -2100, 456)
         assert received.ssrc == source_ssrc
+        assert [(side, struct.unpack('<320h', pcm)[0]) for side, pcm, _fmt in recorded] == [('left', 1700), ('right', -2100)]
+        assert relay.left_to_right_passthrough and relay.right_to_left_passthrough
+        decode = relay.left_decoder.decode
+        def failed_decode(*_args):
+            raise ValueError('injected recording decode failure')
+        relay.left_decoder.decode = failed_decode
+        await exchange(caller, picker, relay.left_port, 1900, 123)
+        relay.left_decoder.decode = decode
+        assert errors == ['decode_error']
+        detach_recording()
+        await exchange(caller, picker, relay.left_port, 2000, 123)
+        assert len(recorded) == 2
         async def complete(_reason):
             raise AssertionError("Retaining the caller must not terminate it")
         parked_again = adopt_relay_for_application(app.hass, relay, "left", media.invite, media.reservation, complete)

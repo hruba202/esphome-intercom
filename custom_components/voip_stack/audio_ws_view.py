@@ -132,6 +132,7 @@ class _SoftphoneMediaSession:
     media_generation: int = 0
     update_event: asyncio.Event = field(default_factory=asyncio.Event)
     handoff_transport: Callable[[Callable], Any] | None = None
+    observe_audio: Callable | None = None
 
 
 def _rx_queue_frame_limit(frame_ms: int) -> int:
@@ -1136,6 +1137,22 @@ async def _run_audio_session(
         return result
 
     session.handoff_transport = handoff_transport
+    audio_observers = {}
+    def observe_audio(callback, on_end=None):
+        detach_rx = rtp_decoder.add_pcm_observer(lambda pcm, fmt: callback("right", pcm, fmt))
+        audio_observers[callback] = on_end
+        def remove():
+            detach_rx()
+            audio_observers.pop(callback, None)
+        return remove
+    session.observe_audio = observe_audio
+    sip_owner = require_runtime_data(hass).sip
+    recording = sip_owner.resource_for(session.call_id, "recording") if sip_owner is not None else None
+    if recording is not None and recording.endpoint.endpoint_id == endpoint_id:
+        try:
+            recording.bind_media(observe_audio)
+        except Exception:
+            recording.end("capture_error")
 
     async def session_updates_to_ws() -> None:
         """Apply a committed re-INVITE and notify the attached browser."""
@@ -1296,6 +1313,12 @@ async def _run_audio_session(
                                 )
                             )
                             transport.sendto(packet, (remote_rtp_host, remote_rtp_port))
+                            if audio_observers:
+                                for observer in tuple(audio_observers):
+                                    try:
+                                        observer("left", pcm, session.send_format.audio_format)
+                                    except Exception:
+                                        audio_observers.pop(observer, None)
                             sequence = rtp.next_sequence(sequence)
                             rtp_source.sequence = sequence
                             if debug_capture is not None:
@@ -1425,6 +1448,11 @@ async def _run_audio_session(
         closed.set()
         remove_call_listener()
         session.handoff_transport = None
+        session.observe_audio = None
+        for on_end in tuple(audio_observers.values()):
+            if on_end is not None:
+                on_end("media_ended")
+        audio_observers.clear()
         if active_sessions.get(active_key) is session:
             active_sessions.pop(active_key, None)
         for task in (rx_task, browser_task, lifetime_task, update_task):

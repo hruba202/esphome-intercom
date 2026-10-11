@@ -159,6 +159,7 @@ def _load_audio_ws_runtime_module():
     http.HomeAssistantView = getattr(http, "HomeAssistantView", type("HomeAssistantView", (), {}))
     core = sys.modules.setdefault("homeassistant.core", types.ModuleType("homeassistant.core"))
     core.HomeAssistant = getattr(core, "HomeAssistant", type("HomeAssistant", (), {}))
+    core.callback = getattr(core, "callback", lambda target: target)
     exceptions = sys.modules.setdefault(
         "homeassistant.exceptions", types.ModuleType("homeassistant.exceptions")
     )

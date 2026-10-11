@@ -328,6 +328,25 @@ class SipRtpRelay:
         if debug_capture:
             self._prepare_debug_capture(capture_name)
 
+    def observe_audio(self, callback, on_error=None):
+        """Tap native decoded samples while preserving RTP passthrough."""
+        detach = []
+        for side in ("left", "right"):
+            decoder = getattr(self, f"{side}_decoder")
+            if decoder is None:
+                peer = getattr(self, side)
+                decoder = RtpAudioReceiver(peer.inbound_rtp_format, peer.inbound_rtp_formats)
+                setattr(self, f"{side}_decoder", decoder)
+            detach.append(decoder.add_pcm_observer(
+                lambda pcm, fmt, side=side: callback(side, pcm, fmt)))
+        self._recording_error = on_error
+        def remove():
+            for unsubscribe in detach:
+                unsubscribe()
+            if getattr(self, "_recording_error", None) is on_error:
+                self._recording_error = None
+        return remove
+
     @property
     def media_route(self) -> str:
         """Describe the active audio processing, including capture conversion."""
@@ -376,10 +395,10 @@ class SipRtpRelay:
             if right_to_left_passthrough
             else PcmFrameConverter(right.audio_format, left.outbound_audio_format),
             "left_decoder": None
-            if left_to_right_passthrough
+            if left_to_right_passthrough and not left_receiver.has_pcm_observers
             else left_receiver,
             "right_decoder": None
-            if right_to_left_passthrough
+            if right_to_left_passthrough and not right_receiver.has_pcm_observers
             else right_receiver,
             "left_encoder": None
             if right_to_left_passthrough
@@ -680,6 +699,10 @@ class SipRtpRelay:
         await async_wait_for_cleanup(task)
 
     async def _stop_impl(self) -> None:
+        on_end = getattr(self, "_recording_error", None)
+        self._recording_error = None
+        if on_end is not None:
+            on_end("media_ended")
         async with self._lifecycle_lock:
             start_task = self._start_task
             if start_task is not None and not start_task.done():
@@ -1087,7 +1110,15 @@ class SipRtpRelay:
                     received_format,
                 )
                 if decoder is not None:
-                    decoder.observe_payload(packet.payload_type)
+                    if decoder.has_pcm_observers:
+                        try:
+                            decoder.decode(packet.payload_type, packet.payload)
+                        except Exception:
+                            error = getattr(self, "_recording_error", None)
+                            if error is not None:
+                                error("decode_error")
+                    else:
+                        decoder.observe_payload(packet.payload_type)
                 if source.rx_ssrc is None:
                     source.rx_ssrc = packet.ssrc
                     source.host = str(addr[0])

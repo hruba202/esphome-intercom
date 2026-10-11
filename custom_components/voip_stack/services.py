@@ -394,6 +394,19 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
             vol.Optional("slot", default=""): IDENTIFIER_TEXT,
             vol.Optional("expected_generation"): SEQUENCE,
         }, extra=vol.PREVENT_EXTRA), supports_response=SupportsResponse.OPTIONAL)
+    for action in ("start_recording", "stop_recording"):
+        hass.services.async_register(DOMAIN, action, handler_for(action),
+            schema=vol.Schema({**phone_selector_fields,
+                vol.Optional("call_id", default=""): SHORT_TEXT,
+                vol.Optional("expected_generation"): SEQUENCE,
+                **({vol.Optional("max_seconds", default=3600): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600))}
+                   if action == "start_recording" else {}),
+            }, extra=vol.PREVENT_EXTRA), supports_response=SupportsResponse.OPTIONAL)
+    for action in ("get_recording", "delete_recording"):
+        hass.services.async_register(DOMAIN, action, handler_for(action),
+            schema=vol.Schema({vol.Required("device_id"): IDENTIFIER_TEXT,
+                               vol.Required("recording_id"): IDENTIFIER_TEXT}, extra=vol.PREVENT_EXTRA),
+            supports_response=SupportsResponse.ONLY if action == "get_recording" else SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "route", handler_for("route"), schema=sip_route_schema)
     hass.services.async_register(
         DOMAIN,

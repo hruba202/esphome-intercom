@@ -480,6 +480,15 @@ assert.deepEqual(JSON.parse(JSON.stringify(parkRequests[0])), {{
 }});
 assert.equal(routingCard._parkedSlot, "705");
 assert.equal(routingCard._parkingBusy, false);
+routingCard._softphoneSnapshot = {{state: "in_call", call_id: "recording-call", recording: {{active: false}}}};
+await routingCard._toggleRecording();
+assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
+  "voip_stack", "start_recording", {{device_id: "device-kitchen", call_id: "recording-call"}},
+]);
+routingCard._softphoneSnapshot.recording = {{active: true, owned: true}};
+await routingCard._toggleRecording();
+assert.equal(routingRequests.at(-1)[1], "stop_recording");
+assert.equal(routingCard._recordingBusy, false);
 routingCard._hass.callWS = async () => {{throw new Error("Parking lot is full");}};
 await routingCard._parkCall();
 assert.equal(routingCard._parkingBusy, false);

@@ -65,7 +65,7 @@ async def get_archive(hass) -> MediaArchive:
         if archive is None:
             path = archive_path(hass)
             if path is None:
-                raise ServiceValidationError("Configure a Home Assistant media directory before enabling voicemail")
+                raise ServiceValidationError("Configure a Home Assistant media directory before recording audio")
             archive = MediaArchive(path, hass.async_add_executor_job)
             await archive.load()
             if runtime.sip is not owner or owner.phase.value != "active":

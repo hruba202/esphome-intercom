@@ -92,7 +92,10 @@ def _audio_bytes(root: Path, active: tuple[str, ...] = ()) -> int:
 
 def _consolidate(root, entry):
     """Commit one complete audio file before removing format-change fragments."""
-    from .mailbox_wave import write_wave
+    if entry["kind"] == "recording":
+        from .conversation_wave import write_wave
+    else:
+        from .mailbox_wave import write_wave
 
     original = entry["segments"]
     result = deepcopy(entry)
@@ -161,7 +164,7 @@ def _load(root: Path, quota_bytes=1024 ** 3) -> tuple[dict, int, int]:
             for segment in data["segments"]:
                 if not _segment_path(root, identity, segment["file"]).is_file():
                     raise ArchiveError("Missing recording segment")
-            if data["kind"] == "voicemail" and len(data["segments"]) > 1:
+            if len(data["segments"]) > 1:
                 from .mailbox_wave import wave_format
 
                 _segment_path(root, identity, f"{identity}-final.wav").unlink(missing_ok=True)
@@ -169,7 +172,7 @@ def _load(root: Path, quota_bytes=1024 ** 3) -> tuple[dict, int, int]:
                 if _audio_bytes(root) + frames * fmt.channels * fmt.container_bytes_per_sample + 44 > quota_bytes:
                     raise ArchiveError("Insufficient quota to finalize the recovered voicemail")
                 data = _consolidate(root, data)
-            elif data["kind"] == "voicemail" and data["segments"][0]["file"].endswith("-final.wav"):
+            elif data["segments"][0]["file"].endswith("-final.wav"):
                 # A crash after the atomic manifest commit can leave only old
                 # fragments to remove. The final WAV is already authoritative.
                 for fragment in root.glob(f"{identity}-[0-9][0-9][0-9].wav"):
@@ -266,6 +269,9 @@ class ArchiveWriter:
         self.result = None
         self.task = asyncio.create_task(self._run(), name=f"voip-archive-{identity}")
         self._finish_task = None
+        self._final_headroom = 0
+        self._recording_timeline = {}
+        self._final_shape = (0, 0, 0)
 
     def _fail(self, reason):
         self.error = reason
@@ -285,17 +291,34 @@ class ArchiveWriter:
                 or not math.isfinite(offset) or offset < 0):
             self._fail("invalid_audio")
             return False
-        if not self.store._reserve(len(pcm)):
+        headroom = self._final_headroom
+        if self.disk.entry["kind"] == "recording":
+            width = 3 if fmt.pcm_format is PcmFormat.S24LE_IN_S32 else fmt.container_bytes_per_sample
+            layout = (fmt.sample_rate, width, fmt.channels)
+            previous_layout, previous_end = self._recording_timeline.get(channel, (None, 0.0))
+            start = max(offset, previous_end) if previous_layout != layout or offset > previous_end + 0.1 else previous_end
+            end = start + len(pcm) / (fmt.sample_rate * fmt.channels * fmt.container_bytes_per_sample)
+            shape = tuple(max(old, new) for old, new in zip(self._final_shape, layout, strict=True))
+            total_end = max(end, *(value[1] for value in self._recording_timeline.values()), 0.0)
+            # Reserve finalization space as audio arrives, before accepting a
+            # frame. Quota exhaustion can then retain a usable partial WAV.
+            headroom = max(headroom, (math.ceil(total_end * shape[0]) + 2) * shape[1] * shape[2] + 44)
+        reserved = len(pcm) + headroom - self._final_headroom
+        if not self.store._reserve(reserved):
             self._fail("quota_exceeded")
             return False
-        self.reserved += len(pcm)
+        self.reserved += reserved
         try:
             self.queue.put_nowait((channel, bytes(pcm), fmt, offset))
         except asyncio.QueueFull:
-            self.store._reserved -= len(pcm)
-            self.reserved -= len(pcm)
+            self.store._reserved -= reserved
+            self.reserved -= reserved
             self._fail("writer_overrun")
             return False
+        if self.disk.entry["kind"] == "recording":
+            self._recording_timeline[channel] = (layout, end)
+            self._final_shape = shape
+            self._final_headroom = headroom
         return True
 
     async def _run(self):
@@ -395,12 +418,12 @@ class MediaArchive:
 
     async def _finished(self, writer):
         async with self._lock:
-            if writer.result is not None and writer.result["kind"] == "voicemail" and len(writer.result["segments"]) > 1:
+            if writer.result is not None and len(writer.result["segments"]) > 1:
                 from .mailbox_wave import wave_format
 
                 try:
                     fmt, frames = wave_format(writer.result)
-                    extra = frames * fmt.channels * fmt.container_bytes_per_sample + 44
+                    extra = max(0, frames * fmt.channels * fmt.container_bytes_per_sample + 44 - writer._final_headroom)
                     if not self._reserve(extra):
                         raise ArchiveError("Insufficient quota to finalize voicemail")
                     writer.reserved += extra

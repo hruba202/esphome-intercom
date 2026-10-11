@@ -1,4 +1,8 @@
 const PT_BR = {
+  "Finishing recording": "Finalizando gravação",
+  "Show recording controls": "Mostrar controles de gravação",
+  "Record call": "Gravar chamada",
+  "Stop recording": "Parar gravação",
   "Park call": "Estacionar chamada",
   "Parked in slot": "Chamada estacionada na vaga",
   "Enable this phone's mailbox": "Ativar a caixa postal deste telefone",
@@ -135,6 +139,10 @@ const PT_BR = {
 };
 
 const DE = {
+  "Finishing recording": "Aufzeichnung wird abgeschlossen",
+  "Show recording controls": "Aufzeichnungssteuerung anzeigen",
+  "Record call": "Anruf aufzeichnen",
+  "Stop recording": "Aufzeichnung stoppen",
   "Park call": "Anruf parken",
   "Parked in slot": "Geparkt auf Position",
   "Enable this phone's mailbox": "Anrufbeantworter dieses Telefons aktivieren",

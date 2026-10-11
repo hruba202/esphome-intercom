@@ -53,19 +53,30 @@ async def test_recording_keeps_native_quality_and_requires_matching_mailbox(arch
     assert archive._reserved == archive._used == 0
 
 
-async def test_format_changes_and_two_directions_stay_separate_without_downsampling(archive, module):
+async def test_conversation_directions_mix_without_downsampling_or_voicemail_counts(archive, module):
+    import math
+    import numpy as np
     writer = await archive.begin("kitchen", kind="recording")
-    assert writer.offer(struct.pack("<3i", 0, 8388607, -8388608), module.AudioFormat(48000, "s24le_in_s32", 1, 20), offset=0)
-    assert writer.offer(b"\x01\x00" * 320, module.AudioFormat(16000, "s16le", 1, 20), channel="callee", offset=0)
-    assert writer.offer(b"\x02\x00" * 160, module.AudioFormat(8000, "s16le", 1, 20), offset=1)
+    caller = struct.pack("<960h", *(int(4000 * math.sin(2 * math.pi * 500 * i / 48000)) for i in range(960)))
+    callee = struct.pack("<320h", *(int(4000 * math.sin(2 * math.pi * 1000 * i / 16000)) for i in range(320)))
+    assert writer.offer(caller, module.AudioFormat(48000, "s16le", 1, 20), offset=0)
+    assert writer.offer(callee, module.AudioFormat(16000, "s16le", 1, 20), channel="callee", offset=0)
+    assert writer.offer(caller, module.AudioFormat(48000, "s16le", 1, 20), offset=1)
     entry = await writer.finish()
-    assert len(entry["segments"]) == 3
+    assert len(entry["segments"]) == 1
     assert archive.counts("kitchen") == (0, 0)
-    with wave.open(str(archive.segment_path(entry["id"], "kitchen", 0)), "rb") as wav:
-        assert wav.getsampwidth() == 3 and wav.getframerate() == 48000
-        assert wav.readframes(3) == b"\x00\x00\x00\xff\xff\x7f\x00\x00\x80"
-    assert entry["segments"][1]["channel"] == "callee"
-    assert entry["segments"][2]["start"] == 1
+    assert archive.list("kitchen", kind="recording") == [entry]
+    path = archive.segment_path(entry["id"], "kitchen")
+    with wave.open(str(path), "rb") as wav:
+        assert (wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (2, 48000, 48960)
+        samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")
+    spectrum = np.abs(np.fft.rfft(samples[:960].astype(float)))
+    assert spectrum[10] > 1_000_000 and spectrum[20] > 1_000_000
+    assert max(spectrum[35:]) < min(spectrum[10], spectrum[20]) / 10
+    assert not np.any(samples[960:48000])
+    assert samples[48000:].tobytes() == caller
+    assert list(archive.root.glob("*.wav")) == [path]
+    assert archive._reserved == 0
 
 
 async def test_empty_calls_leave_no_message_or_reserved_quota(archive):
@@ -389,3 +400,28 @@ async def test_removing_mailbox_deletes_only_its_messages_and_is_idempotent(arch
     await archive.load()
     assert not archive.list("deleted")
     assert len(archive.list("other")) == 1
+
+
+async def test_conversation_quota_keeps_room_for_partial_final_file(archive, module):
+    archive.quota_bytes = 72000
+    writer = await archive.begin('kitchen', kind='recording')
+    fmt = module.AudioFormat(16000, 's16le', 1, 20)
+    pcm = struct.pack('<320h', *([1200] * 320))
+    assert writer.offer(pcm, fmt, channel='caller', offset=0)
+    assert writer.offer(pcm, fmt, channel='callee', offset=0)
+    # Let the actual disk writer consume both directions before exhausting quota.
+    async with asyncio.timeout(2):
+        while not writer.disk.entry['segments'] or len(writer.disk.entry['segments']) < 2:
+            await asyncio.sleep(.01)
+    for index in range(1, 100):
+        if not writer.offer(pcm, fmt, channel='caller', offset=index*.02):
+            break
+    assert writer.error == 'quota_exceeded'
+    entry = await writer.finish()
+    assert entry is not None and entry['status'] == 'partial'
+    assert len(entry['segments']) == 1
+    path = archive.segment_path(entry['id'], 'kitchen')
+    with wave.open(str(path), 'rb') as wav:
+        assert wav.getnframes() >= 320
+    assert list(archive.root.glob('*.wav')) == [path]
+    assert archive._used <= archive.quota_bytes and archive._reserved == 0

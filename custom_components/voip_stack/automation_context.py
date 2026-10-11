@@ -36,6 +36,8 @@ CALL_ACTIONS = frozenset(
         "forward",
         "transfer",
         "park",
+        "start_recording",
+        "stop_recording",
         "tts_say",
         "play_media",
         "route",
@@ -92,6 +94,8 @@ def bind_call_action(call: ServiceCall) -> ServiceCall:
         "forward",
         "transfer",
         "park",
+        "start_recording",
+        "stop_recording",
         "tts_say",
         "play_media",
         "wait_for_dtmf",
@@ -140,11 +144,13 @@ def bind_call_action(call: ServiceCall) -> ServiceCall:
         "forward",
         "transfer",
         "park",
+        "start_recording",
+        "stop_recording",
     } and not data.get("device_id"):
         device_id = execution.snapshot.get("device_id")
         if device_id:
             data["device_id"] = device_id
-    if call.service in {"tts_say", "play_media", "forward", "hangup", "wait_for_dtmf", "wait_unanswered", "send_to_voicemail", "park"}:
+    if call.service in {"tts_say", "play_media", "forward", "hangup", "wait_for_dtmf", "wait_unanswered", "send_to_voicemail", "park", "start_recording", "stop_recording"}:
         expected = data.get("expected_generation")
         if expected is not None and expected != execution.token.generation:
             raise ServiceValidationError(

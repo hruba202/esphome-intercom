@@ -82,6 +82,10 @@ class RtpAudioReceiver:
             self._converter = None
             self._active_format = None
 
+    @property
+    def has_pcm_observers(self):
+        return bool(self._pcm_observers)
+
     def add_pcm_observer(self, observer):
         """Tap decoded native PCM without another decoder or receive queue."""
         observers = self._pcm_observers

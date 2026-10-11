@@ -1412,3 +1412,102 @@ park:
             number:
               min: 1
               mode: box
+
+start_recording:
+  name: Start call recording
+  description: Record both sides of an established conversation using the audio already passing through Home Assistant. Recording stops on hangup, media handoff or the configured duration limit.
+  fields:
+    device_id:
+      name: Phone
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    max_seconds:
+      name: Maximum duration
+      default: 3600
+      selector:
+        number:
+          min: 1
+          max: 3600
+          unit_of_measurement: s
+          mode: box
+    advanced:
+      name: Advanced options
+      collapsed: true
+      fields:
+        call_id:
+          name: Call ID
+          selector:
+            text:
+        expected_generation:
+          name: Call generation
+          selector:
+            number:
+              min: 1
+              mode: box
+
+stop_recording:
+  name: Stop call recording
+  description: Finish this phone's recording and return its existing audio file, while the conversation continues.
+  fields:
+    device_id:
+      name: Phone
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    advanced:
+      name: Advanced options
+      collapsed: true
+      fields:
+        call_id:
+          name: Call ID
+          selector:
+            text:
+        expected_generation:
+          name: Call generation
+          selector:
+            number:
+              min: 1
+              mode: box
+
+get_recording:
+  name: Get call recording
+  description: Return the original recording's file path and Home Assistant media-source identifier without making another copy.
+  fields:
+    device_id:
+      name: Phone
+      required: true
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    recording_id:
+      name: Recording ID
+      description: Identifier returned by Start call recording or the recording_finished event.
+      required: true
+      selector:
+        text:
+
+delete_recording:
+  name: Delete call recording
+  description: Delete the selected conversation recording and its metadata.
+  fields:
+    device_id:
+      name: Phone
+      required: true
+      selector:
+        device:
+          filter:
+            - integration: voip_stack
+            - integration: esphome
+    recording_id:
+      name: Recording ID
+      description: Identifier returned by Start call recording or the recording_finished event.
+      required: true
+      selector:
+        text:

@@ -191,6 +191,16 @@ class VoipStackCardEditor extends HTMLElement {
     );
     extendedInfoGroup.appendChild(extendedInfoLabel);
     wrap.appendChild(extendedInfoGroup);
+    const recordingGroup = document.createElement("div");
+    recordingGroup.className = "form-group checkbox-group";
+    const recordingLabel = document.createElement("label");
+    const recordingInput = document.createElement("input");
+    recordingInput.type = "checkbox";
+    recordingLabel.appendChild(recordingInput);
+    recordingLabel.appendChild(document.createTextNode(` ${this._t("Show recording controls")}`));
+    recordingGroup.appendChild(recordingLabel);
+    wrap.appendChild(recordingGroup);
+    recordingInput.onchange = (event) => this._boolChanged("show_recording_controls", event.target.checked);
 
     this.appendChild(wrap);
 
@@ -213,6 +223,8 @@ class VoipStackCardEditor extends HTMLElement {
       nameInput,
       extendedInfoGroup,
       extendedInfoInput,
+      recordingGroup,
+      recordingInput,
     };
   }
 
@@ -300,6 +312,10 @@ class VoipStackCardEditor extends HTMLElement {
       : this._config.name || "";
     els.extendedInfoGroup.classList.toggle("hidden", phonebookMode);
     els.extendedInfoInput.checked = !!this._config.show_extended_info;
+    if (els.recordingGroup) {
+      els.recordingGroup.classList.toggle("hidden", !softphoneMode);
+      els.recordingInput.checked = !!this._config.show_recording_controls;
+    }
   }
 
   _nameChanged(value) {
