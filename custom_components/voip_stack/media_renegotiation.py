@@ -907,7 +907,7 @@ async def async_prepare_media_update(
             raise RuntimeError(
                 "SIP relay media update belongs to a terminated call"
             )
-        if relay.left is not previous_audio_peer or (
+        if registry.resource_for(call_id, "relay") is not relay or relay.left is not previous_audio_peer or (
             video_relay is not None
             and previous_video_peer is not None
             and video_relay.left is not previous_video_peer

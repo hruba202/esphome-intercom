@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import logging
 from pathlib import Path
 import secrets
@@ -211,6 +211,66 @@ class SipRtpRelay:
     negotiated RTP formats when needed, including sample-rate and frame-size
     changes that are exact for the supported PCM profile.
     """
+
+    @classmethod
+    def splice_audio(cls, source, source_side: str, destination, destination_side: str):
+        """Move two established audio legs into one relay without rebinding UDP.
+
+        Call ownership must be committed by the caller in the same event-loop
+        turn. The old relays retain only the transferrer's sockets. Their port
+        reservations move together and are released when this relay stops.
+        """
+        if source is destination or source_side not in {"left", "right"} or destination_side not in {"left", "right"}:
+            raise ValueError("splice requires two distinct relay legs")
+        for relay in (source, destination):
+            if relay._stop_requested or relay._start_task is not None or relay.video_relay is not None:
+                raise ValueError("splice requires established audio-only relays")
+        left = getattr(source, f"{source_side}_transport")
+        right = getattr(destination, f"{destination_side}_transport")
+        if left is None or right is None or left.is_closing() or right.is_closing():
+            raise ValueError("splice transport is unavailable")
+        previous_left, previous_right = left.get_protocol(), right.get_protocol()
+        result = cls(
+            left=replace(getattr(source, source_side)), right=replace(getattr(destination, destination_side)),
+            left_port=getattr(source, f"{source_side}_port"),
+            right_port=getattr(destination, f"{destination_side}_port"),
+            debug=source.debug or destination.debug,
+            debug_capture=source.debug_capture or destination.debug_capture,
+            capture_name=f"splice-{source.left_port}-{destination.right_port}",
+        )
+        for previous, previous_side, next_side in ((source, source_side, "left"), (destination, destination_side, "right")):
+            old_encoder = getattr(previous, f"{previous_side}_encoder")
+            new_encoder = getattr(result, f"{next_side}_encoder")
+            if old_encoder is not None and new_encoder is not None:
+                new_encoder.follow_received(old_encoder.fmt)
+        result.left_transport, result.right_transport = left, right
+        try:
+            left_protocol, right_protocol = _RelayProtocol(result, "left"), _RelayProtocol(result, "right")
+            left_protocol.connection_made(left)
+            right_protocol.connection_made(right)
+            left.set_protocol(left_protocol)
+            right.set_protocol(right_protocol)
+        except BaseException:
+            left.set_protocol(previous_left)
+            right.set_protocol(previous_right)
+            result.left_transport = result.right_transport = None
+            raise
+        source_release, destination_release = source._on_release, destination._on_release
+        source_ports = (source.left_port, source.right_port)
+        destination_ports = (destination.left_port, destination.right_port)
+        def release(_ports):
+            try:
+                if source_release is not None:
+                    source_release(source_ports)
+            finally:
+                if destination_release is not None:
+                    destination_release(destination_ports)
+        result._on_release = release
+        source._on_release = destination._on_release = None
+        setattr(source, f"{source_side}_transport", None)
+        setattr(destination, f"{destination_side}_transport", None)
+        source._stop_requested = destination._stop_requested = True
+        return result
 
     def __init__(
         self,

@@ -11,6 +11,7 @@ from .roster import find_entry, parse_roster_json
 from .sip_client import SipCallClient, SipTransferResult
 from .router import RouteAction, ha_uri_for, resolve_ha_router
 from .trunk_policy import call_external_call_denied
+from .endpoint_session import LegPhase
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,10 +33,14 @@ def _client_for_call(runtime: VoipStackRuntime, call_id: str) -> SipCallClient |
     session = calls.get_session(call_id)
     if session is None:
         return None
+    destination = str(session.metadata.get("bridge_dest_call_id") or "")
+    if destination and isinstance(clients.get(destination), SipCallClient):
+        return clients[destination]
     candidates = tuple(
         leg.dialog
         for leg in session.legs.values()
         if isinstance(leg.dialog, SipCallClient) and leg.dialog.dialog is not None
+        and leg.phase not in {LegPhase.CLOSING, LegPhase.CLOSED}
     )
     return candidates[0] if len(candidates) == 1 else None
 
@@ -211,6 +216,7 @@ async def async_transfer_target(
     target: sip_transfer.SipReferTarget,
     *,
     source_client: SipCallClient | None = None,
+    hass=None,
 ) -> SipTransferResult:
     """Relay an inbound REFER to the unique opposite SIP leg."""
 
@@ -225,6 +231,7 @@ async def async_transfer_target(
             id(leg.dialog): leg.dialog for leg in session.legs.values()
             if isinstance(leg.dialog, SipCallClient) and leg.dialog is not source_client
             and leg.dialog.dialog is not None
+            and leg.phase not in {LegPhase.CLOSING, LegPhase.CLOSED}
         }
         if len(candidates) > 1:
             return SipTransferResult(False, 603, "ambiguous_call")
@@ -249,9 +256,24 @@ async def async_transfer_target(
     except ReplacementRejected as err:
         return SipTransferResult(False, err.status, "replacement_rejected")
     try:
+        if grant is not None and not grant.endpoint_id:
+            # A trunk or unrepresented SIP caller has no endpoint identity
+            # for a replacement INVITE. Keep its existing dialog in HA.
+            from .local_transfer import try_local_audio_transfer
+
+            local = await try_local_audio_transfer(hass, runtime, grant, source_client) if hass is not None else None
+            return local or SipTransferResult(False, 488, "local_transfer_unavailable")
         if server is not None:
-            return await server.async_refer(call_id, target) or SipTransferResult(False, 0, "call_not_found")
-        return await client.refer(target)
+            result = await server.async_refer(call_id, target) or SipTransferResult(False, 0, "call_not_found")
+        else:
+            result = await client.refer(target)
+        if result.status in {405, 501} and grant is not None and hass is not None:
+            from .local_transfer import try_local_audio_transfer
+
+            local = await try_local_audio_transfer(hass, runtime, grant, source_client)
+            if local is not None:
+                return local
+        return result
     finally:
         if grant is not None:
             grant.release()

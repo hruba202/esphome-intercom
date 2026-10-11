@@ -36,6 +36,30 @@ class BridgeMediaUpdateBinder:
 
     hass: HomeAssistant
 
+    def attach_audio_side(self, client, relay, *, source_call_id: str, side: str) -> None:
+        """Use the same staged RTP update for an outbound caller-side dialog."""
+        if side not in {"left", "right"}:
+            raise ValueError("invalid relay side")
+        async def prepare(previous, updated, _method):
+            registry = call_registry(self.hass)
+            session = registry.get_session(source_call_id)
+            if session is None or not session.live or previous.video_format is not None or updated.video_format is not None:
+                return None
+            try:
+                previous_peer = getattr(relay, side)
+                commit_peer = relay.prepare_peer_reconfiguration(side, dialog_rtp_peer(updated))
+            except (TypeError, ValueError):
+                return None
+            generation = session.generation
+            async def commit():
+                if (not registry.is_generation_current(source_call_id, generation)
+                        or registry.resource_for(source_call_id, "relay") is not relay
+                        or getattr(relay, side) is not previous_peer):
+                    raise RuntimeError("audio bridge ownership changed before commit")
+                commit_peer()
+            return PreparedDialogMediaUpdate(commit)
+        client.on_media_update = prepare
+
     def attach(
         self,
         client: SipCallClient,
@@ -375,7 +399,7 @@ class BridgeMediaUpdateBinder:
                     raise RuntimeError(
                         "SIP bridge media update belongs to a terminated call"
                     )
-                if relay.right is not previous_audio_peer or (
+                if registry.resource_for(source_call_id, "relay") is not relay or relay.right is not previous_audio_peer or (
                     previous_video_peer is not None
                     and video_relay.right is not previous_video_peer
                 ):

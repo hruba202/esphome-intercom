@@ -155,6 +155,7 @@ def attach_dtmf_event_bridge(
     caller: str,
     callee: str,
     client=None,
+    source_client=None,
 ) -> None:
     """Publish negotiated DTMF and translate legacy SIP INFO to RFC 4733."""
 
@@ -181,6 +182,8 @@ def attach_dtmf_event_bridge(
             send = getattr(client, "send_dtmf_info", None)
             return bool(callable(send) and await send(digit))
         if source_side == "right":
+            if source_client is not None:
+                return bool(await source_client.send_dtmf_info(digit))
             endpoint = sip_endpoint_manager(hass)
             return bool(
                 endpoint is not None
@@ -191,6 +194,8 @@ def attach_dtmf_event_bridge(
     relay.on_dtmf_fallback = _fallback
     if client is not None:
         client.on_info_dtmf = lambda digit: _emit("right", digit, "sip_info")
+    if source_client is not None:
+        source_client.on_info_dtmf = lambda digit: _emit("left", digit, "sip_info")
 
 
 def attach_direct_client_dtmf_events(

@@ -19,6 +19,10 @@ class _Registry:
     def __init__(self) -> None:
         self.sessions = {"call-1": SimpleNamespace(generation=7)}
         self.current = True
+        self.relay = None
+
+    def resource_for(self, call_id, kind):
+        return self.relay if call_id == "call-1" and kind == "relay" else None
 
     @staticmethod
     def resolve_session_id(call_id: str) -> str:
@@ -260,6 +264,7 @@ def test_audio_update_stays_staged_until_generation_checked(
     old_peer = object()
     new_peer = object()
     relay = _Relay(old_peer)
+    registry.relay = relay
     client = SimpleNamespace(
         dialog_ids=SimpleNamespace(call_id="dest-1"),
         on_media_update=None,
@@ -285,6 +290,14 @@ def test_audio_update_stays_staged_until_generation_checked(
 
     assert commit is not None
     assert relay.right is old_peer
+
+    registry.current = True
+    pending = asyncio.run(client.on_media_update(SimpleNamespace(video_format=None), updated, "UPDATE"))
+    registry.relay = object()
+    with pytest.raises(RuntimeError, match="owner changed"):
+        asyncio.run(pending.commit())
+    assert relay.right is old_peer
+    registry.relay = relay
     asyncio.run(commit.commit())
     assert relay.right is new_peer
 
@@ -325,6 +338,7 @@ def test_audio_and_video_commit_share_one_owner_check(
         recv_format="peer-send",
     )
     relay = _Relay(old_audio)
+    registry.relay = relay
     relay.video_relay = _VideoRelay(
         SimpleNamespace(
             recv_format="peer-recv",
@@ -390,6 +404,7 @@ def test_cross_codec_video_direction_change_uses_owned_transcoders(
     old_video = object()
     new_video = SimpleNamespace(send_format="vp8-rx", recv_format="vp8-tx")
     relay = _Relay(object())
+    registry.relay = relay
     relay.video_relay = _VideoRelay(
         SimpleNamespace(
             send_format="h264-tx",
@@ -474,6 +489,7 @@ def test_destination_reinvite_can_add_video_to_audio_only_bridge(
     endpoint = _SourceEndpoint(source_candidate)
     hass = SimpleNamespace(registry=registry, endpoint=endpoint)
     relay = _Relay(object())
+    registry.relay = relay
     destination_video = SimpleNamespace(
         send_format="h264-rx",
         recv_format="h264-tx",
@@ -583,6 +599,7 @@ def test_destination_reinvite_removes_video_from_both_bridge_legs(
     endpoint = _SourceEndpoint(SimpleNamespace(video_peer=None))
     hass = SimpleNamespace(registry=registry, endpoint=endpoint)
     relay = _Relay(object())
+    registry.relay = relay
     old_video = _VideoRelay(
         SimpleNamespace(
             send_format="h264-tx",

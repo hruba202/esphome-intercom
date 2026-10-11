@@ -205,7 +205,7 @@ async def test_attended_transfer_reuses_destination_and_delivers_duplex_audio(re
 @pytest.mark.parametrize("trunks", [True], indirect=True)
 async def test_replacement_authorization_races_and_rollback_preserve_existing_calls(registered_phones, trunks):
     from dataclasses import replace
-    from custom_components.voip_stack.call_replaces import prepare_replacement, prepare_replacement_grant
+    from custom_components.voip_stack.call_replaces import prepare_replacement, prepare_replacement_grant, ReplacementGrant
     from custom_components.voip_stack.core import sip
     from custom_components.voip_stack.core.sip_transfer import SipReplaces, SipReferTarget
 
@@ -226,6 +226,14 @@ async def test_replacement_authorization_races_and_rollback_preserve_existing_ca
     uninvited = await prepare_replacement(lab.hass, invite, "127.0.0.1")
     assert uninvited.status == 403
     assert len(lab.calls.sessions) == 2
+    local_only = ReplacementGrant(lab.calls.get_session(original), consultation, "", key)
+    local_only.attach()
+    try:
+        anonymous = await prepare_replacement(lab.hass, replace(invite, identified_source_endpoint_id=""), "127.0.0.1")
+        assert anonymous.status == 403
+        assert len(lab.calls.sessions) == 2
+    finally:
+        local_only.release()
     _root, referring_id = lab.calls.bridge_for(original)
     referring_client = lab.calls.sip_client_for(referring_id)
     target = SipReferTarget(f'sip:transfer_c@127.0.0.1:{manager.port}', key)
@@ -285,4 +293,131 @@ async def test_registered_phone_cannot_replace_another_call_without_referral(reg
         assert set(lab.calls.sessions) == {original, consultation.call_id}
         assert consultation.live
         assert lab.runtime.endpoints.get("transfer_c").active_call_id == consultation.call_id
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("origin,represented", [("caller", True), ("callee", True), ("caller", False)])
+async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(registered_phones, trunks, tmp_path, monkeypatch, origin, represented):
+    import socket
+    from pathlib import Path
+
+    executable = shutil.which("sipp")
+    if executable is None:
+        pytest.skip("SIPp is not installed")
+    lab = trunks
+    from custom_components.voip_stack import endpoint_runtime, invite_router
+
+    monkeypatch.setattr(endpoint_runtime, "_roster_from_peers", roster_from_peers)
+    monkeypatch.setattr(invite_router, "_roster_from_peers", roster_from_peers)
+    registrar = lab.calls.component("registrar")
+    if origin == "caller":
+        registrar.update_accounts([*registrar.accounts.values(), SipAccount("legacy", "Legacy", "isolated-test-only")])
+    if represented:
+        lab.runtime.endpoints.register(PhoneEndpoint(endpoint_id="legacy", name="Legacy", username="legacy",
+                                                   kind="sip_account" if origin == "caller" else "esphome", availability="available"))
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        media_port = probe.getsockname()[1]
+    if origin == "callee":
+        from custom_components.voip_stack import peer_snapshot
+        from custom_components.voip_stack.peer import Peer
+
+        monkeypatch.setattr(peer_snapshot.async_build_peer_snapshot, "return_value", [Peer(
+            name="legacy", host="127.0.0.1", endpoint_id="legacy", endpoint_kind="esphome",
+            sip_port=port, rtp_port=media_port, device={"sip_transport": "udp"},
+            tx_formats=["16000:s16le:1:20"], rx_formats=["16000:s16le:1:20"],
+        )])
+    scenario = Path(__file__).parent / f"fixtures/sipp/legacy-{origin}.xml"
+    trace = tmp_path / "legacy-sip.log"
+    process = await asyncio.create_subprocess_exec(
+        executable, *([f'127.0.0.1:{lab.runtime.transport_config["sip_port"]}'] if origin == "caller" else []), "-sf", str(scenario),
+        "-i", "127.0.0.1", "-p", str(port), "-mi", "127.0.0.1", "-mp", str(media_port), "-rtp_echo", "-m", "1",
+        "-trace_msg", "-message_file", str(trace), "-trace_err", "-error_file", str(tmp_path / "legacy-errors.log"),
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=tmp_path,
+    )
+    async def wait_for(predicate):
+        async with asyncio.timeout(5):
+            while not predicate():
+                if process.returncode is not None and process.returncode != 0:
+                    raise AssertionError((await process.communicate())[0].decode())
+                await asyncio.sleep(0.01)
+    try:
+        _unused, operator, destination = registered_phones
+        if origin == "caller":
+            await wait_for(lambda: bool(registrar.registered_contacts("legacy")))
+        else:
+            await wait_for(lambda: any(line.split()[1].endswith(f":{port:04X}")
+                                      for line in Path("/proc/net/udp").read_text().splitlines()[1:]))
+            await asyncio.to_thread(operator.dial, "legacy")
+        await asyncio.to_thread(operator.wait_for, "Call established", 5)
+        original_id = lab.runtime.endpoints.get("transfer_b").active_call_id
+        original = lab.calls.get_session(original_id)
+        assert original is not None
+        prior = lab.calls.resource_for(original_id, "relay")
+        left_transport = prior.left_transport if origin == "caller" else prior.right_transport
+        offset = len(operator.read())
+        target = f'sip:transfer_c@127.0.0.1:{lab.runtime.transport_config["sip_port"]}'
+        await asyncio.to_thread(operator.command, f"/atransferstart {target}")
+        await wait_for(lambda: "Call established" in operator.read()[offset:])
+        consultation = next(item for item in lab.calls.sessions.values() if item is not original)
+        right_transport = lab.calls.resource_for(consultation.call_id, "relay").right_transport
+        await asyncio.to_thread(operator.command, "/atransferexec")
+        await wait_for(lambda: len(lab.calls.sessions) == 1 and not lab.runtime.endpoints.get("transfer_b").active_call_id)
+        current = next(iter(lab.calls.sessions.values()))
+        assert (current is original) == (origin == "caller")
+        assert current.metadata.get("source_endpoint_id", "") == ("legacy" if represented else "")
+        combined = lab.calls.resource_for(current.call_id, "relay")
+        assert combined.left_transport is left_transport and combined.right_transport is right_transport
+        assert lab.runtime.rtp_port_pool["used"] == {combined.left_port, combined.right_port}
+        left, right = combined.left_tx_packets, combined.right_tx_packets
+        await wait_for(lambda: combined.left_tx_packets >= left + 30 and combined.right_tx_packets >= right + 30)
+        destination.read()
+        assert destination.output.count("Call established") == 1
+        recordings = [("transfer_c", 650)]
+        if origin == "callee":
+            offset = len(destination.read())
+            await asyncio.to_thread(destination.command,
+                                    f'/atransferstart sip:transfer_b@127.0.0.1:{lab.runtime.transport_config["sip_port"]}')
+            await wait_for(lambda: "Call established" in destination.read()[offset:])
+            await asyncio.to_thread(destination.command, "/atransferexec")
+            await wait_for(lambda: len(lab.calls.sessions) == 1 and not lab.runtime.endpoints.get("transfer_c").active_call_id)
+            current = next(iter(lab.calls.sessions.values()))
+            combined = lab.calls.resource_for(current.call_id, "relay")
+            assert current.metadata["dest_endpoint_id"] == "transfer_b"
+            assert lab.runtime.rtp_port_pool["used"] == {combined.left_port, combined.right_port}
+            left, right = combined.left_tx_packets, combined.right_tx_packets
+            await wait_for(lambda: combined.left_tx_packets >= left + 30 and combined.right_tx_packets >= right + 30)
+            destination = operator
+            recordings.append(("transfer_b", 550))
+        await asyncio.to_thread(destination.hangup)
+        output, _ = await asyncio.wait_for(process.communicate(), 5)
+        assert process.returncode == 0, output.decode()
+        await wait_for(lambda: not lab.calls.sessions)
+        assert not lab.runtime.rtp_port_pool.get("used")
+        for peer in registered_phones:
+            await asyncio.to_thread(peer.close)
+        for name, expected in recordings:
+            found = False
+            for path in (tmp_path / name).glob("*-dec.wav"):
+                if name == "transfer_b" and "=>sip:transfer_c@" not in path.name:
+                    continue
+                with wave.open(str(path), "rb") as audio:
+                    rate = audio.getframerate()
+                    samples = struct.unpack(f"<{audio.getnframes()}h", audio.readframes(audio.getnframes()))[-1600:]
+                if len(samples) < 800:
+                    continue
+                powers = {frequency: abs(sum(value * complex(math.cos(2 * math.pi * frequency * index / rate),
+                                                             math.sin(2 * math.pi * frequency * index / rate))
+                                             for index, value in enumerate(samples))) for frequency in (550, 650)}
+                other = 550 if expected == 650 else 650
+                found |= powers[expected] > powers[other] * 5 and powers[expected] > 10000
+            assert found, f"The legacy phone did not return {name}'s audio through the retained RTP path"
+        assert ("501 Not Implemented" in trace.read_text()) is represented
+    finally:
+        if process.returncode is None:
+            process.terminate()
+            await process.communicate()
 

@@ -33,6 +33,17 @@ class RtpPortReservation:
     def allocate(cls, hass: HomeAssistant) -> "RtpPortReservation":
         return cls(hass=hass, ports=allocate_sip_rtp_port_pair(hass))
 
+    @classmethod
+    def merge(cls, hass: HomeAssistant, previous_pairs, retained_pair) -> "RtpPortReservation":
+        """Retain the two bound legs after their old relay owners detach."""
+        used = require_runtime_data(hass).rtp_port_pool.get("used", set())
+        previous = {int(port) for pair in previous_pairs for port in pair}
+        retained = tuple(int(port) for port in retained_pair)
+        if len(retained) != 2 or len(set(retained)) != 2 or not set(retained) <= previous or not previous <= used:
+            raise RuntimeError("RTP reservation ownership changed before merge")
+        used.difference_update(previous - set(retained))
+        return cls(hass=hass, ports=retained)
+
     def detach(self) -> tuple[int, int]:
         self.released = True
         return self.ports

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="Static SIP phone without REFER support">
+  <recv request="INVITE" timeout="10000">
+    <action>
+      <ereg regexp="a=rtpmap:([0-9]+) L16/16000" search_in="body" check_it="true" assign_to="1,2"/>
+      <ereg regexp="a=ptime:([0-9]+)" search_in="body" check_it="true" assign_to="3,4"/>
+      <log message="[$1] [$3]"/>
+    </action>
+  </recv>
+  <send retrans="500"><![CDATA[
+SIP/2.0 200 OK
+[last_Via:]
+[last_From:]
+[last_To:];tag=legacy
+[last_Call-ID:]
+[last_CSeq:]
+Contact: <sip:legacy@[local_ip]:[local_port]>
+Allow: INVITE, ACK, CANCEL, BYE, OPTIONS, UPDATE
+Content-Type: application/sdp
+Content-Length: [len]
+
+v=0
+o=legacy 1 1 IN IP4 [local_ip]
+s=Legacy callee
+c=IN IP4 [local_ip]
+t=0 0
+m=audio [media_port] RTP/AVP [$2]
+a=rtpmap:[$2] L16/16000/1
+a=ptime:[$4]
+a=sendrecv
+]]></send>
+  <recv request="ACK"/>
+  <label id="wait_end"/>
+  <recv request="REFER" optional="true" next="reject_refer"/>
+  <recv request="BYE" timeout="10000" next="end"/>
+  <label id="reject_refer"/>
+  <send><![CDATA[
+SIP/2.0 501 Not Implemented
+[last_Via:]
+[last_From:]
+[last_To:]
+[last_Call-ID:]
+[last_CSeq:]
+Content-Length: 0
+
+]]></send>
+  <nop next="wait_end"/>
+  <label id="end"/>
+  <send><![CDATA[
+SIP/2.0 200 OK
+[last_Via:]
+[last_From:]
+[last_To:]
+[last_Call-ID:]
+[last_CSeq:]
+Content-Length: 0
+
+]]></send>
+</scenario>

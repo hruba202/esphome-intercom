@@ -12,6 +12,7 @@ from .endpoint_session import (
     CallLeg,
     CleanupStage,
     EndpointCallSession,
+    LegPhase,
     SessionPhase,
     TerminationIntent,
 )
@@ -704,6 +705,9 @@ class CallRuntimeApi:
             current = self.get_session(session_id)
             if current is not session or not current.live:
                 return 503
+            current_leg = current.legs.get(dest_call_id)
+            if current_leg is None or current_leg.phase in {LegPhase.CLOSING, LegPhase.CLOSED}:
+                return 481
             handler = self.refer_call
             if handler is None:
                 return 503

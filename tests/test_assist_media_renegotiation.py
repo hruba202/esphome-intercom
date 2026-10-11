@@ -208,7 +208,8 @@ def test_assist_reinvite_returns_audio_answer_and_declines_video(generic) -> Non
     assert owner.committed is True
 
 
-def test_bridged_audio_refresh_preserves_owned_video_transcoding() -> None:
+@pytest.mark.parametrize("replace_owner", [False, True])
+def test_bridged_audio_refresh_preserves_owned_video_transcoding(replace_owner) -> None:
     """An unchanged transcoded video m-line must survive an audio refresh."""
 
     answer_calls: list[dict] = []
@@ -291,6 +292,15 @@ def test_bridged_audio_refresh_preserves_owned_video_transcoding() -> None:
     assert result.status == 200
     assert validation["caller_to_peer_transcoding"] is True
     assert validation["peer_to_caller_transcoding"] is True
+    old_audio, old_video = relay.left, video_relay.left
+    if replace_owner:
+        registry.relays["call"] = object()
+        with pytest.raises(RuntimeError, match="owner changed"):
+            asyncio.run(result.commit())
+        assert relay.left is old_audio and video_relay.left is old_video
+    else:
+        asyncio.run(result.commit())
+        assert relay.left is updated.audio_peer and video_relay.left is updated.video_peer
 
 
 def test_bridge_video_addition_cancellation_releases_staged_media() -> None:

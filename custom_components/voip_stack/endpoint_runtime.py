@@ -842,7 +842,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     async def _on_refer(call_id, target, *, source_client=None) -> int:
         from .call_transfer import async_transfer_target
 
-        result = await async_transfer_target(runtime, call_id, target, source_client=source_client)
+        result = await async_transfer_target(runtime, call_id, target, source_client=source_client, hass=hass)
         if result.status:
             return result.status
         return 503 if result.state == "call_not_found" else 500

@@ -545,3 +545,39 @@ The complete HA run at this checkpoint passed 471 tests. The final observer
 cleanup passed the 15-test BLF/presence/MWI subset, including the independent
 SIPp client. Dialog listeners are removed when the last dialog subscription
 ends, so unused BLF does not retain call-event observers.
+
+### Local audio transfer without peer REFER
+
+ESP firmware currently advertises ACK, BYE, CANCEL, INVITE, OPTIONS and UPDATE,
+and returns 501 for REFER. An attended transfer now has a local audio fallback
+when the remaining peer returns 405/501. An existing caller with no HA endpoint
+identity uses the local path directly instead of authorizing an anonymous
+replacement INVITE. The referring phone must still own both matched dialogs.
+
+The shared RTP relay can adopt two existing transports atomically. Codec
+contracts, RTP sender identities and clock positions remain attached to the
+remaining peers. Reservations are merged into the retained pair immediately;
+unused ports become reusable and old cleanup cannot release another call's
+later allocation. A failed transport handoff restores both original protocols.
+
+Both transfer directions are covered: an inbound caller keeps its session;
+two outbound peer dialogs move together to one new session while the referring
+phone's old session retires after its final NOTIFY. Retired legs cannot issue
+further REFER controls. A staged re-offer cannot commit into a replaced relay
+even if the logical call generation is unchanged.
+
+Independent SIPp peers return 501 and echo RTP while baresip performs transfers.
+Tests cover registered callers, static callees without REGISTER, callers without
+an HA phone entity and repeated transfers. The destination's captured WAV must
+contain its tone returned through the other peer. Exactly two ports remain
+reserved after each transfer and none after hangup. Video splicing is not
+implemented; existing negotiated video is preserved by refusing that fallback.
+
+The focused integration run passed 50 tests; primitive, port and media-update
+regressions passed 86 tests and nine subtests before the full qualification run.
+
+Full qualification of this increment passed 1,976 software tests with 178
+subtests (four deselected) and 476 HA tests. Port ownership remains a single
+retained pair across repeated transfers; later cleanup cannot release reused
+ports belonging to another call. The newly added relay tests use real HA
+imports rather than depending on the old protocol harness's import order.

@@ -59,17 +59,19 @@ def prepare_replacement_grant(runtime, call_id, target, source_client):
         raise ReplacementRejected(481)
     if target.replaces.early_only:
         raise ReplacementRejected(486)
+    from_callee = (source_client is not None and source_client.dialog_ids.call_id
+                   == original.metadata.get("bridge_dest_call_id"))
     sender_key, receiver_key = (
-        ("dest_endpoint_id", "source_endpoint_id") if source_client is not None
+        ("dest_endpoint_id", "source_endpoint_id") if from_callee
         else ("source_endpoint_id", "dest_endpoint_id")
     )
     sender = original.metadata.get(sender_key)
     receiver = original.metadata.get(receiver_key)
-    if not sender or not receiver or sender != consultation.metadata.get("source_endpoint_id"):
+    if not sender or sender != consultation.metadata.get("source_endpoint_id"):
         raise ReplacementRejected(403)
     if calls.resource_for(consultation.call_id, "replacement_grant") is not None:
         raise ReplacementRejected(491)
-    grant = ReplacementGrant(original, consultation, receiver, target.replaces)
+    grant = ReplacementGrant(original, consultation, str(receiver or ""), target.replaces)
     grant.attach()
     return grant
 
@@ -102,6 +104,7 @@ async def prepare_replacement(hass, invite, local_ip):
         grant.attach()
     if (not isinstance(grant, ReplacementGrant) or not grant.original.live
             or not old.live or grant.replaces != invite.replaces
+            or not grant.endpoint_id
             or grant.endpoint_id != invite.identified_source_endpoint_id):
         return SipInviteResult(403, "Forbidden")
     _source, destination_id = calls.bridge_for(old.call_id)

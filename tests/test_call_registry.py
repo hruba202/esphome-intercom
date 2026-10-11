@@ -157,6 +157,11 @@ class CallRegistryEventContextTest(unittest.TestCase):
             registry.refer_call.assert_awaited_once_with("source", target, source_client=source)
             destination.refer.assert_not_awaited()
             source.refer.assert_not_awaited()
+            from custom_components.voip_stack.endpoint_session import LegPhase
+
+            registry.sessions["source"].legs["source"].phase = LegPhase.CLOSING
+            self.assertEqual(await source.on_refer(target), 481)
+            self.assertEqual(registry.refer_call.await_count, 1)
 
         asyncio.run(exercise())
 
