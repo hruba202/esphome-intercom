@@ -813,6 +813,80 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
     assert entry.data["voicemail"] == {"enabled": True, "tts_entity_id": "tts.test", "language": "it"}
 
 
+@pytest.mark.parametrize("language,expected", [
+    ("it", "nove, nove, zero, uno"), ("en", "nine, nine, zero, one"),
+    ("de", "neun, neun, null, eins"), ("pt-BR", "nove, nove, zero, um"),
+])
+def test_voicemail_speaks_phone_digits_without_changing_named_callers(language, expected):
+    from custom_components.voip_stack.voicemail_prompts import phrase
+
+    assert expected in phrase(language, "message", number=1, caller="9901")
+    assert "Reception" in phrase(language, "message", number=1, caller="Reception")
+    assert "9901" not in phrase(language, "message", number=1, caller="9901")
+    assert phrase(language, "count", count=1) != phrase(language, "count", count=2)
+
+
+def test_voicemail_preserves_leading_zeroes_and_phone_number_prefixes():
+    from custom_components.voip_stack.voicemail_prompts import spoken_caller
+
+    assert spoken_caller("it", "00101") == "zero, zero, uno, zero, uno"
+    assert spoken_caller("en", "+39 (055) 10-20") == "plus, three, nine, zero, five, five, one, zero, two, zero"
+    assert spoken_caller("it", "") == "numero sconosciuto"
+
+
+async def test_voicemail_voice_selection_uses_ha_catalog_and_persists(mailbox_lab, custom_integrations, monkeypatch):
+    from types import SimpleNamespace
+    from custom_components.voip_stack import voicemail_config as config_module
+
+    lab = mailbox_lab
+    entry = config_entry(lab.hass)
+    lab.hass.config_entries.async_update_entry(entry, data={})
+    lab.hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+    engine = SimpleNamespace(available=True, supported_languages=["it"], default_language="it",
+        async_get_supported_voices=lambda language: [SimpleNamespace(voice_id="raffa_reference", name="Raffa")])
+    monkeypatch.setattr(config_module, "voice_engine", lambda *_args: engine)
+    form = await lab.hass.config_entries.flow.async_init(
+        "voip_stack", context={"source": "reconfigure", "entry_id": entry.entry_id})
+    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], form["data_schema"]({"voicemail_enabled": True}))
+    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.test"})
+    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "it"})
+    assert form["step_id"] == "voicemail_voice" and not entry.data.get("voicemail")
+    result = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"voice": "raffa_reference"})
+    assert result["type"] == "abort"
+    assert entry.data["voicemail"] == {
+        "enabled": True, "tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"}
+
+
+async def test_voicemail_menu_passes_selected_voice_to_native_tts(mailbox_lab, monkeypatch):
+    from types import SimpleNamespace
+    from homeassistant.components import tts
+    from custom_components.voip_stack.voicemail_menu import VoicemailMenu
+    from custom_components.voip_stack.roster import RosterEntry
+    from custom_components.voip_stack.local_call_media import LocalCallMedia
+
+    calls = []
+    class Speech:
+        def async_set_message(self, text):
+            calls[-1]["text"] = text
+        async def async_stream_result(self):
+            yield bytes(640)
+    def create(hass, identity, language, options):
+        calls.append({"entity": identity, "language": language, "options": options})
+        return Speech()
+    async def play(stream):
+        async for pcm in stream:
+            assert pcm == bytes(640)
+        return True
+    monkeypatch.setattr(tts, "async_create_stream", create)
+    menu = VoicemailMenu(mailbox_lab.hass, None, None, RosterEntry("Test"), "127.0.0.1",
+        settings={"tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"})
+    menu.media = SimpleNamespace(_tts_audio_output=LocalCallMedia._tts_audio_output)
+    menu.ivr = SimpleNamespace(digits=asyncio.Queue(), play=play)
+    assert await menu.say("message", number=1, caller="9901")
+    assert calls[0]["options"]["voice"] == "raffa_reference"
+    assert calls[0]["text"] == "Messaggio 1, ricevuto da nove, nove, zero, uno."
+
+
 @pytest.mark.parametrize("address", ["*97", "*98", "mailbox", "mailbox.Other", "voicemail.Other", "*60101"])
 async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbox_lab, address):
     from custom_components.voip_stack.mailbox import resolve_mailbox_route

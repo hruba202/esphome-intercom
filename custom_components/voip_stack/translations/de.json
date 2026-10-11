@@ -113,6 +113,13 @@
         "data": {
           "language": "Sprache"
         }
+      },
+      "voicemail_voice": {
+        "title": "Mailbox-Stimme",
+        "description": "Wählen Sie die Stimme für die Ansagen des Telefonmenüs.",
+        "data": {
+          "voice": "Stimme"
+        }
       }
     },
     "error": {
@@ -125,7 +132,8 @@
       "trunk_allowed_ips_invalid": "Mindestens eine gültige IP oder ein CIDR-Netz eingeben. Uneingeschränkte /0-Netze sind nicht erlaubt.",
       "voicemail_tts_unavailable": "Wählen Sie eine verfügbare TTS-Entität.",
       "voicemail_language_unsupported": "Diese Sprache wird nicht von den Ansagen und dem gewählten TTS unterstützt.",
-      "voicemail_route_conflict": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Voicemail-Adresse (*97, *98, mailbox, mailbox.*, voicemail.* oder *60 mit Nebenstelle). Benennen Sie dieses Ziel vor dem Aktivieren um."
+      "voicemail_route_conflict": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Voicemail-Adresse (*97, *98, mailbox, mailbox.*, voicemail.* oder *60 mit Nebenstelle). Benennen Sie dieses Ziel vor dem Aktivieren um.",
+      "voicemail_voice_unavailable": "Wählen Sie eine Stimme, die die gewählte TTS-Engine und Sprache unterstützt."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",

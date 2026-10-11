@@ -48,8 +48,9 @@ class VoicemailMenu(LocalCallApplication):
         if not self.ivr.digits.empty():
             return False
         text = phrase(self.settings["language"], key, **values)
+        options = {"voice": self.settings["voice"]} if self.settings.get("voice") else None
         async with asyncio.timeout(30):
-            return await self.ivr.play(self.speech_stream(text, self.settings["tts_entity_id"], self.settings["language"]))
+            return await self.ivr.play(self.speech_stream(text, self.settings["tts_entity_id"], self.settings["language"], options))
 
     async def _authorize(self):
         if not self.mailbox_id:

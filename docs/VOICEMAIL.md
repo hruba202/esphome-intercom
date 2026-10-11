@@ -14,6 +14,11 @@ Assistant TTS entity and its prompt language. The voice is shared by the
 telephone menus. English, Italian, German and Portuguese are supported when the
 selected TTS engine supports that language.
 
+If that engine offers several voices, the next step lets you select one for
+all voicemail menu prompts. The choices come from Home Assistant's TTS voice
+catalog. Leaving **TTS default voice** selected uses the provider's default.
+The voice of a recorded message remains the caller's own audio.
+
 Enabling voicemail checks that existing phones, contacts and groups do not use
 its feature codes or named address prefixes. HA reports conflicts before saving
 the configuration. Numeric extension `97` remains distinct from feature code
@@ -57,6 +62,8 @@ not numbers mandated by SIP.
 A key immediately interrupts the spoken prompt and remains available to the
 menu. Numbers stay fixed for the duration of a call. If another call deletes
 message 1, selecting 1 does not silently play or delete the next message.
+Caller numbers are announced digit by digit, including leading zeroes. A named
+caller is announced by name; the stored caller identity remains unchanged.
 
 The HA softphone card shows **Voicemail** when messages exist. Each row shows
 the caller and date. Selecting a row calls `*97` and selects that message.

@@ -701,12 +701,48 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 self._base_input["voicemail"] = {"enabled": True, "tts_entity_id": self._voicemail_tts,
                                                   "language": language}
+                voices = getattr(entity, "async_get_supported_voices", lambda _language: None)(language)
+                if voices:
+                    return await self.async_step_voicemail_voice()
                 return self._store_entry(dict(self._base_input))
         return self.async_show_form(step_id="voicemail_language", errors=errors, data_schema=vol.Schema({
             vol.Required("language", default=default or ""):
                 SelectSelector(SelectSelectorConfig(options=languages, mode="dropdown")),
         }))
 
+
+
+    async def async_step_voicemail_voice(self, user_input=None):
+        """Select a voice from the existing HA TTS provider's catalog."""
+        from .voicemail_config import voice_engine
+
+        settings = self._base_input["voicemail"]
+        entity = voice_engine(self.hass, settings["tts_entity_id"])
+        if entity is None or not entity.available:
+            return await self.async_step_voicemail()
+        voices = getattr(entity, "async_get_supported_voices", lambda _language: None)(settings["language"]) or []
+        choices = [{"value": "", "label": "TTS default voice"},
+                   *({"value": voice.voice_id, "label": voice.name} for voice in voices)]
+        valid = {choice["value"] for choice in choices}
+        _entry, existing = self._current_entry_data()
+        current = str(existing.get("voicemail", {}).get("voice") or "")
+        errors = {}
+        if user_input is not None:
+            voice = str(user_input.get("voice") or "")
+            if voice not in valid:
+                errors["voice"] = "voicemail_voice_unavailable"
+            elif mailbox_namespace_conflicts(_entry_route_mappings(_entry, existing)):
+                errors["base"] = "voicemail_route_conflict"
+            else:
+                if voice:
+                    settings["voice"] = voice
+                else:
+                    settings.pop("voice", None)
+                return self._store_entry(dict(self._base_input))
+        return self.async_show_form(step_id="voicemail_voice", errors=errors, data_schema=vol.Schema({
+            vol.Required("voice", default=current if current in valid else ""):
+                SelectSelector(SelectSelectorConfig(options=choices, mode="dropdown")),
+        }))
 
 
 class PhoneSubentryFlowHandler(ConfigSubentryFlow):

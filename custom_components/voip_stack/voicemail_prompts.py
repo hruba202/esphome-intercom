@@ -1,5 +1,28 @@
 """Short IVR phrases spoken by the globally selected Home Assistant TTS."""
 
+import re
+
+_DIGITS = {
+    "en": ("zero one two three four five six seven eight nine".split(), "plus", "unknown caller"),
+    "it": ("zero uno due tre quattro cinque sei sette otto nove".split(), "più", "numero sconosciuto"),
+    "de": ("null eins zwei drei vier fünf sechs sieben acht neun".split(), "plus", "unbekannter Anrufer"),
+    "pt": ("zero um dois três quatro cinco seis sete oito nove".split(), "mais", "chamador desconhecido"),
+}
+_SINGLE_MESSAGE = {"en": "You have one message.", "it": "Hai un messaggio.",
+                   "de": "Sie haben eine Nachricht.", "pt": "Você tem uma mensagem."}
+
+
+def spoken_caller(language, caller):
+    """Read phone numbers digit by digit; keep named callers unchanged."""
+    value = str(caller or "").strip()
+    digits, plus, unknown = _DIGITS[language]
+    if not value:
+        return unknown
+    if re.fullmatch(r"\+?[0-9][0-9 ()-]*", value):
+        return ", ".join(plus if char == "+" else digits[int(char)]
+                         for char in value if char in "+0123456789")
+    return value
+
 _PHRASES = {
     "en": {
         "count": "You have {count} messages.", "empty": "You have no messages.",
@@ -46,4 +69,8 @@ _PHRASES = {
 
 def phrase(language, key, **values):
     language = language.replace("_", "-").split("-", 1)[0].lower()
+    if key == "count" and values.get("count") == 1:
+        return _SINGLE_MESSAGE[language]
+    if key == "message":
+        values["caller"] = spoken_caller(language, values.get("caller"))
     return _PHRASES[language][key].format(**values)

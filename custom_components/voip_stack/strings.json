@@ -113,6 +113,13 @@
         "data": {
           "language": "Language"
         }
+      },
+      "voicemail_voice": {
+        "title": "Voicemail voice",
+        "description": "Choose the voice used for telephone menu prompts.",
+        "data": {
+          "voice": "Voice"
+        }
       }
     },
     "error": {
@@ -125,7 +132,8 @@
       "trunk_allowed_ips_invalid": "Enter at least one valid IP or CIDR network. An unrestricted /0 network is not allowed.",
       "voicemail_tts_unavailable": "Select an available TTS entity.",
       "voicemail_language_unsupported": "This language is not supported by both the voicemail prompts and the selected TTS engine.",
-      "voicemail_route_conflict": "An existing phone, contact or group uses a voicemail address (*97, *98, mailbox, mailbox.*, voicemail.* or *60 plus an extension). Rename that route before enabling voicemail."
+      "voicemail_route_conflict": "An existing phone, contact or group uses a voicemail address (*97, *98, mailbox, mailbox.*, voicemail.* or *60 plus an extension). Rename that route before enabling voicemail.",
+      "voicemail_voice_unavailable": "Select a voice supported by the chosen TTS engine and language."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",

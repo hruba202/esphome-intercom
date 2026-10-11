@@ -113,6 +113,13 @@
         "data": {
           "language": "Lingua"
         }
+      },
+      "voicemail_voice": {
+        "title": "Voce della segreteria",
+        "description": "Scegli la voce usata per gli annunci del menu telefonico.",
+        "data": {
+          "voice": "Voce"
+        }
       }
     },
     "error": {
@@ -125,7 +132,8 @@
       "trunk_allowed_ips_invalid": "Inserisci almeno un IP o una rete CIDR validi. Non sono ammesse reti /0 senza restrizioni.",
       "voicemail_tts_unavailable": "Seleziona un'entità TTS disponibile.",
       "voicemail_language_unsupported": "Questa lingua non è supportata sia dai messaggi della segreteria sia dal motore TTS scelto.",
-      "voicemail_route_conflict": "Un telefono, contatto o gruppo usa un indirizzo della segreteria (*97, *98, mailbox, mailbox.*, voicemail.* oppure *60 seguito da un interno). Rinomina quel percorso prima di abilitare la segreteria."
+      "voicemail_route_conflict": "Un telefono, contatto o gruppo usa un indirizzo della segreteria (*97, *98, mailbox, mailbox.*, voicemail.* oppure *60 seguito da un interno). Rinomina quel percorso prima di abilitare la segreteria.",
+      "voicemail_voice_unavailable": "Seleziona una voce supportata dal motore TTS e dalla lingua scelti."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",

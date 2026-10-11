@@ -113,6 +113,13 @@
         "data": {
           "language": "Idioma"
         }
+      },
+      "voicemail_voice": {
+        "title": "Voz do correio de voz",
+        "description": "Escolha a voz usada nos avisos do menu telefônico.",
+        "data": {
+          "voice": "Voz"
+        }
       }
     },
     "error": {
@@ -125,7 +132,8 @@
       "trunk_allowed_ips_invalid": "Insira pelo menos um IP ou uma rede CIDR válida. Redes /0 sem restrições não são permitidas.",
       "voicemail_tts_unavailable": "Selecione uma entidade TTS disponível.",
       "voicemail_language_unsupported": "Este idioma não é compatível com os avisos e o mecanismo TTS selecionado.",
-      "voicemail_route_conflict": "Um telefone, contato ou grupo usa um endereço de correio de voz (*97, *98, mailbox, mailbox.*, voicemail.* ou *60 seguido de um ramal). Renomeie esse destino antes de ativar o correio de voz."
+      "voicemail_route_conflict": "Um telefone, contato ou grupo usa um endereço de correio de voz (*97, *98, mailbox, mailbox.*, voicemail.* ou *60 seguido de um ramal). Renomeie esse destino antes de ativar o correio de voz.",
+      "voicemail_voice_unavailable": "Selecione uma voz compatível com o mecanismo TTS e o idioma escolhidos."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
