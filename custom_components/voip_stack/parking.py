@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import aclosing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from typing import ClassVar
 
@@ -206,7 +206,12 @@ async def park_local_browser_call(hass, session, endpoint_id, *, slot=""):
         media = LocalCallMedia(hass, invite=source.invite, local_rtp_port=reservation.ports[0],
             reservation=reservation, on_complete=complete)
         await media.start()
-        if bridge.get_call(session.call_id) != snapshot or not session.live:
+        current = bridge.get_call(session.call_id)
+        # Audio may keep arriving while the application socket is prepared.
+        # Queue counters are not a change of call or media ownership.
+        if current is None or not session.live or current != replace(
+            snapshot, caller_media=current.caller_media, callee_media=current.callee_media
+        ):
             raise ParkingError("The local call changed before parking")
     except BaseException:
         source.media.clear()
@@ -442,6 +447,9 @@ async def park_established_sip_call(hass, call_id, parker, *, slot="", referrer=
 async def route_parking_call(runtime, invite, decision, registry, source_endpoint):
     from .inbound_routing.local import _claim_source
 
+    if decision.entry.metadata["parking_mode"] == "directed_pickup":
+        from .call_pickup import prepare_sip_pickup
+        return await prepare_sip_pickup(runtime.hass, invite, decision.entry.metadata["parking_slot"], runtime.local_ip)
     if decision.entry.metadata["parking_mode"] == "pickup":
         return await prepare_parking_pickup(runtime.hass, invite, decision.entry.metadata["parking_slot"], runtime.local_ip)
     if busy := await _claim_source(hass=runtime.hass, registry=registry, invite=invite,

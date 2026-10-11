@@ -47,7 +47,7 @@ def _fixture():
             "m=audio 5000 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n"
         ),
     )
-    session = SimpleNamespace(generation=1, create_task=asyncio.create_task)
+    session = SimpleNamespace(generation=1, state="connecting", create_task=asyncio.create_task, cleanup_waits_for=lambda _task: False)
     registry = SimpleNamespace(
         register_bridge=MagicMock(return_value=session),
         resource_for=MagicMock(return_value=None),
@@ -142,7 +142,7 @@ async def test_commit_reuses_registered_session_without_second_watcher(monkeypat
     from custom_components.voip_stack.inbound_answer import AnswerCommitResult
 
     invite, winner, registry, relay = _fixture()
-    session = SimpleNamespace(generation=7, create_task=asyncio.create_task)
+    session = SimpleNamespace(generation=7, state="connecting", create_task=asyncio.create_task, cleanup_waits_for=lambda _task: False)
     registry.is_generation_current = MagicMock(return_value=True)
     registry.register_bridge.side_effect = AssertionError("duplicate bridge owner")
     monkeypatch.setattr(module, "build_invite_client_relay", lambda **_: relay)
@@ -572,3 +572,26 @@ async def test_repeated_cancellation_waits_for_relay_cleanup(owned_bridge, monke
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await h.session.terminate(module.TerminationIntent("test_done"))
+
+
+@pytest.mark.timeout(5, method='thread')
+async def test_external_termination_drains_owned_media_start_without_wait_cycle(owned_bridge, monkeypatch):
+    h=owned_bridge
+    entered=asyncio.Event()
+    original=h.module.async_start_sip_bridge_media
+    async def start(relay):
+        await original(relay)
+        entered.set()
+        await asyncio.Event().wait()
+    monkeypatch.setattr(h.module,'async_start_sip_bridge_media',start)
+    task=h.session.create_task(h.module.async_commit_outbound_bridge(
+        MagicMock(),h.registry,h.data,
+        h.module.BridgeCommitPolicy(route_kind='direct',caller='a',callee='b',connected_party='b'),
+        session=h.session),name='owned-media-start')
+    await asyncio.wait_for(entered.wait(),2)
+    barrier=h.registry.request_termination(h.session.call_id,h.module.TerminationIntent('remote_hangup'))
+    await asyncio.wait_for(asyncio.shield(barrier),2)
+    assert task.done() and task.cancelled()
+    assert not h.pool and h.releases==[(40000,40002)]
+    assert not h.registry.sessions
+    assert all(relay.left_transport is None and relay.right_transport is None for relay in h.relays)

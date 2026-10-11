@@ -53,6 +53,9 @@ def snapshot(runtime, endpoint_id, match=("", "", "")):
             continue
         source = endpoint_id == session.metadata.get("source_endpoint_id")
         leg = next((item for item in session.legs.values() if item.endpoint_id == endpoint_id), None)
+        if leg is None and any(resource.name.startswith("retired_destination:")
+                and resource.value.endpoint_id == endpoint_id for resource in session.resources):
+            continue
         wire_id = (leg.sip_call_id if leg is not None else
                    session.call_id if source else str(session.metadata.get("bridge_dest_call_id") or ""))
         client = calls.sip_client_for(wire_id)

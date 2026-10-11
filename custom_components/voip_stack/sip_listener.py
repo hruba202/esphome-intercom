@@ -172,6 +172,8 @@ class SipInviteResult:
     decline_reason: str = ""
     commit: Callable[[], Awaitable[None]] | None = None
     rollback: Callable[[], Awaitable[None]] | None = None
+    connected_identity_name: str = ""
+    connected_identity_user: str = ""
 
 
 DelayedOfferAnswer = Callable[[SipInvite], Awaitable[SipInviteResult]]
@@ -2869,6 +2871,8 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             return
 
         pending.to_tag = to_tag
+        pending.connected_identity_name = _identity_header(result.connected_identity_name)
+        pending.connected_identity_user = _identity_header(result.connected_identity_user)
         pending.status = int(result.status)
         pending.reason = str(result.reason)
         pending.answer_sdp = answer_sdp

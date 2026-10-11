@@ -739,7 +739,7 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         )
         bridge_path = self.inbound_bridge[
             generic_bridge : self.inbound_bridge.index(
-                'if result not in {"ringing", "in_call"}:', generic_bridge
+                'if result not in {"ringing", "in_call"}', generic_bridge
             )
         ]
         self.assertIn(
@@ -1492,7 +1492,7 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         self.assertNotIn("RtpPortReservation.allocate", no_dtmf_branch)
         self.assertIn("RtpPortReservation.allocate(hass)", dtmf_branch)
 
-        preprocess = on_invite[: on_invite.index("registry = _call_registry(hass)")]
+        preprocess = on_invite[: on_invite.index("local_client = registry.sip_client_for(invite.call_id)")]
         self.assertIn("trunk_direct_preprocessed = True", preprocess)
         self.assertLess(
             on_invite.index("trunk_direct_preprocessed = True"),

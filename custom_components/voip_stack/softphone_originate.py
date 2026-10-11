@@ -326,6 +326,11 @@ async def async_originate_browser_call(
         # available to normal controllers.
         await async_require_service_admin(hass, call)
     display_target = route.entry.display_name if route.entry is not None else target
+    if route.action is RouteAction.PARKING and route.entry.metadata.get("parking_mode") == "directed_pickup":
+        from .call_pickup import pickup_browser
+        await _async_prepare_ha_outbound_call(hass, endpoint_id)
+        await pickup_browser(call, browser_endpoint, route.entry.metadata["parking_slot"])
+        return
     if route.action is RouteAction.PARKING and route.entry.metadata.get("parking_mode") == "pickup":
         from .parking import pickup_browser_call
 

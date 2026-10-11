@@ -435,17 +435,7 @@ def build_local_client_relay(
     """
     if client.dialog is None:
         raise ValueError("cannot bridge SIP client without an established dialog")
-    local_peer = RtpPeer(
-        host=str(local_host),
-        port=0,
-        payload_type=local_to_relay_format.payload_type,
-        audio_format=local_to_relay_format.audio_format,
-        rtp_format=local_to_relay_format,
-        send_payload_type=relay_to_local_format.payload_type,
-        send_audio_format=relay_to_local_format.audio_format,
-        send_rtp_format=relay_to_local_format,
-        signaling_host=str(local_host),
-    )
+    local_peer = local_rtp_peer(local_host, local_to_relay_format, relay_to_local_format)
     return SipRtpRelay(
         left=local_peer,
         right=dialog_rtp_peer(client.dialog),
@@ -455,4 +445,19 @@ def build_local_client_relay(
         debug_capture=debug_capture,
         capture_name=capture_name,
         on_release=on_release,
+    )
+
+
+def local_rtp_peer(local_host, local_to_relay_format, relay_to_local_format):
+    """Describe the existing authenticated browser RTP adapter."""
+    return RtpPeer(
+        host=str(local_host),
+        port=0,
+        payload_type=local_to_relay_format.payload_type,
+        audio_format=local_to_relay_format.audio_format,
+        rtp_format=local_to_relay_format,
+        send_payload_type=relay_to_local_format.payload_type,
+        send_audio_format=relay_to_local_format.audio_format,
+        send_rtp_format=relay_to_local_format,
+        signaling_host=str(local_host),
     )

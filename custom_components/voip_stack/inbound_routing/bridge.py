@@ -471,7 +471,10 @@ async def route_sip_bridge(
             to_tag="",
             decline_reason=TerminalReason.CANCELLED.value,
         )
-    if result not in {"ringing", "in_call"}:
+    from ..phone_policy_runtime import dispatch_phone_failure, phone_failure_destination
+    if result not in {"ringing", "in_call"} and phone_failure_destination(
+        logical_target_endpoint, client.last_sip_status_code if client.last_sip_status_code >= 300 else sip_failure_response(result)[0]
+    ) is None:
         status_code, sip_reason, terminal_reason, public_state = sip_failure_response(
             result
         )
@@ -502,6 +505,9 @@ async def route_sip_bridge(
             status_code, sip_reason, terminal_reason, public_state = (
                 sip_failure_response(final)
             )
+            if dispatch_phone_failure(hass, registry.get_session(invite.call_id), logical_target_endpoint,
+                                      phone_failure_destination(logical_target_endpoint, client.last_sip_status_code if client.last_sip_status_code >= 300 else status_code)):
+                return
             await registry.close_leg(
                 invite.call_id,
                 client.dialog_ids.call_id,
@@ -623,7 +629,9 @@ async def route_sip_bridge(
             terminate_sip_bridge=runtime.terminate_sip_bridge,
         )
 
-    finish_task = hass.async_create_task(finish_bridge(result))
+    # Register the owner and original caller before an immediate final result
+    # can continue the dial plan or tear down the call.
+    finish_task = hass.async_create_task(finish_bridge(result), eager_start=False)
     session = registry.register_bridge(
         source_call_id=invite.call_id,
         dest_call_id=client.dialog_ids.call_id,
@@ -640,6 +648,7 @@ async def route_sip_bridge(
     )
     if session is None:
         return SipInviteResult(487, "Request Terminated", to_tag="")
+    session.artifacts.caller_invite = invite
     session.update_metadata(inbound_trunk_id=invite.trunk_id,
                             outbound_trunk_id=getattr(decision, "trunk_id", "") if bridge_to_trunk else "")
     session.legs[client.dialog_ids.call_id].trunk_id = getattr(decision, "trunk_id", "") if bridge_to_trunk else ""
@@ -666,4 +675,6 @@ async def route_sip_bridge(
                 sip_status_code=180,
                 last_sip_event="SIP_RESPONSE",
             )
-    return SipInviteResult(180, "Ringing", to_tag="", defer_final=True)
+    return SipInviteResult(180 if result in {"ringing", "in_call"} else 100,
+                           "Ringing" if result in {"ringing", "in_call"} else "Trying",
+                           to_tag="", defer_final=True)

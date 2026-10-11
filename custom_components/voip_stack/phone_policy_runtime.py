@@ -8,6 +8,7 @@ from homeassistant.core import callback
 
 from .automation_routing import automation_event_type, matches_call
 from .call_deadlines import CallDeadline
+from .call_scope import has_ringing_destination
 from .endpoint_session import TerminationIntent
 from .inbound_routing.automation import SIP_ROUTE_DECISION_TIMEOUT
 from .phone_policy import DestinationKind
@@ -18,7 +19,6 @@ from .websocket_api import CALL_EVENT
 _LOGGER = logging.getLogger(__name__)
 _TIMER = "deadline:phone_policy"
 _DECISION = "deadline:phone_policy_decision"
-_RINGING = {"ringing", "remote_ringing"}
 
 
 def setup_phone_policy_events(hass, entry) -> None:
@@ -41,7 +41,7 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
         return
     if payload.get("scope") == "phone_policy":
         return
-    if session.state not in _RINGING or automation_event_type(payload) == "forwarding":
+    if not has_ringing_destination(session) or automation_event_type(payload) == "forwarding":
         for name in (_TIMER, _DECISION):
             deadline = registry.resource_for(session.call_id, name)
             if deadline is not None:
@@ -73,7 +73,13 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
     def current():
         candidate = registry.get_session(token.call_id, generation=token.generation)
         if (candidate is not session or not session.live or session.owner != owner
-                or session.state not in _RINGING or session.callee != callee):
+                or not has_ringing_destination(session, endpoint.endpoint_id) or session.callee != callee):
+            return False
+        destination_id = registry.bridge_link_for(token.call_id)
+        client = registry.sip_client_for(destination_id) if destination_id else None
+        if client is not None and client.dialog is not None:
+            # A final SIP answer wins even while the bridge prepares media.
+            # Provisional SDP lives in early_dialogs, not this confirmed dialog.
             return False
         return True
 
@@ -135,3 +141,52 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
 
     deadline = CallDeadline(registry, session, f"{_TIMER}:{session.call_id}", expired)
     deadline.arm(hass.loop, policy.ringing_timeout)
+
+
+def phone_failure_destination(endpoint, status):
+    """Select a phone default from a final SIP result, not from media errors."""
+    if endpoint is None:
+        return None
+    if status == 486:
+        return endpoint.policy.busy
+    if status in {408, 480, 502, 503, 504}:
+        return endpoint.policy.unavailable
+    return None
+
+
+def dispatch_phone_failure(hass, session, endpoint, destination):
+    """Continue the retained caller after one failed destination leg.
+
+    The SIP watcher returns before the shared forwarder retires that watcher.
+    The new work remains a task of the same session and generation.
+    """
+    if (destination is None or destination.kind is DestinationKind.HANGUP
+            or session is None or not session.live or session.state == 'in_call'
+            or session.route_kind in {'group', 'ring', 'ring_group', 'conference'}):
+        return False
+    key = (endpoint.endpoint_id, destination.kind.value, destination.target)
+    attempted = tuple(session.metadata.get('phone_failure_routes', ()))
+    if key in attempted or len(attempted) >= 8:
+        return False
+    session.metadata['phone_failure_routes'] = (*attempted, key)
+    registry = runtime_data(hass).sip
+    token, owner, state = session.token, session.owner, session.state
+    async def forward():
+        if not registry.is_generation_current(token.call_id, token.generation) or session.owner != owner or session.state != state:
+            return
+        target_endpoint = runtime_data(hass).endpoints.get(destination.target)
+        target = target_endpoint.name if target_endpoint is not None else destination.target
+        if destination.kind is DestinationKind.VOICEMAIL:
+            target = f'voicemail.{destination.target}'
+        try:
+            context = registry.event_context(token.call_id)
+            await registry.forward_call(call_id=token.call_id, destination=target,
+                                        expected_state=context.state if context else '',
+                                        expected_sequence=context.sequence if context else 0,
+                                        on_failure='terminate')
+        except Exception:
+            _LOGGER.exception('Phone failure route failed call_id=%s', token.call_id)
+            if session.live and session.owner == owner and session.state == state:
+                registry.request_termination(token.call_id, TerminationIntent('route_failed'), generation=token.generation)
+    session.create_task(forward(), name='phone-failure-route')
+    return True

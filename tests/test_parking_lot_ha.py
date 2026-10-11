@@ -586,8 +586,14 @@ async def test_local_browser_parking_keeps_other_phone_for_sip_pickup(registered
     assert not get_parking_lot(runtime.hass).calls
     assert not runtime.runtime.rtp_port_pool['used']
     assert runtime.calls.resource_for(call.call_id, 'softphone_media')['local_bridge']
-    response = await runtime.hass.services.async_call('voip_stack', 'park',
-        {'device_id': 'device-' + parker}, blocking=True, return_response=True)
+    lease = bridge.acquire_media(call.call_id, parker, 'owner-a' if parker == 'local-a' else 'owner-b')
+    async def start_while_audio_arrives(media):
+        await original_start(media)
+        bridge.send_audio(call.call_id, parker, lease.token, struct.pack('<480h', *([6000] * 480)))
+    with monkeypatch.context() as live_audio:
+        live_audio.setattr(LocalCallMedia, 'start', start_while_audio_arrives)
+        response = await runtime.hass.services.async_call('voip_stack', 'park',
+            {'device_id': 'device-' + parker}, blocking=True, return_response=True)
     with pytest.raises(ServiceValidationError, match="does not own"):
         await runtime.hass.services.async_call('voip_stack', 'park',
             {'device_id': 'device-' + parker, 'call_id': call.call_id}, blocking=True)

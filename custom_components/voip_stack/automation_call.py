@@ -300,8 +300,12 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
     local_ip = await async_advertise_host(call.hass)
     session = registry.get_session(call_id, generation=execution.token.generation)
     invite = registry.artifact_for(call_id, "pending_invite")
+    from .pending_sip_destination import PendingSipDestination
+    native_destination = PendingSipDestination.capture(call.hass, registry, session)
+    if native_destination is not None:
+        invite = native_destination.invite
     if (not local_ip or session is None or not session.live
-            or session.owner not in {"ha_softphone", "local_bridge"}
+            or session.owner not in {"ha_softphone", "local_bridge", "bridge"}
             or session.state not in {CallState.RINGING.value, CallState.REMOTE_RINGING.value}):
         raise ServiceValidationError("The triggering call is no longer an unanswered Home Assistant phone call")
     local_source = None
@@ -316,7 +320,7 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
                 require_runtime_data(call.hass).transport_config.get("sip_port", 5060)
             ))
             invite = local_source.invite
-    elif invite is None and session.state == CallState.REMOTE_RINGING.value:
+    elif invite is None and session.owner == "ha_softphone" and session.state == CallState.REMOTE_RINGING.value:
         from .local_softphone_runtime import PendingLocalSource
         from .runtime_data import require_runtime_data
 
@@ -338,6 +342,8 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
         raise ServiceValidationError("The call changed while automation control was being acquired")
     registry.set_pending_invite(call_id, invite)
     try:
+        if native_destination is not None:
+            await native_destination.retire()
         if local_source is not None:
             await local_source.retire_destination()
         application = attach_automation_application(
@@ -345,13 +351,10 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
             local_source=local_source,
         )
     except BaseException:
-        barrier = registry.request_termination(call_id, TerminationIntent("application_takeover_failed"),
-                                               generation=execution.token.generation)
-        if barrier is not None:
-            from .session_cleanup import async_wait_for_cleanup
-            await async_wait_for_cleanup(barrier)
+        if registry.get_session(call_id, generation=execution.token.generation) is session:
+            await registry.terminate_call_wait(call_id, intent=TerminationIntent("application_takeover_failed"))
         raise
-    if endpoint_id and local_source is None:
+    if endpoint_id and local_source is None and native_destination is None:
         if not _release_ha_softphone_claim(call.hass, call_id, endpoint_id=endpoint_id):
             registry.release_endpoint_claim(call_id, endpoint_id)
     # The same execution may now speak, wait for DTMF and hand off the call.

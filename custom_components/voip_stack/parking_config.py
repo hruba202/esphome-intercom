@@ -22,7 +22,8 @@ def normalize_parking_config(value):
     if (not _ADDRESS.fullmatch(access) or not slots or len(slots) > 100
             or any(not _ADDRESS.fullmatch(slot) for slot in slots)
             or len({slot.casefold() for slot in slots}) != len(slots)
-            or {access.casefold(), "park"} & {slot.casefold() for slot in slots}):
+            or {access.casefold(), "park"} & {slot.casefold() for slot in slots}
+            or any(value.casefold().startswith("*8") for value in (access, *slots))):
         raise ValueError("Choose a parking access code and up to 100 distinct slots")
     result = {"enabled": True, "access": access, "slots": list(slots)}
     for name, default in (("timeout", 180), ("return_timeout", 30)):
@@ -50,7 +51,11 @@ def parse_parking_address(settings, target):
     for prefix, mode in (("park.", "deposit"), ("pickup.", "pickup")):
         if raw.startswith(prefix):
             slot = slots.get(raw[len(prefix):])
-            return (mode, slot) if slot else None
+            if slot:
+                return mode, slot
+            return ("directed_pickup", str(target).strip()[len(prefix):]) if mode == "pickup" else None
+    if raw.startswith("*8"):
+        return "directed_pickup", str(target).strip()[2:]
     return ("pickup", slots[raw]) if raw in slots else None
 
 

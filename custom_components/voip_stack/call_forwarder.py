@@ -154,6 +154,9 @@ async def async_forward_existing_call(
         )
 
     registry = _call_registry(hass)
+    pickup = registry.resource_for(call_id, "pickup")
+    if pickup is not None and pickup.claimed:
+        raise _service_error("This call is being picked up", "call_forwarding", call_id=call_id)
     expected_state = str(expected_state or "").strip().lower()
 
     def _validate_snapshot():
@@ -212,8 +215,14 @@ async def async_forward_existing_call(
         )) and call_external_call_denied(access_runtime, call_id):
             raise _service_error("External calls are disabled for this phone", "external_calls_disabled")
 
+    from .pending_sip_destination import PendingSipDestination
+    native_destination = PendingSipDestination.capture(hass, registry, registry.get_session(call_id))
     local_source = registry.resource_for(call_id, "browser_source")
     invite = registry.artifact_for(call_id, "pending_invite")
+    if invite is None and native_destination is not None:
+        invite = native_destination.invite
+        registry.set_pending_invite(call_id, invite)
+    native_caller = invite is not None and registry.artifact_for(call_id, "caller_invite") is invite
     if invite is None:
         from .local_softphone_runtime import local_softphone_bridge
 
@@ -265,7 +274,7 @@ async def async_forward_existing_call(
                 registry.own_resource(call_id, f"browser_source:{call_id}", local_source, None)
                 invite = local_source.invite
                 registry.set_pending_invite(call_id, invite)
-        if invite is None and context is not None and context.state == CallState.REMOTE_RINGING.value:
+        if invite is None and context is not None and context.state in {CallState.CALLING.value, CallState.CONNECTING.value, CallState.REMOTE_RINGING.value}:
             current = registry.get_session(call_id)
             if current is not None and current.owner == "ha_softphone" and current.metadata.get("source_endpoint_id"):
                 from .local_softphone_runtime import PendingLocalSource
@@ -303,9 +312,16 @@ async def async_forward_existing_call(
     current_forward = artifacts.task_for(call_id, "forward")
     if current_forward is not None and not current_forward.done():
         current_context = registry.event_context(call_id)
+        current_session = registry.get_session(call_id)
+        destination_id = registry.bridge_link_for(call_id)
+        destination_leg = current_session.legs.get(destination_id) if current_session else None
+        destination_client = registry.sip_client_for(destination_id) if destination_id else None
+        ringing_leg = bool(destination_leg is not None
+            and destination_leg.state == CallState.REMOTE_RINGING.value
+            and destination_client is not None and destination_client.dialog is None)
         if (
             current_context is None
-            or current_context.state != CallState.REMOTE_RINGING.value
+            or (current_context.state != CallState.REMOTE_RINGING.value and not ringing_leg)
         ):
             raise _service_error(
                 f"call_id {call_id} is already being forwarded",
@@ -390,7 +406,7 @@ async def async_forward_existing_call(
             )
         session = registry.sessions.get(registry.resolve_session_id(call_id))
         application = registry.resource_for(call_id, "parking") or registry.resource_for(call_id, "automation")
-        session_endpoint = browser_phone(
+        session_endpoint = None if native_caller and local_source is None else browser_phone(
             hass,
             (local_source.call.caller_endpoint_id if local_source.outgoing or local_source.committed else local_source.call.callee_endpoint_id)
             if local_source is not None else str(
@@ -398,9 +414,12 @@ async def async_forward_existing_call(
                 or ""
             ),
         )
+        if session_endpoint is None and native_caller and session is not None:
+            session_endpoint = endpoint_directory(hass).get(str(session.metadata.get("dest_endpoint_id")
+                or session.metadata.get("target_endpoint_id") or "")) or endpoint_directory(hass).resolve(session.callee)
         if session_endpoint is None and initial_selection:
             session_endpoint = preferred_browser_phone(hass)
-        if session_endpoint is None and application is None:
+        if session_endpoint is None and application is None and not native_caller:
             raise _service_error(
                 f"call_id {call_id} has no Home Assistant phone owner",
                 "call_phone_owner_missing",
@@ -432,6 +451,8 @@ async def async_forward_existing_call(
                 session is not None and session.metadata.get("automation_resume_ha")
             )
         )
+        if native_destination is not None:
+            native_destination.validate()
         if session is not None:
             if (local_source is not None and local_source.outgoing and not local_source.retired
                     and local_source.previous_client.dialog is not None):
@@ -466,10 +487,12 @@ async def async_forward_existing_call(
                     )
         else:
             route_already_claimed = False
+        if native_destination is not None:
+            await native_destination.retire()
         if local_source is not None:
             await local_source.retire_destination()
             local_source.pause()
-        elif application is None:
+        elif application is None and not native_caller:
             _release_ha_softphone_claim(
                 hass,
                 call_id,
@@ -492,6 +515,11 @@ async def async_forward_existing_call(
         call_artifacts.forward_claim = False
         if local_source is not None:
             local_source.resume()
+        if native_destination is not None and native_destination.retired and session.live:
+            if on_failure == "resume":
+                native_destination.resume()
+            else:
+                await registry.terminate_call_wait(call_id, reason="forward_cancelled")
         raise
 
     forward_abort = RouteAbortContext(
@@ -516,6 +544,9 @@ async def async_forward_existing_call(
         if (application is not None or ha_claimed)
         else None,
     )
+    if native_destination is not None:
+        forward_abort.resume_owner = "router"
+        forward_abort.publish_resume = native_destination.resume
     if local_source is not None:
         forward_abort.publish_resume = lambda: local_source.resume(
             redial=local_source.outgoing, destination=original_callee, trunk_id=original_trunk_id,
@@ -553,6 +584,7 @@ async def async_forward_existing_call(
         reservation_from_preanswer = False
         video_relay = None
         dest_call_id = ""
+        direct_endpoint_id = ""
 
         async def retire_application(*, pending_browser=False):
             if application is None:
@@ -568,12 +600,17 @@ async def async_forward_existing_call(
             nonlocal video_relay
             attached_client = False
             if dest_call_id:
-                registry.forget_bridge_link(call_id)
+                if registry.bridge_link_for(call_id) == dest_call_id:
+                    registry.forget_bridge_link(call_id)
                 attached_client = await registry.close_leg(
                     call_id,
                     dest_call_id,
                     reason=reason,
                 )
+            if direct_endpoint_id and session is not None and session.live:
+                registry.release_endpoint_claim(call_id, direct_endpoint_id)
+                if session.metadata.get("dest_endpoint_id") == direct_endpoint_id:
+                    session.update_metadata(dest_endpoint_id="", target_endpoint_id="")
             if reservation is not None and not reservation_from_preanswer:
                 reservation.release()
             if video_relay is not None:
@@ -1223,6 +1260,23 @@ async def async_forward_existing_call(
                 )
             bridge_uri = direct_winner.uri
             client = direct_winner.client
+            dest_call_id = client.dialog_ids.call_id
+            candidate_endpoint_id = direct_winner.endpoint_id or target_route_endpoint_id
+            if candidate_endpoint_id and session is not None:
+                if candidate_endpoint_id == source_route_endpoint_id:
+                    raise RuntimeError("A caller cannot be forwarded to its own phone")
+                if any(resource.name.startswith("retired_destination:")
+                       and resource.value.endpoint_id == candidate_endpoint_id for resource in session.resources):
+                    raise RuntimeError("The selected phone is still ending its previous call")
+                registry.claim_endpoint(call_id, candidate_endpoint_id, role="destination")
+                direct_endpoint_id = candidate_endpoint_id
+                session.update_metadata(dest_endpoint_id=direct_endpoint_id, target_endpoint_id=direct_endpoint_id)
+            registry.add_leg(call_id, dest_call_id, role="callee", state=CallState.CALLING.value)
+            registry.attach_sip_client(call_id, dest_call_id, client, role="callee", state=CallState.CALLING.value,
+                                      trunk_id=selected_trunk_id if bridge_to_trunk else "")
+            if direct_endpoint_id:
+                registry.observe_leg(call_id, dest_call_id, role="callee", endpoint_id=direct_endpoint_id,
+                                     generation=session.generation)
             if session is not None and bridge_to_trunk:
                 session.update_metadata(outbound_trunk_id=selected_trunk_id)
             video_relay = direct_winner.video_relay
@@ -1247,6 +1301,8 @@ async def async_forward_existing_call(
 
             response_already_sent = _source_dialog_is_answered(preanswered)
             if result == "ringing":
+                registry.observe_leg(call_id, dest_call_id, role="callee",
+                    state=CallState.REMOTE_RINGING.value, generation=session.generation)
                 ringing_session = registry.transition(
                     call_id,
                     state=CallState.REMOTE_RINGING.value,
@@ -1310,7 +1366,8 @@ async def async_forward_existing_call(
                     response_already_sent=response_already_sent,
                     local_source=local_source is not None,
                     endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
-                    source_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
+                    source_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else source_route_endpoint_id,
+                    dest_endpoint_id=direct_endpoint_id,
                     media_client_id=local_source.call.caller_media_owner_id if local_source is not None else "",
                     expected_generation=session.generation if session is not None else None,
                 ),

@@ -18,7 +18,7 @@ from .endpoint_session import (
 )
 from .automation_routing import CALL_EVENT_SCHEMA_VERSION
 from .media_reservation import release_media_reservation
-from .session_cleanup import async_cleanup_sip_runtime
+from .session_cleanup import async_cleanup_sip_runtime, async_wait_for_cleanup
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1039,7 +1039,7 @@ class CallRuntimeApi:
                 # task waits for the barrier. The authoritative cleanup is
                 # already running and remains the sole resource owner.
                 return removed
-            await barrier
+            await async_wait_for_cleanup(barrier)
         return removed
 
     def register_bridge(

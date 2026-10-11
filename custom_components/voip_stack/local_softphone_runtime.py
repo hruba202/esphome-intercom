@@ -441,7 +441,7 @@ class PendingLocalSource:
             raise RuntimeError("local call is no longer ringing")
         if self.outgoing:
             self.previous_client = self.registry.sip_client_for(call_id)
-            if (session.owner != "ha_softphone" or session.state != "remote_ringing"
+            if (session.owner != "ha_softphone" or session.state not in {"calling", "connecting", "remote_ringing"}
                     or self.previous_client is None or self.previous_client.dialog is not None):
                 raise RuntimeError("outgoing browser call is no longer ringing")
             self.call = BrowserSourceIdentity(

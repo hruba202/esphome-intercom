@@ -249,6 +249,7 @@ def _load_outbound_lifecycle(
     fsm = types.ModuleType(f"{PKG_NAME}.fsm")
     fsm.CallState = CallState
     fsm.TerminalReason = TerminalReason
+    fsm.sip_failure_response = lambda state: (480, "Temporarily Unavailable", state, state)
     fsm.sip_public_state = lambda state: state
     fsm.sip_terminal_reason = lambda state, public: (
         "remote_hangup" if state == "remote_hangup" else public
@@ -259,6 +260,10 @@ def _load_outbound_lifecycle(
     session_cleanup.async_cleanup_sip_runtime = cleanup
     runtime_data = types.ModuleType(f"{PKG_NAME}.runtime_data")
     runtime_data.call_runtime_artifacts = lambda hass: hass.artifacts
+    runtime_data.endpoint_directory = lambda _hass: types.SimpleNamespace(get=lambda _identity: None)
+    phone_policy_runtime = types.ModuleType(f"{PKG_NAME}.phone_policy_runtime")
+    phone_policy_runtime.phone_failure_destination = lambda _endpoint, _status: None
+    phone_policy_runtime.dispatch_phone_failure = lambda *_args: False
     websocket_api = types.ModuleType(f"{PKG_NAME}.websocket_api")
     websocket_api._ha_softphone_store = lambda _hass, endpoint_id: stores.setdefault(
         endpoint_id, {}
@@ -303,6 +308,7 @@ def _load_outbound_lifecycle(
         phone_endpoint.__name__: phone_endpoint,
         session_cleanup.__name__: session_cleanup,
         runtime_data.__name__: runtime_data,
+        phone_policy_runtime.__name__: phone_policy_runtime,
         websocket_api.__name__: websocket_api,
     }
     with patch.dict(sys.modules, dependencies):

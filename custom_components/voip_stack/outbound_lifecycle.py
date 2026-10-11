@@ -21,9 +21,11 @@ from .fsm import (
     CallState,
     TerminalReason,
     sip_public_state,
+    sip_failure_response,
     sip_terminal_reason,
 )
-from .runtime_data import call_runtime_artifacts
+from .runtime_data import call_runtime_artifacts, endpoint_directory
+from .phone_policy_runtime import dispatch_phone_failure, phone_failure_destination
 from .websocket_api import _ha_softphone_store
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,7 +125,15 @@ async def async_track_outbound_sip_client(
         endpoint_id=endpoint_id,
     )
     local_name = local_name or _ha_peer_name(hass)
+    session = registry.get_session(client.dialog_ids.call_id)
+    target_endpoint = endpoint_directory(hass).get(str(session.metadata.get("target_endpoint_id") or "")) if session else None
+    def dispatch_failure(final):
+        status = client.last_sip_status_code if client.last_sip_status_code >= 300 else sip_failure_response(final)[0]
+        return dispatch_phone_failure(hass, registry.get_session(client.dialog_ids.call_id), target_endpoint,
+                                      phone_failure_destination(target_endpoint, status))
     if result not in {"ringing", "in_call"}:
+        if dispatch_failure(result):
+            return
         public_result = sip_public_state(result)
         await terminator.terminate(
             client.dialog_ids.call_id,
@@ -255,6 +265,8 @@ async def async_track_outbound_sip_client(
             CallState.RINGING.value,
             CallState.IN_CALL.value,
         }:
+            if dispatch_failure(final):
+                return
             terminal_reason = sip_terminal_reason(final, public_final)
             await terminator.terminate(
                 client.dialog_ids.call_id,

@@ -249,6 +249,7 @@ class CallArtifacts:
     """Transient coordination state owned by one call generation."""
 
     pending_invite: Any | None = None
+    caller_invite: Any | None = None
     pending_route: dict[str, Any] | None = None
     video_parameter_sets: tuple[bytes, ...] | None = None
     forward_claim: bool = False
@@ -275,6 +276,7 @@ class CallArtifacts:
                         }
                     )
         self.pending_invite = None
+        self.caller_invite = None
         self.pending_route = None
         self.video_parameter_sets = None
         self.forward_claim = False

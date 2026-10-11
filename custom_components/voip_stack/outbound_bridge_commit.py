@@ -198,6 +198,9 @@ async def async_commit_outbound_bridge(
             if final != CallState.IN_CALL.value or client.dialog is None:
                 raise RuntimeError(final)
 
+        if client.dialog is not None and session.state in {CallState.RINGING.value, CallState.REMOTE_RINGING.value}:
+            registry.transition(invite.call_id, state=CallState.CONNECTING.value,
+                                expected_generation=generation)
         video_answer = None
         if winner.video_relay is not None and client.dialog is not None:
             video_answer = configure_answered_invite_video_relay(
@@ -396,6 +399,10 @@ async def async_commit_outbound_bridge(
         barrier = registry.request_termination(
             invite.call_id, TerminationIntent(failure_reason), generation=generation,
         )
+        if session.cleanup_waits_for(asyncio.current_task()):
+            # External termination is already draining this owned startup task.
+            # Release only unadopted resources here; the parent closes its media.
+            barrier = None
         cleanup = asyncio.create_task(
             _cleanup_failure(barrier), name=f"voip-bridge-rollback-{dest_call_id}",
         )

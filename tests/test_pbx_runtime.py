@@ -650,3 +650,32 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(completed.is_set())
         self.assertFalse(watcher.cancelled())
+
+    async def test_waited_termination_preserves_cancellation_until_resources_close(self) -> None:
+        registry, runtime = _registry_runtime()
+        runtime.activate()
+        session = registry.upsert('cancel-wait', state='in_call', owner='bridge')
+        entered, release = asyncio.Event(), asyncio.Event()
+        closed = []
+        async def close(reason):
+            entered.set()
+            await release.wait()
+            closed.append(reason)
+        session.add_resource('recording', object(), close)
+        waiter = asyncio.create_task(registry.terminate_call_wait(session.call_id, reason='remote_hangup'))
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            waiter.cancel()
+            await asyncio.sleep(0)
+            waiter.cancel()
+            await asyncio.sleep(0)
+            self.assertFalse(waiter.done())
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(waiter, 1)
+            self.assertEqual(closed, ['remote_hangup'])
+            self.assertFalse(registry.sessions)
+            self.assertFalse(session._termination_task.result().errors)
+        finally:
+            release.set()
+            await asyncio.gather(waiter, return_exceptions=True)

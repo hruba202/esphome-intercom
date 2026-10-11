@@ -424,7 +424,33 @@ async def _handle_sip_forward_service(call: ServiceCall) -> None:
         await _handle_select_inbound_destination_service(call)
         return
     if not await async_forward_automation_call(call):
-        await _forward_browser_call(call)
+        from .call_scope import call_belongs_to_endpoint
+        runtime = _runtime_data(call.hass)
+        phone = await runtime.phones.resolve_source(call) if call.data.get("device_id") else None
+        if phone is not None and not phone.kind.is_softphone:
+            endpoint = runtime.endpoints.get(phone.endpoint_id)
+            call_id = str(call.data.get("call_id") or (endpoint.active_call_id if endpoint else "") or "")
+            registry = _call_registry(call.hass)
+            if not call_belongs_to_endpoint(registry, call_id, phone.endpoint_id):
+                raise ServiceValidationError("The selected phone does not own this call")
+        elif phone is None and current_execution.get() is not None:
+            from .authorization import async_require_service_admin
+            await async_require_service_admin(call.hass, call)
+            call_id = str(call.data.get("call_id") or "")
+            registry = _call_registry(call.hass)
+        else:
+            await _forward_browser_call(call)
+            return
+        expected = call.data.get("expected_generation")
+        if expected is not None and not registry.is_generation_current(call_id, expected):
+            raise ServiceValidationError("The selected call generation is no longer current")
+        if registry.forward_call is None:
+            raise ServiceValidationError("Call forwarding is unavailable")
+        await registry.forward_call(call_id=call_id, destination=call.data["destination"],
+            on_failure=call.data.get("on_failure", "resume"),
+            trunk_id=str(call.data.get("trunk_id") or ""),
+            expected_state=call.data.get("expected_state", ""),
+            expected_sequence=int(call.data.get("expected_sequence") or 0))
 
 
 async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:

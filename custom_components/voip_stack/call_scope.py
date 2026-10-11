@@ -9,6 +9,17 @@ from homeassistant.core import HomeAssistant
 from .endpoint_lifecycle import call_registry
 
 
+def has_ringing_destination(session, endpoint_id: str = "") -> bool:
+    """A retained answered caller can have a different leg still ringing."""
+    if session.state in {"ringing", "remote_ringing"}:
+        return True
+    return session.owner == "router" and any(
+        leg.role == "callee" and leg.state in {"ringing", "remote_ringing"}
+        and (not endpoint_id or leg.endpoint_id == endpoint_id)
+        for leg in session.legs.values()
+    )
+
+
 def pending_routes(hass: HomeAssistant) -> dict:
     """Return a detached read projection of pending routes."""
     return dict(call_registry(hass).artifact_items("pending_route"))

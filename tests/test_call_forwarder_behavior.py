@@ -50,6 +50,8 @@ def _registry(
         ),
         event_context=Mock(return_value=context),
         resource_for=lambda *_args: None,
+        get_session=lambda _identity: None,
+        bridge_link_for=lambda _identity: "",
         component=lambda _name: None,
     )
 
@@ -176,7 +178,7 @@ async def test_forbidden_external_forward_preserves_current_call(monkeypatch, di
 
     invite = object()
     registry = _registry(invite=invite)
-    registry.get_session = lambda _: SimpleNamespace(metadata={"source_endpoint_id": "sip:restricted"})
+    registry.get_session = lambda _: SimpleNamespace(metadata={"source_endpoint_id": "sip:restricted"}, live=True, owner="ha_softphone", state="ringing")
     runtime = _runtime()
     runtime.config["external_call_blocked_endpoints"] = ["sip:restricted"]
     runtime.route_resolver.route.return_value = RouteDecision(
