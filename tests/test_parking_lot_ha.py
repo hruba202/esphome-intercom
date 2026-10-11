@@ -542,3 +542,138 @@ async def test_failed_pickup_handoff_keeps_original_call_and_allows_retry(regist
     await asyncio.to_thread(second.hangup)
     await wait_for(lambda:not runtime.calls.sessions)
     assert not runtime.runtime.rtp_port_pool['used']
+
+
+@pytest.mark.parametrize('trunks', [True], indirect=True)
+@pytest.mark.parametrize('parker', ['local-a', 'local-b'])
+@pytest.mark.parametrize('pickup_kind', ['sip', 'browser', 'return-browser'])
+async def test_local_browser_parking_keeps_other_phone_for_sip_pickup(registered_phones, trunks, parker, pickup_kind, monkeypatch):
+    import struct
+    from aiohttp import WSMsgType
+    from custom_components.voip_stack import audio_ws, audio_ws_view
+    from custom_components.voip_stack.local_softphone_runtime import (
+        async_setup_local_softphone_bridge, async_shutdown_local_softphone_bridge,
+        start_local_softphone_call,
+    )
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
+    from custom_components.voip_stack.parking import get_parking_lot
+    from custom_components.voip_stack.store import config_entry
+
+    runtime = trunks
+    entry = config_entry(runtime.hass)
+    runtime.hass.config_entries.async_update_entry(entry, data={**entry.data, 'parking': {'enabled': True}})
+    for name in ('local-a', 'local-b', 'local-c'):
+        runtime.runtime.endpoints.register(PhoneEndpoint(endpoint_id=name, name=name,
+            device_id='device-' + name, kind=EndpointKind.BROWSER,
+            availability='available', capabilities=frozenset({'audio', 'dtmf'})))
+    bridge = async_setup_local_softphone_bridge(runtime.hass)
+    call = start_local_softphone_call(runtime.hass, 'local-a', 'local-b', caller_owner_id='owner-a')
+    bridge.answer(call.call_id, 'local-b', 'owner-b')
+    retained = 'local-b' if parker == 'local-a' else 'local-a'
+    picker = parker if pickup_kind == 'return-browser' else 'local-c'
+    from custom_components.voip_stack.local_call_media import LocalCallMedia
+    from homeassistant.exceptions import ServiceValidationError
+    original_start = LocalCallMedia.start
+    async def fail_after_bind(media):
+        await original_start(media)
+        raise OSError("injected application startup failure")
+    with monkeypatch.context() as fault:
+        fault.setattr(LocalCallMedia, 'start', fail_after_bind)
+        with pytest.raises(OSError, match="injected"):
+            await runtime.hass.services.async_call('voip_stack', 'park',
+                {'device_id': 'device-' + parker}, blocking=True)
+    assert bridge.get_call(call.call_id).callee_state.value == 'in_call'
+    assert not get_parking_lot(runtime.hass).calls
+    assert not runtime.runtime.rtp_port_pool['used']
+    assert runtime.calls.resource_for(call.call_id, 'softphone_media')['local_bridge']
+    response = await runtime.hass.services.async_call('voip_stack', 'park',
+        {'device_id': 'device-' + parker}, blocking=True, return_response=True)
+    with pytest.raises(ServiceValidationError, match="does not own"):
+        await runtime.hass.services.async_call('voip_stack', 'park',
+            {'device_id': 'device-' + parker, 'call_id': call.call_id}, blocking=True)
+    assert response['call_id'] == call.call_id
+    assert bridge.get_call(call.call_id) is None
+    assert not runtime.runtime.endpoints.get(parker).active_call_id
+    assert runtime.runtime.endpoints.get(retained).active_call_id == call.call_id
+    media = audio_ws_view._active_softphone_media_session(runtime.hass, retained)
+    assert media is not None
+
+    class Browser:
+        def __init__(self):
+            self.messages = asyncio.Queue()
+            self.audio = asyncio.Queue()
+            self.ready = asyncio.Event()
+        def force_close(self):
+            pass
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            return await self.messages.get()
+        async def send_json(self, value):
+            self.ready.set()
+        async def send_bytes(self, value):
+            await self.audio.put(value)
+
+    browser = Browser()
+    worker = asyncio.create_task(audio_ws_view._run_audio_session(runtime.hass, browser, media, endpoint_id=retained))
+    async def wait_for(predicate):
+        async with asyncio.timeout(3):
+            while not predicate():
+                await asyncio.sleep(0.01)
+    try:
+        await asyncio.wait_for(browser.ready.wait(), 2)
+        if pickup_kind != 'sip':
+            from unittest.mock import AsyncMock
+            from custom_components.voip_stack import softphone_originate
+            from custom_components.voip_stack.roster import RosterEntry, dump_roster_json
+            runtime.roster.append(RosterEntry(picker, metadata={'local_ha': True, 'endpoint_id': picker}))
+            runtime.hass.states.async_set('sensor.voip_phonebook', 'ready', {'roster_json': dump_roster_json(runtime.roster)})
+            monkeypatch.setattr(softphone_originate, '_ha_advertise_host', AsyncMock(return_value='127.0.0.1'))
+            monkeypatch.setattr(softphone_originate, '_resolve_target_device', AsyncMock(return_value=None))
+            await runtime.hass.services.async_call('voip_stack', 'call',
+                {'device_id': 'device-' + picker, 'destination': '701', 'media_client_id': 'owner-c'}, blocking=True)
+            resumed = bridge.get_call(call.call_id)
+            assert resumed is not None and resumed.caller_endpoint_id == retained
+            await asyncio.wait_for(worker, 2)
+            assert not runtime.runtime.rtp_port_pool['used']
+            source_lease = bridge.acquire_media(call.call_id, retained, 'owner-b' if retained == 'local-b' else 'owner-a')
+            target_lease = bridge.acquire_media(call.call_id, picker, 'owner-c')
+            left_pcm = struct.pack('<480h', *([7000] * 480))
+            right_pcm = struct.pack('<480h', *([9000] * 480))
+            bridge.send_audio(call.call_id, retained, source_lease.token, left_pcm)
+            bridge.send_audio(call.call_id, picker, target_lease.token, right_pcm)
+            assert bridge.receive_audio_nowait(call.call_id, picker, target_lease.token) == left_pcm
+            assert bridge.receive_audio_nowait(call.call_id, retained, source_lease.token) == right_pcm
+            # The restored ordinary browser call can be parked in the opposite direction.
+            await runtime.hass.services.async_call('voip_stack', 'park',
+                {'device_id': 'device-' + retained}, blocking=True)
+            assert get_parking_lot(runtime.hass).calls['701'].session.call_id == call.call_id
+            assert runtime.calls.get_session(call.call_id).metadata['source_endpoint_id'] == picker
+            await runtime.hass.services.async_call('voip_stack', 'hangup',
+                {'device_id': 'device-' + picker}, blocking=True)
+            await wait_for(lambda: not runtime.calls.sessions)
+            assert not runtime.runtime.rtp_port_pool['used']
+            return
+        else:
+            await asyncio.to_thread(registered_phones[2].dial, '701')
+        await wait_for(lambda: not get_parking_lot(runtime.hass).calls)
+        frame = struct.pack('<h', 7000) * media.send_format.audio_format.nominal_frame_samples
+        for _ in range(20):
+            await browser.messages.put(SimpleNamespace(type=WSMsgType.BINARY, data=audio_ws.encode_audio_frame(frame)))
+            await asyncio.sleep(media.send_format.audio_format.frame_ms / 1000)
+        async with asyncio.timeout(3):
+            while True:
+                pcm = audio_ws.decode_audio_frame(await browser.audio.get())
+                if max(abs(value) for value in struct.unpack(f'<{len(pcm)//2}h', pcm)) > 1000:
+                    break
+        relay = runtime.calls.resource_for(call.call_id, 'relay')
+        assert relay.left_rx_packets > 0 and relay.right_rx_packets > 0
+        await asyncio.to_thread(registered_phones[2].hangup)
+        await wait_for(lambda: not runtime.calls.sessions)
+        await asyncio.wait_for(worker, 2)
+        assert not runtime.runtime.rtp_port_pool['used']
+    finally:
+        if not worker.done():
+            worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+        async_shutdown_local_softphone_bridge(runtime.hass)

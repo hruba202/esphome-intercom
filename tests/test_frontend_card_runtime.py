@@ -467,6 +467,23 @@ await routingCard._setMailboxEnabled(true);
 assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_voicemail_settings", {{device_id: "device-kitchen", enabled: true}},
 ]);
+// Parking delegates to the public backend action and displays its actual slot.
+const parkRequests = [];
+routingCard._hass.callWS = async (request) => {{
+  parkRequests.push(request);
+  return {{response: {{slot: "705", call_id: "retained-call", generation: 3}}}};
+}};
+await routingCard._parkCall();
+assert.deepEqual(JSON.parse(JSON.stringify(parkRequests[0])), {{
+  type: "call_service", domain: "voip_stack", service: "park",
+  service_data: {{device_id: "device-kitchen"}}, return_response: true,
+}});
+assert.equal(routingCard._parkedSlot, "705");
+assert.equal(routingCard._parkingBusy, false);
+routingCard._hass.callWS = async () => {{throw new Error("Parking lot is full");}};
+await routingCard._parkCall();
+assert.equal(routingCard._parkingBusy, false);
+assert.match(routingCard._errorMsg, /Parking lot is full/);
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), true);
 antiAliasPreference._toggleMicrophoneAntiAlias();
 assert.equal(antiAliasPreference._microphoneAntiAliasEnabled(), false);

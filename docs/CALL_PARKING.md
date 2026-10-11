@@ -1,8 +1,7 @@
 # Call parking
 
 This guide describes the implementation on `feature/ha-pbx`. It is not part of
-the published release yet. Browser-to-browser parking and dashboard controls
-are still being completed.
+the published release yet. The implementation is still undergoing full qualification.
 
 Parking leaves the other party connected to Home Assistant while you put down
 your phone. Another phone retrieves that conversation by calling its parking
@@ -41,6 +40,17 @@ another attempt. If the caller hangs up, the slot becomes free immediately.
 Registered SIP phones can subscribe to the slot using the SIP dialog event
 package (RFC 4235) for a busy-lamp indication.
 
+## From the dashboard card
+
+During an established audio call, **Park call** appears when parking is enabled
+in the backend. It invokes the same action described below and displays the
+assigned slot. The card does not choose a slot or move media itself. Dial the
+slot from another phone to retrieve its caller.
+
+Browser-to-browser calls return to the existing local audio bridge after
+pickup. SIP participants retain their established SIP dialog and negotiated
+media. The phone leaving the call becomes available for another conversation.
+
 ## From a Home Assistant action
 
 Select **VoIP Stack: Park call** and choose the phone currently participating
@@ -73,7 +83,16 @@ data:
 Real baresip calls cover parking from either SIP participant, pickup, timeout
 return, repeated parking, hold/resume and hangup from either side. Audio tests
 inspect decoded WAV samples and released RTP reservations. Browser transport
-fixtures also cover pickup, parking again and subsequent SIP pickup.
+fixtures also cover pickup, parking again and subsequent SIP pickup. Local
+browser tests cover parking from either participant, SIP or browser pickup,
+subsequent parking in the opposite direction, and injected media-start failure
+followed by a successful retry. A failed preparation leaves the original call
+and its participants intact.
+
+Two real Chromium phones also completed two consecutive parking/pickup cycles,
+including pickup by the phone that originally parked the call. Captured WAVs
+contained the other phone's input signal after each completed sequence, and the
+final HA diagnostics reported no remaining call resources.
 
 These tests do not qualify every physical handset's transfer button or BLF
 configuration. Active video calls are rejected before parking rather than

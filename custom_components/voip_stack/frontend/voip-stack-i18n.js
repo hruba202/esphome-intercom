@@ -1,4 +1,6 @@
 const PT_BR = {
+  "Park call": "Estacionar chamada",
+  "Parked in slot": "Chamada estacionada na vaga",
   "Enable this phone's mailbox": "Ativar a caixa postal deste telefone",
   "This phone's mailbox": "Caixa postal deste telefone",
   "Voicemail": "Correio de voz",
@@ -133,6 +135,8 @@ const PT_BR = {
 };
 
 const DE = {
+  "Park call": "Anruf parken",
+  "Parked in slot": "Geparkt auf Position",
   "Enable this phone's mailbox": "Anrufbeantworter dieses Telefons aktivieren",
   "This phone's mailbox": "Anrufbeantworter dieses Telefons",
   "Voicemail": "Anrufbeantworter",

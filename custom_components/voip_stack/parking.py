@@ -144,7 +144,7 @@ class ParkingCall(LocalCallApplication):
         deadline.arm(self.hass.loop, float(self.settings.get("return_timeout", 30)))
 
 
-async def start_parking_application(hass, session, invite, local_ip, *, slot="", parker="", previous=None, media=None, source_client=None):
+async def start_parking_application(hass, session, invite, local_ip, *, slot="", parker="", previous=None, media=None, source_client=None, local_source=None):
     lot = get_parking_lot(hass)
     settings = parking_settings(hass)
     parked = lot.reserve(session, slot=slot, parker=parker,
@@ -158,7 +158,7 @@ async def start_parking_application(hass, session, invite, local_ip, *, slot="",
         raise ParkingError("The call changed before it could be parked")
     application = attach_local_application(ParkingCall, hass, session, invite,
         RosterEntry("park."+parked.slot, name="Parking "+parked.slot), local_ip,
-        previous=previous, lot=lot, parked=parked, settings=settings,
+        previous=previous, local_source=local_source, lot=lot, parked=parked, settings=settings,
         **({"source_client": source_client} if source_client is not None else {}))
     if media is not None:
         application.media, application.answered = media, True
@@ -171,6 +171,65 @@ async def start_parking_application(hass, session, invite, local_ip, *, slot="",
         previous.cancel_deadline()
         registry.release_resource(session.call_id, f"{previous.owner}:{session.call_id}", value=previous)
     session.create_task(application.run(), name="parking-start")
+    return application
+
+
+async def park_local_browser_call(hass, session, endpoint_id, *, slot=""):
+    """Move the remaining local phone into the shared application media path."""
+    from .local_softphone_runtime import PendingLocalSource, local_softphone_bridge
+    from .local_call_media import LocalCallMedia
+    from .media_ports import RtpPortReservation
+
+    runtime = require_runtime_data(hass)
+    registry = runtime.sip
+    bridge = local_softphone_bridge(hass)
+    snapshot = bridge.get_call(session.call_id) if bridge else None
+    if snapshot is None or endpoint_id not in {snapshot.caller_endpoint_id, snapshot.callee_endpoint_id}:
+        raise ParkingError("The selected phone does not own this local call")
+    retained = snapshot.callee_endpoint_id if endpoint_id == snapshot.caller_endpoint_id else snapshot.caller_endpoint_id
+    source = PendingLocalSource(hass, snapshot, "127.0.0.1", int(runtime.transport_config["sip_port"]),
+        retained_endpoint_id=retained)
+    lot = get_parking_lot(hass)
+    settings = parking_settings(hass)
+    parked = lot.reserve(session, slot=slot, parker=endpoint_id,
+        return_destination=str(settings.get("return_destination") or endpoint_id))
+    reservation = None
+    browser_reservation = None
+    media = None
+    try:
+        reservation = RtpPortReservation.allocate(hass)
+        browser_reservation = RtpPortReservation.allocate(hass)
+        source.invite = source.stage_application_media(source.invite, reservation.ports[0], browser_reservation.ports[0])
+        source.media["rtp_reservation"] = browser_reservation
+        async def complete(reason):
+            registry.request_termination(session.call_id, TerminationIntent(reason), generation=session.generation)
+        media = LocalCallMedia(hass, invite=source.invite, local_rtp_port=reservation.ports[0],
+            reservation=reservation, on_complete=complete)
+        await media.start()
+        if bridge.get_call(session.call_id) != snapshot or not session.live:
+            raise ParkingError("The local call changed before parking")
+    except BaseException:
+        source.media.clear()
+        source.media.update(source.original_media)
+        lot.release(parked)
+        if browser_reservation is not None:
+            browser_reservation.release()
+        if media is not None:
+            await media.stop()
+        elif reservation is not None:
+            reservation.release()
+        raise
+    registry.own_resource(session.call_id, f"browser_source:{session.call_id}", source, None)
+    registry.attach_relay(session.call_id, media)
+    registry.attach_media(session.call_id, {"rtp_reservation": reservation,
+        "local_rtp_port": reservation.ports[0], "final_response_sent": True,
+        "audio_rtp_source": media.rtp_source}, provisional=True)
+    media.release_reservation_on_stop = False
+    registry.set_pending_invite(session.call_id, source.invite)
+    session.caller = source.invite.caller
+    application = await start_parking_application(hass, session, source.invite, "127.0.0.1",
+        slot=parked.slot, parker=endpoint_id, media=media, local_source=source)
+    source.connected(application.contact.display_name, "parking")
     return application
 
 
@@ -553,14 +612,17 @@ async def async_park_call(call):
     endpoint = runtime.endpoints.get(phone.endpoint_id)
     identity = str(call.data.get("call_id") or (endpoint.active_call_id if endpoint else "") or "")
     session = runtime.sip.get_session(runtime.sip.resolve_session_id(identity))
-    if session is None or phone.endpoint_id not in session.endpoint_claims:
+    from .call_scope import call_belongs_to_endpoint
+    if session is None or not call_belongs_to_endpoint(runtime.sip, identity, phone.endpoint_id):
         raise ServiceValidationError("The selected phone does not own this call")
     expected = call.data.get("expected_generation")
     if expected is not None and expected != session.generation:
         raise ServiceValidationError("The selected call generation is no longer current")
     slot = str(call.data.get("slot") or "")
     try:
-        if phone.kind.is_softphone:
+        if session.owner == "local_bridge":
+            application = await park_local_browser_call(call.hass, session, phone.endpoint_id, slot=slot)
+        elif phone.kind.is_softphone:
             application = await park_browser_sip_call(call.hass, session.call_id, phone.endpoint_id, slot=slot)
         else:
             application = await park_established_sip_call(call.hass, session.call_id, phone.endpoint_id, slot=slot)

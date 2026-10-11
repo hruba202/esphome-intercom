@@ -782,6 +782,15 @@ export function buildMainCardSkeleton(cardVersion) {
     voicemailBtn.hidden = true;
     voicemailBtn.setAttribute("aria-controls", "voip-voicemail-panel");
     runtimeControls.appendChild(voicemailBtn);
+    const parkBtn = document.createElement("button");
+    parkBtn.type = "button";
+    parkBtn.className = "settings-btn";
+    parkBtn.textContent = translate("Park call");
+    parkBtn.hidden = true;
+    runtimeControls.appendChild(parkBtn);
+    const parkingNotice = document.createElement("span");
+    parkingNotice.hidden = true;
+    runtimeControls.appendChild(parkingNotice);
     const voicemailPanel = document.createElement("div");
     voicemailPanel.id = "voip-voicemail-panel";
     voicemailPanel.hidden = true;
@@ -1050,7 +1059,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel,
+      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,

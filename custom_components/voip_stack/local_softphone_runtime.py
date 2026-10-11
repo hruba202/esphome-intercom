@@ -418,7 +418,7 @@ class PendingLocalSource:
 
     def __init__(
         self, hass: HomeAssistant, snapshot: LocalCallSnapshot | None,
-        local_ip: str, sip_port: int, *, call_id: str = "",
+        local_ip: str, sip_port: int, *, call_id: str = "", retained_endpoint_id: str = "",
     ) -> None:
         from .core import sdp, sip
         from .sip_listener import SipInvite
@@ -429,8 +429,15 @@ class PendingLocalSource:
         self.snapshot = snapshot
         self.outgoing = snapshot is None
         self.retired = False
+        self.established = bool(retained_endpoint_id)
         session = self.registry.get_session(snapshot.call_id if snapshot else call_id)
-        if session is None or (snapshot is not None and snapshot.callee_state is not LocalCallState.RINGING):
+        if self.established:
+            if (snapshot is None or snapshot.caller_state is not LocalCallState.IN_CALL
+                    or snapshot.callee_state is not LocalCallState.IN_CALL or snapshot.video_enabled
+                    or retained_endpoint_id not in {snapshot.caller_endpoint_id, snapshot.callee_endpoint_id}):
+                raise RuntimeError("local handoff requires an established audio participant")
+        if session is None or (snapshot is not None and not self.established
+                               and snapshot.callee_state is not LocalCallState.RINGING):
             raise RuntimeError("local call is no longer ringing")
         if self.outgoing:
             self.previous_client = self.registry.sip_client_for(call_id)
@@ -444,8 +451,12 @@ class PendingLocalSource:
             )
         else:
             self.previous_client = None
-            self.call = BrowserSourceIdentity(snapshot.call_id, snapshot.caller_endpoint_id,
-                                              snapshot.callee_endpoint_id, snapshot.caller_media_owner_id)
+            if retained_endpoint_id == snapshot.callee_endpoint_id:
+                self.call = BrowserSourceIdentity(snapshot.call_id, snapshot.callee_endpoint_id,
+                    snapshot.caller_endpoint_id, snapshot.callee_media_owner_id)
+            else:
+                self.call = BrowserSourceIdentity(snapshot.call_id, snapshot.caller_endpoint_id,
+                                                  snapshot.callee_endpoint_id, snapshot.caller_media_owner_id)
         self.video_requested = bool(self.previous_client.video_formats) if self.outgoing else snapshot.video_requested
         self.caller_video_send = (
             self.previous_client.video_direction in {"sendonly", "sendrecv"} and self.video_requested
@@ -521,7 +532,11 @@ class PendingLocalSource:
         from .core.sdp import build_answer_directional
 
         local_ip = invite.source_host
+        browser_reservation = self.media.get("rtp_reservation")
+        if browser_reservation is not None:
+            browser_port = browser_reservation.ports[0]
         self.stage_media({
+            **({"rtp_reservation": browser_reservation} if browser_reservation is not None else {}),
             "invite": replace(
                 invite, remote_rtp_port=source_port,
                 remote_sdp=build_answer_directional(
@@ -560,10 +575,12 @@ class PendingLocalSource:
 
     def redirect_browser(self, endpoint_id: str, *, request_video: bool | None = None) -> None:
         """Continue the actual browser caller through the existing local bridge."""
-        if not self.outgoing or not self.retired:
-            raise RuntimeError("previous SIP destination has not been released")
+        if not self.committed and (not self.outgoing or not self.retired):
+            raise RuntimeError("previous destination has not been released")
+        from .media_reservation import release_media_reservation
         self.registry.take_pending_invite(self.token.call_id)
-        self.registry.take_media(self.token.call_id)
+        release_media_reservation(self.registry.take_media(self.token.call_id))
+        release_media_reservation(self.registry.take_media(self.token.call_id, provisional=True))
         self.registry.release_endpoint_claim(self.token.call_id, endpoint_id)
         # The local bridge acquires both endpoint claims synchronously below.
         # Transfer the caller claim instead of leaving it owned by the old UAC.
@@ -575,6 +592,7 @@ class PendingLocalSource:
             enable_caller_video_send=self.caller_video_send,
         )
         self.committed = True
+        self.registry.release_resource(self.token.call_id, f"browser_source:{self.token.call_id}", value=self)
 
     def commit(self, *, keep_media: bool = False) -> None:
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
@@ -584,11 +602,15 @@ class PendingLocalSource:
                 raise RuntimeError("previous SIP destination is still active")
         else:
             current = self.bridge.require_call(self.token.call_id)
-            if current.callee_state is not LocalCallState.RINGING:
-                raise RuntimeError("local source was already answered")
+            expected = LocalCallState.IN_CALL if self.established else LocalCallState.RINGING
+            if current.callee_state is not expected:
+                raise RuntimeError("local source changed before handoff")
         self.registry.claim_endpoint(self.token.call_id, self.call.caller_endpoint_id, role="source")
         if not self.outgoing:
-            self.bridge.detach_ringing(self.token.call_id)
+            if self.established:
+                self.bridge.detach_established(self.token.call_id, self.call.caller_endpoint_id)
+            else:
+                self.bridge.detach_ringing(self.token.call_id)
         self.committed = True
         if not keep_media:
             self.registry.take_media(self.token.call_id)

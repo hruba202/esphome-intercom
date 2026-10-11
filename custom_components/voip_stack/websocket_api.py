@@ -884,6 +884,8 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
     store = _ha_softphone_store(hass, endpoint_id)
     endpoint = _browser_endpoint(hass, endpoint_id)
     entry_runtime = runtime_data(hass)
+    from .parking_config import parking_settings
+    parking = parking_settings(hass)
     connected_cards = int(
         (entry_runtime.softphone_presence if entry_runtime is not None else {}).get(
             endpoint_id, 0
@@ -1013,6 +1015,7 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "session_device_id": store.get("session_device_id", ""),
         "dnd": _ha_softphone_dnd(hass, endpoint_id),
         "voicemail": dict(store.get("voicemail") or {"enabled": False, "new": 0, "old": 0, "total": 0}),
+        "parking": {"enabled": bool(parking.get("enabled"))},
         "extension": _ha_softphone_extension(hass, endpoint_id),
         "groups": _ha_softphone_groups(hass, endpoint_id),
         "busy": bool(store.get("session_device_id") and active_softphone),
@@ -1436,6 +1439,8 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
         device["endpoint_id"] = endpoint_id
         device["endpoint_type"] = EndpointKind.ESPHOME.value
         device["voicemail"] = mailbox_snapshot(hass, endpoint_id)
+        from .parking_config import parking_settings
+        device["parking"] = {"enabled": bool(parking_settings(hass).get("enabled"))}
         device["capabilities"] = sorted(capabilities)
         async_sync_esphome_action_issue(hass, device)
 

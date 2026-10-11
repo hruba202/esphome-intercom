@@ -163,6 +163,7 @@ class _FakeHass:
     def __init__(self) -> None:
         self.config = _FakeConfig()
         self.bus = _FakeBus()
+        self.config_entries = types.SimpleNamespace(async_entries=lambda _domain: [])
         self.data: dict = {const.DOMAIN: {}}
         self.runtime = types.SimpleNamespace(
             trunk_configs={}, default_trunk_id="",

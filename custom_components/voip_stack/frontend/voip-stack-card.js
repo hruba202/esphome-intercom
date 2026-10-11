@@ -1914,9 +1914,11 @@ class VoipStackCard extends HTMLElement {
 
     // Reuse the normal Options surface during calls. The same control moves
     // into the video call bar, while the panel remains a real card view.
+    const parking = softphoneMode ? this._softphoneSnapshot?.parking :
+      this._availableDevices.find((device) => this._deviceMatchesConfig(device))?.parking;
     const inCallOptions = !this._stopping && (softphoneMode
       ? (showAnswer || showHangup)
-      : !!this._videoSendSwitchEntityId && espState === "in_call");
+      : (!!this._videoSendSwitchEntityId || !!parking?.enabled) && espState === "in_call");
     const showRuntimeOptions = (showCall && !this._starting && !this._stopping) || inCallOptions;
     const showSettingsPanel = showRuntimeOptions && this._settingsOpen;
     els.card.classList.toggle("settings-open", showSettingsPanel);
@@ -1945,6 +1947,13 @@ class VoipStackCard extends HTMLElement {
         !(this._softphoneSnapshot.voicemail.total > 0 || this._mailboxOpen);
       els.voicemailBtn.setAttribute("aria-expanded", String(this._mailboxOpen));
       els.voicemailPanel.hidden = !this._mailboxOpen || !this._softphoneSnapshot?.voicemail?.enabled;
+    }
+    if (els.parkBtn) {
+      const established = softphoneMode ? this._softphoneSnapshot?.state === "in_call" : espState === "in_call";
+      els.parkBtn.hidden = !parking?.enabled || !established;
+      els.parkBtn.disabled = !!this._parkingBusy;
+      els.parkingNotice.hidden = !this._parkedSlot || established;
+      els.parkingNotice.textContent = this._parkedSlot ? `${this._t("Parked in slot")}: ${this._parkedSlot}` : "";
     }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
     els.autoAnswerRow.hidden = !(showSettingsPanel && autoAnswerAvailable);
@@ -2092,6 +2101,7 @@ class VoipStackCard extends HTMLElement {
     const els = this._els;
     if (!els) return;
     if (els.keypadBtn) els.keypadBtn.onclick = () => this._toggleKeypad();
+    if (els.parkBtn) els.parkBtn.onclick = () => this._parkCall();
     if (els.voicemailBtn) els.voicemailBtn.onclick = async () => {
       this._mailboxOpen = !this._mailboxOpen;
       if (this._mailboxOpen) await this._loadMailbox();
@@ -2268,6 +2278,7 @@ class VoipStackCard extends HTMLElement {
 
   async _startCall(destination = "") {
     if (this._starting || this._stopping) return;
+    this._parkedSlot = "";
     const softphoneAction = this._isHaSoftphoneMode();
     const mediaIntentToken = softphoneAction ? {} : null;
     if (
@@ -3010,6 +3021,27 @@ class VoipStackCard extends HTMLElement {
       void this._refreshMediaDeviceOptions();
     } else if (this._settingsOpen && this._hass?.connection?.sendMessagePromise) {
       void this._loadAvailableDevices();
+    }
+  }
+
+  async _parkCall() {
+    if (this._parkingBusy) return;
+    const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
+    if (!deviceId) return;
+    this._parkingBusy = true;
+    this._parkedSlot = "";
+    this._render();
+    try {
+      const result = await this._hass.callWS({
+        type: "call_service", domain: "voip_stack", service: "park",
+        service_data: {device_id: deviceId}, return_response: true,
+      });
+      this._parkedSlot = String(result?.response?.slot || "");
+    } catch (err) {
+      this._showError(err.message || String(err));
+    } finally {
+      this._parkingBusy = false;
+      this._render();
     }
   }
 

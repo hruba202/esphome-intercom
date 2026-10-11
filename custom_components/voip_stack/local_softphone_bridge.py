@@ -519,15 +519,29 @@ class LocalSoftphoneBridge:
         call = self._require_internal(call_id)
         if call.callee_state is not LocalCallState.RINGING:
             raise LocalCallStateError("only an unanswered call can change media owners")
+        return self._detach_media_owner(call, call.caller_endpoint_id)
+
+    def detach_established(self, call_id: str, retained_endpoint_id: str) -> LocalCallSnapshot:
+        """Retain either participant while an application takes its media."""
+        call = self._require_internal(call_id)
+        if (call.caller_state is not LocalCallState.IN_CALL
+                or call.callee_state is not LocalCallState.IN_CALL or call.video_enabled):
+            raise LocalCallStateError("handoff requires an established audio call")
+        if retained_endpoint_id not in {call.caller_endpoint_id, call.callee_endpoint_id}:
+            raise LocalCallStateError("the retained phone does not belong to this call")
+        return self._detach_media_owner(call, retained_endpoint_id)
+
+    def _detach_media_owner(self, call, retained_endpoint_id):
         snapshot = call.snapshot()
-        self._calls.pop(call_id)
+        self._calls.pop(call.call_id)
         call.closed.set()
         for media in (call.caller_media, call.callee_media):
             media.clear_queued_media()
             if media.lease is not None:
                 media.lease.released.set()
-        if self._registry.get(call.callee_endpoint_id) is not None:
-            self._registry.release_call(call.callee_endpoint_id, call_id)
+        for endpoint in (call.caller_endpoint_id, call.callee_endpoint_id):
+            if endpoint != retained_endpoint_id and self._registry.get(endpoint) is not None:
+                self._registry.release_call(endpoint, call.call_id)
         return snapshot
 
     def answer(

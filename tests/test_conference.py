@@ -163,6 +163,7 @@ class _FakeHass:
         self.data: dict = {const.DOMAIN: {"transport_config": {"sip_port": 5060, "rtp_port": _free_rtp_base()}}}
         self.config = types.SimpleNamespace(location_name="HA")
         self.bus = _FakeBus()
+        self.config_entries = types.SimpleNamespace(async_entries=lambda _domain: [])
         self.runtime = types.SimpleNamespace(
             trunk_configs={}, default_trunk_id="",
             tasks=set(),

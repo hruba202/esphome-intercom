@@ -669,3 +669,41 @@ coordinator returned a slot string while the action expected its application.
 The SIP and browser coordinators now return the same call-owned application;
 the action alone constructs the public response. The real SIP service test
 fails before this correction. This does not alter REFER signaling.
+
+
+### Local-browser parking and card control
+
+The existing pending-browser source adapter now also accepts an established
+audio participant. It prepares application media before relinquishing the local
+bridge, preserving the conversation if binding fails. The browser retains its
+own RTP reservation while the application reserves a separate relay pair, so a
+later SIP pickup cannot bind a port already used by the browser adapter.
+
+When another browser retrieves the call, forwarding restores the existing local
+bridge and releases both RTP reservations. This also makes subsequent parking
+use the ordinary local-call path. It avoids leaving two loopback RTP adapters
+running for a browser-to-browser conversation. Forty focused application and
+parking regressions pass, including injected post-bind failure, clean retry,
+wrong-phone rejection, both parking directions and decoded browser audio.
+
+The card's optional Park call control invokes the native HA service and displays
+the returned slot. The backend publishes enablement; the card keeps no routing
+policy. Frontend runtime and contract checks pass 65 tests; the backend subset
+including phone controls passes 48 tests. These results precede final combined
+qualification and a real Chromium interaction test.
+
+
+The final HA run for local parking and the card passes 513 tests. Two real
+Chromium instances also completed a call, parking and pickup from the original
+parking phone, then repeated the cycle from the other phone. Captured WAVs
+contain the opposite input tones (440 Hz and 660 Hz) before and after pickup.
+The final HA diagnostic snapshot reports zero calls, legs, endpoint claims,
+media adapters, WebSocket owners, relays, RTP reservations and call tasks.
+
+This live test first exposed a source-selection error when the original parking
+phone tried to retrieve its caller: forwarding still compared the target with
+the departed phone. The committed browser-source identity now selects the
+retained caller instead. The permanent regression covers both original phones
+retrieving their own parked calls. The test harness separately handles the
+existing pulsing Answer button and waits for integration assets after lab
+startup; those required no production changes.

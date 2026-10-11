@@ -392,7 +392,7 @@ async def async_forward_existing_call(
         application = registry.resource_for(call_id, "parking") or registry.resource_for(call_id, "automation")
         session_endpoint = browser_phone(
             hass,
-            (local_source.call.caller_endpoint_id if local_source.outgoing else local_source.call.callee_endpoint_id)
+            (local_source.call.caller_endpoint_id if local_source.outgoing or local_source.committed else local_source.call.callee_endpoint_id)
             if local_source is not None else str(
                 (session.metadata if session is not None else {}).get("endpoint_id")
                 or ""
@@ -597,8 +597,11 @@ async def async_forward_existing_call(
                     raise RuntimeError("target Home Assistant phone is busy")
                 if endpoint.availability is EndpointAvailability.UNAVAILABLE:
                     raise RuntimeError("target Home Assistant phone is disabled")
-                if local_source is not None and local_source.outgoing:
+                if local_source is not None and (local_source.outgoing or local_source.committed):
+                    if application is not None:
+                        await application.release_media_for_forward()
                     local_source.redirect_browser(endpoint.endpoint_id)
+                    await retire_application(pending_browser=True)
                     return
                 session_id = registry.resolve_session_id(call_id)
                 claims = registry.endpoint_claims_for(session_id)
