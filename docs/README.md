@@ -47,6 +47,7 @@ The repository keeps only the current upgrade contract.
 | Home Assistant actions and side effects | [Services](SERVICES.md) |
 | Contextual routing recipes | [Automation cookbook](AUTOMATION_DIALPLAN.md) |
 | Ring and conference groups | [Groups](GROUPS.md) |
+| Phone mailboxes, SIP message indicators and optional transcription | [Voicemail (PBX development branch)](VOICEMAIL.md) |
 | Provider registration and external routing | [SIP trunk](SIP_TRUNK.md) |
 | Browser and P4 video codec paths | [SIP video](SIP_VIDEO.md) |
 

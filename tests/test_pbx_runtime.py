@@ -146,6 +146,34 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(endpoints.get("phone").active_call_id, "original")
                 await runtime.shutdown()
 
+    async def test_answered_sip_leg_can_consult_before_parent_bridge_commits(self):
+        endpoints_module = _load_module("endpoint_registry")
+        phones_module = _load_module("phone_endpoint")
+        for leg_state, confirmed in (("ringing", False), ("in_call", True), ("ringing", True)):
+            with self.subTest(leg_state=leg_state, confirmed=confirmed):
+                endpoints = endpoints_module.EndpointRegistry()
+                endpoints.register(phones_module.PhoneEndpoint(endpoint_id="desk", name="Desk", kind="sip_account"))
+                runtime = SipEndpointRuntime()
+                runtime.activate()
+                runtime.bind_endpoint_registry(endpoints)
+                original = runtime.upsert("original", state="remote_ringing", owner="bridge", target_endpoint_id="desk")
+                runtime.claim_endpoint("original", "desk", role="destination")
+                leg = runtime.add_leg("original", "desk-dialog", role="callee", state=leg_state)
+                leg.dialog = types.SimpleNamespace(dialog=object() if confirmed else None)
+                runtime.set_bridge_link("original", "desk-dialog")
+                runtime.upsert("consultation", state="connecting", owner="router")
+                try:
+                    if not confirmed:
+                        with self.assertRaises(endpoints_module.EndpointBusyError):
+                            runtime.claim_endpoint("consultation", "desk", role="source", adopt_transport=True)
+                    else:
+                        runtime.claim_endpoint("consultation", "desk", role="source", adopt_transport=True)
+                        self.assertEqual(original.state, "remote_ringing")
+                        self.assertEqual(endpoints.get("desk").active_call_id, "original")
+                        self.assertIn("desk", runtime.get_session("consultation").endpoint_claims)
+                finally:
+                    await runtime.shutdown()
+
     async def test_dark_runtime_has_no_io_and_rejects_calls(self) -> None:
         runtime = SipEndpointRuntime()
 

@@ -299,13 +299,40 @@ async def test_registered_phone_cannot_replace_another_call_without_referral(reg
 @pytest.mark.parametrize("origin,represented", [("caller", True), ("callee", True), ("caller", False)])
 async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(registered_phones, trunks, tmp_path, monkeypatch, origin, represented):
     import socket
+    import logging
     from pathlib import Path
 
     executable = shutil.which("sipp")
     if executable is None:
         pytest.skip("SIPp is not installed")
     lab = trunks
-    from custom_components.voip_stack import endpoint_runtime, invite_router
+    original_claim = lab.calls.claim_endpoint
+    def traced_claim(*args, **kwargs):
+        try:
+            return original_claim(*args, **kwargs)
+        except Exception:
+            logging.getLogger(__name__).error("Endpoint claim failed args=%s kwargs=%s calls=%s", args, kwargs, [
+                {"call_id": item.call_id, "phase": item.phase.value,
+                 "claims": dict(item.endpoint_claims),
+                 "target": item.metadata.get("target_endpoint_id"),
+                 "destination": item.metadata.get("dest_endpoint_id"),
+                 "bridge": lab.calls.bridge_link_for(item.call_id),
+                 "legs": [(leg.leg_id, leg.phase.value, leg.endpoint_id) for leg in item.legs.values()]}
+                for item in lab.calls.sessions.values()
+            ])
+            raise
+    monkeypatch.setattr(lab.calls, "claim_endpoint", traced_claim)
+    from custom_components.voip_stack import endpoint_runtime, invite_router, outbound_bridge_commit
+
+    first_media_started = asyncio.Event()
+    release_first_media = asyncio.Event()
+    start_media = outbound_bridge_commit.async_start_sip_bridge_media
+    async def staged_media(relay):
+        if origin == "caller" and not first_media_started.is_set():
+            first_media_started.set()
+            await release_first_media.wait()
+        return await start_media(relay)
+    monkeypatch.setattr(outbound_bridge_commit, "async_start_sip_bridge_media", staged_media)
 
     monkeypatch.setattr(endpoint_runtime, "_roster_from_peers", roster_from_peers)
     monkeypatch.setattr(invite_router, "_roster_from_peers", roster_from_peers)
@@ -353,17 +380,29 @@ async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(regist
                                       for line in Path("/proc/net/udp").read_text().splitlines()[1:]))
             await asyncio.to_thread(operator.dial, "legacy")
         await asyncio.to_thread(operator.wait_for, "Call established", 5)
+        if origin == "caller":
+            await asyncio.wait_for(first_media_started.wait(), 2)
         original_id = lab.runtime.endpoints.get("transfer_b").active_call_id
         original = lab.calls.get_session(original_id)
         assert original is not None
         prior = lab.calls.resource_for(original_id, "relay")
-        left_transport = prior.left_transport if origin == "caller" else prior.right_transport
         offset = len(operator.read())
         target = f'sip:transfer_c@127.0.0.1:{lab.runtime.transport_config["sip_port"]}'
         await asyncio.to_thread(operator.command, f"/atransferstart {target}")
         await wait_for(lambda: "Call established" in operator.read()[offset:])
+        if origin == "caller":
+            # The consultation must succeed while the parent has not answered
+            # its caller yet. Only then finish that first media handoff.
+            assert not original.answer_committed
+            release_first_media.set()
+            await wait_for(lambda: original.answer_committed)
         consultation = next(item for item in lab.calls.sessions.values() if item is not original)
+        left_transport = prior.left_transport if origin == "caller" else prior.right_transport
         right_transport = lab.calls.resource_for(consultation.call_id, "relay").right_transport
+        # A late connected-identity update can change baresip's selected call.
+        # Complete the consultation the user selected, not whichever menu row
+        # happened to receive the last update.
+        await asyncio.to_thread(operator.command, f"/callfind {consultation.call_id}")
         await asyncio.to_thread(operator.command, "/atransferexec")
         await wait_for(lambda: len(lab.calls.sessions) == 1 and not lab.runtime.endpoints.get("transfer_b").active_call_id)
         current = next(iter(lab.calls.sessions.values()))
@@ -417,6 +456,10 @@ async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(regist
             assert found, f"The legacy phone did not return {name}'s audio through the retained RTP path"
         assert ("501 Not Implemented" in trace.read_text()) is represented
     finally:
+        release_first_media.set()
+        for index, peer in enumerate(registered_phones):
+            output = peer.read() if peer.proc.poll() is None else peer.output
+            (tmp_path / f"transfer-peer-{index}.log").write_text(output)
         if process.returncode is None:
             process.terminate()
             await process.communicate()

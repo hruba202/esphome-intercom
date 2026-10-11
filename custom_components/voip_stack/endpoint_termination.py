@@ -13,6 +13,7 @@ from .endpoint_lifecycle import (
     project_session_termination,
 )
 from .endpoint_session import (
+    LegPhase,
     SipTerminationDisposition,
     TerminationInitiator,
     TerminationIntent,
@@ -36,12 +37,20 @@ class _EndpointTerminationHandler:
     ) -> None:
         """Translate transport termination into the shared terminal path."""
 
+        registry = call_registry(self.hass)
+        source = registry.resolve_session_id(call_id)
+        session = registry.sessions.get(source)
+        leg = session.legs.get(call_id) if session is not None else None
+        # A second inbound dialog may be the callee of a joined call. Its BYE
+        # retires that dialog at the listener, but the original caller still
+        # needs its own BYE from the session's normal signaling owner.
+        signal_source = source != call_id and leg is not None and leg.dialog is None
         await self.terminate(
             call_id,
             TerminationIntent(
                 reason,
                 initiator=TerminationInitiator.REMOTE_PEER,
-                sip_disposition=SipTerminationDisposition.NONE,
+                sip_disposition=SipTerminationDisposition.AUTO if signal_source else SipTerminationDisposition.NONE,
             ),
         )
 
@@ -82,6 +91,11 @@ class _EndpointTerminationHandler:
 
     def _claim(self, call_id: str, intent: TerminationIntent):
         registry = call_registry(self.hass)
+        session = registry.sessions.get(registry.resolve_session_id(call_id))
+        leg = session.legs.get(call_id) if session is not None else None
+        if (intent.initiator is TerminationInitiator.REMOTE_PEER
+                and leg is not None and leg.phase in {LegPhase.CLOSING, LegPhase.CLOSED}):
+            return None
         source_call_id, _ = registry.bridge_for(call_id)
         call_id = source_call_id or registry.resolve_session_id(call_id) or call_id
         if not registry.begin_termination(call_id, intent):

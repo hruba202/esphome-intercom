@@ -229,6 +229,43 @@ Because local SIP/RTP is plaintext and inbound calls are not phonebook-gated,
 deployments needing caller admission must enforce it at a firewall, VLAN, VPN
 or SBC boundary.
 
+### Telephone applications and voicemail
+
+On the PBX development branch, Automation and voicemail use
+`LocalCallApplication` for answer and media setup. The existing
+`EndpointCallSession` owns their tasks, RTP reservation and termination. Changing
+from an announcement to voicemail transfers that application's control within
+the same call; it does not originate a second call to record the first one.
+
+```mermaid
+flowchart TD
+    caller[Calling phone] --> call[Existing SIP call and media session]
+    policy[Phone fallback or HA automation] --> deposit[Voicemail deposit]
+    call --> deposit
+    deposit --> archive[One saved WAV in HA Media]
+    archive --> event[Voicemail received trigger]
+    archive --> counts[Mailbox counts and SIP MWI]
+    phone[SIP phone or HA softphone] --> access[Call *97 and send DTMF]
+    access --> menu[Shared voicemail menu]
+    archive --> menu
+    menu --> playback[Playback over the call's negotiated RTP]
+    event --> actions[Optional HA transcription and notification actions]
+```
+
+The card reads message metadata and requests ordinary call and DTMF operations.
+It does not own the mailbox or open a separate recording player. The same
+telephone menu handles message selection and deletion for a SIP handset and an
+HA softphone. Selection numbers are frozen for each menu call so deleting a
+message concurrently cannot redirect another user's selection to a different
+recording.
+
+The recorder observes PCM already decoded by the call's media owner. Disk
+writes run through a bounded queue and HA's executor. Completion publishes the
+received event only after the recording is finalized. Message notification,
+optional STT and attachments use the saved original in HA Media. Permanently
+removing the phone revokes deposits in progress before deleting its mailbox;
+temporary disconnection and integration reload preserve the files.
+
 ## State
 
 The public contract is `SipPhoneState`, including:

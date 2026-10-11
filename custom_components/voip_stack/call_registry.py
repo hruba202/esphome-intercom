@@ -750,6 +750,36 @@ class CallRuntimeApi:
             generation=session.generation,
         )
 
+    def attach_inbound_dialog(
+        self, source_call_id: str, dialog_call_id: str, server: Any, *,
+        endpoint_id: str, expected_generation: int,
+    ) -> CallLeg:
+        """Join a listener-owned SIP dialog to an existing call.
+
+        The listener already receives its BYE and re-INVITE requests. It keeps
+        that signaling ownership; the call session owns only the leg's cleanup.
+        No outbound client or additional dialog reader is created.
+        """
+        session = self.get_session(source_call_id, generation=expected_generation)
+        if session is None or not session.live:
+            raise RuntimeError("The call ended before the incoming dialog joined")
+        if (not dialog_call_id or dialog_call_id == source_call_id
+                or dialog_call_id in self.sessions or dialog_call_id in self.leg_index):
+            raise ValueError("The incoming dialog already belongs to a call")
+        if server.dialog_key(dialog_call_id) is None:
+            raise ValueError("The SIP listener does not own the incoming dialog")
+
+        async def close(_reason):
+            await server.async_send_bye(dialog_call_id)
+
+        self.observe_leg(
+            source_call_id, dialog_call_id, role="callee", state="in_call",
+            sip_call_id=dialog_call_id, endpoint_id=endpoint_id,
+            closer=close, generation=expected_generation,
+        )
+        self.leg_index[dialog_call_id] = source_call_id
+        return session.legs[dialog_call_id]
+
     def attach_media(
         self,
         call_id: str,

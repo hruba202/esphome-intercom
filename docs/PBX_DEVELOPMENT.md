@@ -607,3 +607,31 @@ operation. Call cleanup can wait for that transaction instead of receiving only
 confirmation that BYE was scheduled. A protocol test with two active dialogs
 checks exact selection, response-before-completion and repeated cleanup. The
 28-test real-call subset covers transfers and mailbox access after this change.
+
+A listener-owned incoming dialog can now join an existing session as a native
+call leg. The listener retains SIP transaction handling; the parent call owns
+its awaited cleanup. A BYE from that leg also closes the original caller, while
+a late BYE from a deliberately retired leg cannot terminate the surviving call.
+Tests cover both hangup sides, stale generations and duplicate dialog ownership.
+
+Real consultation tests exposed a separate ordering defect. A SIP phone had
+already answered, but the overall call was still completing its media bridge.
+Its immediate consultation INVITE received 486 because the source claim checked
+only the parent call phase. It now also recognizes that phone's confirmed dialog
+under the existing destination claim. Early media or ringing alone still does
+not permit consultation, and unrelated incoming calls remain busy.
+
+The deterministic regression holds the first media handoff while real baresip
+starts its consultation, then releases it and completes the transfer against a
+SIPp peer. The peer's returned audio is checked in a WAV and both RTP reservations
+must be released on hangup. This follows the independent dialog semantics of
+[RFC 5589 consultation transfers](https://www.rfc-editor.org/rfc/rfc5589.html#section-7).
+The test explicitly selects the consultation in baresip before completing the
+transfer, because a delayed connected-identity update may change its menu's
+selected call. It does not change protocol timers or insert recovery sleeps.
+
+Qualification after these changes: 1,978 software tests and 181 subtests pass;
+the HA suite passes 484 tests. This includes the controlled consultation race,
+both native incoming-leg termination directions and the existing voicemail,
+transfer and Automation scenarios. Public parking controls and pickup media
+handoff remain unfinished.

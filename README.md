@@ -163,8 +163,10 @@ The system has one call model and four main surfaces:
 
 SIP dialogs, transactions and transports have separate lifecycles. Logical
 phones share the listener and RTP pool, so creating another room phone does not
-open another SIP server. Each phone owns at most one active call; calls to
-different phones remain independent.
+open another SIP server. Browser and ESP phones handle one active call at a
+time. Registered SIP phones can also hold a call and start a consultation for
+an attended transfer. Their occupied state remains set until all their calls
+end; calls to different phones remain independent.
 
 The detailed ownership and media model is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Complete peer-to-peer and
@@ -692,6 +694,7 @@ capabilities.
 | Services, selectors and side effects | [Home Assistant services](docs/SERVICES.md) |
 | Automations and contextual routing | [Automation cookbook](docs/AUTOMATION_DIALPLAN.md) |
 | Ring and conference groups | [Groups](docs/GROUPS.md) |
+| Phone mailboxes, MWI and message automations (PBX development branch) | [Voicemail](docs/VOICEMAIL.md) |
 | SIP video codecs and browser privacy | [SIP video](docs/SIP_VIDEO.md) |
 | Provider/PBX registration | [SIP trunk](docs/SIP_TRUNK.md) |
 | Dahua registered or static door station | [Dahua setup and audio comparison](docs/DAHUA.md) |

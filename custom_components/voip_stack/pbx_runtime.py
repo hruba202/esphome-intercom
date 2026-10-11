@@ -417,13 +417,30 @@ class SipEndpointRuntime(CallRuntimeApi):
         endpoint = registry.get(clean_endpoint_id) if hasattr(registry, "get") else None
         active_id = getattr(endpoint, "active_call_id", "")
         active = self.sessions.get(self.resolve_session_id(active_id)) if active_id else None
+        answered_destination = False
+        if active is not None and active.live:
+            destination_leg = active.legs.get(self.bridge_link_for(active.call_id))
+            answered_destination = bool(
+                destination_leg is not None
+                and destination_leg.phase not in {LegPhase.CLOSING, LegPhase.CLOSED}
+                and (destination_leg.phase in {LegPhase.ANSWERED, LegPhase.HELD}
+                     or getattr(destination_leg.dialog, "dialog", None) is not None)
+                and clean_endpoint_id == (
+                    destination_leg.endpoint_id
+                    or active.metadata.get("dest_endpoint_id")
+                    or active.metadata.get("target_endpoint_id")
+                )
+            )
         consultation = (
             role == "source"
             and getattr(endpoint, "kind", None) is EndpointKind.SIP_ACCOUNT
             and active is not None
             and active.call_id != session.call_id
             and clean_endpoint_id in active.endpoint_claims
-            and active.phase in {SessionPhase.ESTABLISHED, SessionPhase.HELD}
+            # The callee can consult as soon as its own dialog is answered,
+            # even while the parent bridge is finishing media setup.
+            and (active.phase in {SessionPhase.ESTABLISHED, SessionPhase.HELD}
+                 or answered_destination)
         )
         previous = session.endpoint_claims.get(clean_endpoint_id)
         revision = session.revision

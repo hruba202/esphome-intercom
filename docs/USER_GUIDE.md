@@ -316,6 +316,32 @@ two media legs. This also covers static SIP endpoints without REGISTER. Video
 calls continue to require the peers' REFER/Replaces support; the local fallback
 does not silently remove negotiated video.
 
+## Voicemail
+
+Voicemail is available on the `feature/ha-pbx` development branch. Enable it in
+VoIP Stack's settings and select a Home Assistant TTS voice and language for the
+spoken telephone menus. Then enable the mailbox for each phone that needs one.
+
+The mailbox belongs to that phone. Its card shows a **Voicemail** button when
+messages exist. Open it to see callers and recording dates, listen to a message
+or delete it. The softphone places an ordinary call to the mailbox and sends
+keypad commands; the message list stays open during that call.
+
+On a registered SIP handset, configure the voicemail key to dial `*97`. This
+opens its own mailbox without a PIN. To reach another mailbox, dial `*98` and
+enter its extension and PIN. VoIP Stack uses SIP MWI to update a compatible
+handset's new-message indicator.
+
+Enabling a mailbox alone leaves normal ringing unchanged. In the phone card's
+**Options > Call routing**, enable a ringing timeout and choose voicemail if
+unanswered calls should leave a message. Automations can also speak an
+announcement and then send that particular call to a selected mailbox.
+
+Recordings are stored once in Home Assistant Media. A **Voicemail received**
+automation can use that file for a notification or optionally transcribe it
+through an installed HA STT provider. See the [voicemail guide](VOICEMAIL.md)
+for complete setup, keypad commands and automation examples.
+
 ## Busy lamps on SIP phones
 
 A registered SIP phone can monitor another phone with a normal BLF key. Choose
