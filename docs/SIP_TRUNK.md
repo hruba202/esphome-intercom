@@ -48,6 +48,7 @@ asks for trunk details:
 - REGISTER expiration when registration is enabled
 - allowed incoming IP addresses when registration is disabled
 - optional outbound proxy
+- allowed audio codecs and video codecs for this line
 - inbound default target
 - incoming routing mode: Direct or DTMF extension selection
 - optional experimental automation routing override
@@ -61,6 +62,55 @@ line or editing incoming routing does not replace its connection.
 
 An existing single trunk is migrated to a named **SIP trunk** entry, retaining
 its credentials, incoming routing and default selection.
+
+### Choose codecs for each trunk
+
+Open the named trunk's configuration and edit **Allowed audio codecs** and **Allowed video
+codecs**. These selections apply to incoming and outgoing calls on that line.
+Each trunk has independent settings; local ESP and browser calls keep their
+own capabilities.
+
+The initial selections preserve the existing codec negotiation. Select only
+the encodings supported by your provider or PBX. For example, a voice-only
+provider might require PCMA and PCMU with no video codecs selected. A PBX
+connection may also support G.722 or Opus. Follow the peer's configuration,
+rather than assuming every provider supports the same list.
+
+- At least one audio codec must be selected. A call also needs an actual
+  codec in common with the peer and the local media path. Selecting a codec
+  does not install a decoder or enable a new transcoder.
+- An empty video selection disables video on this trunk. Selecting video
+  codecs does not enable the integration's video option or the caller's camera.
+- The selections are allowlists. Existing codec preferences, RTP payload
+  mappings, clock rates and supported H.264 profiles determine the offer.
+- DTMF telephone events are negotiated separately from the audio codec list.
+- PCM refers to the existing Dahua PCM compatibility format. L16 and L24 are
+  separate RTP encodings; their names are not interchangeable.
+
+An established call keeps the policy with which it was negotiated, including
+later media updates. Finish active calls before editing the trunk. Calls
+without a compatible audio format fail cleanly instead of sending a different,
+unselected codec.
+
+### Large SIP invitations
+
+Restricting the codec list to the peer's actual capabilities keeps SDP offers
+smaller. It does not replace SIP transport handling: authentication headers can
+also make an INVITE grow beyond the safe UDP size.
+
+For an INVITE larger than 1300 bytes with unknown path MTU, the call client
+attempts TCP, including when the authenticated retry crosses that threshold.
+The trunk's UDP registration remains active. A refused or reset TCP connection
+can fall back to the original UDP route before the INVITE is sent; a TCP timeout
+does not trigger that fallback. Explicit TCP and TLS settings are not downgraded.
+See [RFC 3261, section 18.1.1](https://www.rfc-editor.org/rfc/rfc3261.html#section-18.1.1).
+
+### Route incoming calls to a particular phone
+
+Set the trunk's **Inbound default target** to the phone's name or extension,
+for example `Bedroom` or `101`, and select direct incoming routing. This is
+independent of the outgoing default trunk. A called destination that already
+matches the phonebook takes precedence over this fallback target.
 
 Deleting the default trunk clears that selection immediately and does not
 choose another provider, even when only one line remains. The integration also

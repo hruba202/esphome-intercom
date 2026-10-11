@@ -75,7 +75,9 @@
           "automation_routing_enabled": "Consenti alle automazioni di scegliere la destinazione in ingresso",
           "trunk_dtmf_timeout_ms": "Timeout DTMF (secondi)",
           "trunk_dtmf_terminator": "Terminatore DTMF",
-          "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso"
+          "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso",
+          "trunk_audio_codecs": "Codec audio consentiti",
+          "trunk_video_codecs": "Codec video consentiti"
         },
         "data_description": {
           "trunk_transport": "Transport SIP usato da HA verso il provider.",
@@ -92,7 +94,9 @@
           "automation_routing_enabled": "Prima di usare la destinazione di fallback, pubblica una breve richiesta di instradamento a cui può rispondere un'automazione. Le cifre DTMF esplicite mantengono sempre la priorità.",
           "trunk_dtmf_timeout_ms": "Timeout tra cifre usato in modalità DTMF. Per la prima cifra sono disponibili 10 secondi. Default 3 secondi, massimo 10 secondi.",
           "trunk_dtmf_terminator": "Terminatore opzionale, per esempio #. Vuoto significa che decide timeout o match esatto con una extension in rubrica.",
-          "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione."
+          "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
+          "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
+          "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali."
         }
       },
       "trunk_mode": {
@@ -148,7 +152,8 @@
       "voicemail_route_conflict": "Un telefono, contatto o gruppo usa un indirizzo della segreteria (*97, *98, mailbox, mailbox.*, voicemail.* oppure *60 seguito da un interno). Rinomina quel percorso prima di abilitare la segreteria.",
       "voicemail_voice_unavailable": "Seleziona una voce supportata dal motore TTS e dalla lingua scelti.",
       "parking_configuration_invalid": "Scegli codici distinti e tempi tra 1 e 3600 secondi.",
-      "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo."
+      "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo.",
+      "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",
@@ -307,7 +312,9 @@
             "automation_routing_enabled": "Consenti alle automazioni di scegliere la destinazione in ingresso",
             "trunk_dtmf_timeout_ms": "Timeout DTMF (secondi)",
             "trunk_dtmf_terminator": "Terminatore DTMF",
-            "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso"
+            "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso",
+            "trunk_audio_codecs": "Codec audio consentiti",
+            "trunk_video_codecs": "Codec video consentiti"
           },
           "data_description": {
             "trunk_transport": "Transport SIP usato da HA verso il provider.",
@@ -324,7 +331,9 @@
             "automation_routing_enabled": "Prima di usare la destinazione di fallback, pubblica una breve richiesta di instradamento a cui può rispondere un'automazione. Le cifre DTMF esplicite mantengono sempre la priorità.",
             "trunk_dtmf_timeout_ms": "Timeout tra cifre usato in modalità DTMF. Per la prima cifra sono disponibili 10 secondi. Default 3 secondi, massimo 10 secondi.",
             "trunk_dtmf_terminator": "Terminatore opzionale, per esempio #. Vuoto significa che decide timeout o match esatto con una extension in rubrica.",
-            "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione."
+            "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
+            "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
+            "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali."
           }
         }
       },
@@ -338,7 +347,8 @@
         "advertise_ip_unknown": "Configura l'indirizzo SIP annunciato prima di aggiungere questo trunk.",
         "trunk_in_use": "Termina le chiamate che usano questo trunk prima di modificarne la connessione.",
         "trunk_registration_failed": "Registrazione fallita. Controlla server, trasporto e credenziali. La configurazione salvata non è stata modificata.",
-        "trunk_validation_failed": "Controlla la connessione e le reti ammesse in ingresso. I trunk statici con lo stesso trasporto devono avere reti sorgenti non sovrapposte."
+        "trunk_validation_failed": "Controlla la connessione e le reti ammesse in ingresso. I trunk statici con lo stesso trasporto devono avere reti sorgenti non sovrapposte.",
+        "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio."
       },
       "abort": {
         "reconfigure_successful": "Configurazione del trunk aggiornata."
@@ -395,6 +405,27 @@
         "standard": "Codec SIP standard",
         "pcm": "Standard + PCM Dahua",
         "symmetric": "PCM Dahua, usa il codec ricevuto anche in trasmissione"
+      }
+    },
+    "trunk_audio_codecs": {
+      "options": {
+        "OPUS": "Opus",
+        "G722": "G.722",
+        "PCMA": "G.711 A-law (PCMA)",
+        "PCMU": "G.711 µ-law (PCMU)",
+        "L16": "Linear PCM 16-bit (L16)",
+        "L24": "Linear PCM 24-bit (L24)",
+        "PCM": "PCM (Dahua)"
+      }
+    },
+    "trunk_video_codecs": {
+      "options": {
+        "H264": "H.264",
+        "VP8": "VP8",
+        "JPEG": "JPEG",
+        "H263": "H.263",
+        "H263P": "H.263+",
+        "H265": "H.265 / HEVC"
       }
     }
   },

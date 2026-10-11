@@ -1469,6 +1469,7 @@ def build_offer_directional(
     send_rtp_formats: tuple[RtpPcmFormat, ...] | None = None,
     recv_rtp_formats: tuple[RtpPcmFormat, ...] | None = None,
     allow_directional_payloads: bool = False,
+    codec_policy=None,
 ) -> str:
     audio_direction = normalize_direction(audio_direction)
     video_direction = normalize_direction(video_direction)
@@ -1584,6 +1585,10 @@ def build_offer_directional(
             rtp_formats.append(audio_format_to_rtp(fmt, next_payload))
             used_payloads.add(next_payload)
             next_payload += 1
+    if codec_policy is not None:
+        rtp_formats = list(codec_policy.audio_formats(rtp_formats))
+        if not rtp_formats:
+            raise SdpError("The selected audio codecs do not match this call's media capabilities")
     next_payload = 96
     used_payloads = {fmt.payload_type for fmt in rtp_formats}
     while next_payload in used_payloads:
@@ -1626,6 +1631,8 @@ def build_offer_directional(
     offered_video = _unique_video_payloads(
         video_formats or (() if video_format is None else (video_format,))
     )
+    if codec_policy is not None:
+        offered_video = codec_policy.video_formats(offered_video)
     if offered_video:
         lines.extend(
             _video_media_lines_many(
@@ -3108,6 +3115,7 @@ def negotiate_directional(
     local_recv_preferred: list[AudioFormat],
     *,
     allow_dahua_pcm: bool = False,
+    codec_policy=None,
 ) -> RtpPcmDirection | None:
     parsed = parse_sdp(remote_sdp)
     local_direction = local_direction_for_offer(
@@ -3118,19 +3126,19 @@ def negotiate_directional(
         parsed["direction"],
         local_direction,
     )
+    offered = offered_pcm_formats(remote_sdp, allow_dahua_pcm=allow_dahua_pcm)
+    if codec_policy is not None:
+        offered = list(codec_policy.audio_formats(offered))
     explicit = _negotiate_audio_flow_attributes(
         remote_sdp,
-        offered_pcm_formats(remote_sdp, allow_dahua_pcm=allow_dahua_pcm),
+        offered,
         local_send_preferred,
         local_recv_preferred,
     )
     if explicit is not None:
         return explicit
     return _negotiate_for_local_direction(
-        offered_pcm_formats(
-            remote_sdp,
-            allow_dahua_pcm=allow_dahua_pcm,
-        ),
+        offered,
         local_send_preferred,
         local_recv_preferred,
         format_direction,

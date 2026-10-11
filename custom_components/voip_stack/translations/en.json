@@ -75,7 +75,9 @@
           "automation_routing_enabled": "Allow automations to select the inbound destination",
           "trunk_dtmf_timeout_ms": "DTMF timeout (seconds)",
           "trunk_dtmf_terminator": "DTMF terminator",
-          "trunk_allowed_ips": "Allowed incoming IP addresses"
+          "trunk_allowed_ips": "Allowed incoming IP addresses",
+          "trunk_audio_codecs": "Allowed audio codecs",
+          "trunk_video_codecs": "Allowed video codecs"
         },
         "data_description": {
           "trunk_transport": "SIP transport used from HA to the provider.",
@@ -92,7 +94,9 @@
           "automation_routing_enabled": "Before using the fallback destination, publish a short routing request that an automation may answer. Explicit DTMF digits always keep priority.",
           "trunk_dtmf_timeout_ms": "Inter-digit timeout used in DTMF mode. The first digit is allowed 10 seconds. Default is 3 seconds, maximum is 10 seconds.",
           "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
-          "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration."
+          "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
+          "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
+          "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
         }
       },
       "trunk_mode": {
@@ -148,7 +152,8 @@
       "voicemail_route_conflict": "An existing phone, contact or group uses a voicemail address (*97, *98, mailbox, mailbox.*, voicemail.* or *60 plus an extension). Rename that route before enabling voicemail.",
       "voicemail_voice_unavailable": "Select a voice supported by the chosen TTS engine and language.",
       "parking_configuration_invalid": "Choose distinct parking codes and timeouts between 1 and 3600 seconds.",
-      "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group."
+      "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group.",
+      "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",
@@ -307,7 +312,9 @@
             "automation_routing_enabled": "Allow automations to select the inbound destination",
             "trunk_dtmf_timeout_ms": "DTMF timeout (seconds)",
             "trunk_dtmf_terminator": "DTMF terminator",
-            "trunk_allowed_ips": "Allowed incoming IP addresses"
+            "trunk_allowed_ips": "Allowed incoming IP addresses",
+            "trunk_audio_codecs": "Allowed audio codecs",
+            "trunk_video_codecs": "Allowed video codecs"
           },
           "data_description": {
             "trunk_transport": "SIP transport used from HA to the provider.",
@@ -324,7 +331,9 @@
             "automation_routing_enabled": "Before using the fallback destination, publish a short routing request that an automation may answer. Explicit DTMF digits always keep priority.",
             "trunk_dtmf_timeout_ms": "Inter-digit timeout used in DTMF mode. The first digit is allowed 10 seconds. Default is 3 seconds, maximum is 10 seconds.",
             "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
-            "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration."
+            "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
+            "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
+            "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
           }
         }
       },
@@ -338,7 +347,8 @@
         "advertise_ip_unknown": "Configure the SIP advertised address before adding this trunk.",
         "trunk_in_use": "Finish calls using this trunk before changing its connection settings.",
         "trunk_registration_failed": "Registration failed. Check the server, transport and credentials. The saved configuration has not changed.",
-        "trunk_validation_failed": "Check the connection settings and incoming networks. Static trunks on the same transport cannot have overlapping source networks."
+        "trunk_validation_failed": "Check the connection settings and incoming networks. Static trunks on the same transport cannot have overlapping source networks.",
+        "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec."
       },
       "abort": {
         "reconfigure_successful": "Trunk configuration updated."
@@ -395,6 +405,27 @@
         "standard": "Standard SIP codecs",
         "pcm": "Standard + Dahua PCM",
         "symmetric": "Dahua PCM, match received codec"
+      }
+    },
+    "trunk_audio_codecs": {
+      "options": {
+        "OPUS": "Opus",
+        "G722": "G.722",
+        "PCMA": "G.711 A-law (PCMA)",
+        "PCMU": "G.711 µ-law (PCMU)",
+        "L16": "Linear PCM 16-bit (L16)",
+        "L24": "Linear PCM 24-bit (L24)",
+        "PCM": "PCM (Dahua)"
+      }
+    },
+    "trunk_video_codecs": {
+      "options": {
+        "H264": "H.264",
+        "VP8": "VP8",
+        "JPEG": "JPEG",
+        "H263": "H.263",
+        "H263P": "H.263+",
+        "H265": "H.265 / HEVC"
       }
     }
   },

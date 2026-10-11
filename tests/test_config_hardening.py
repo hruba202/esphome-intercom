@@ -82,6 +82,8 @@ def test_translation_placeholders_match_source_strings(language: str) -> None:
 def _load_disabled_trunk_data():
     """Load the pure config helper without importing Home Assistant."""
 
+    from .voip_phase1_support import PKG_NAME
+
     config_tree = ast.parse(CONFIG_FLOW.read_text())
     helper = next(
         node
@@ -91,6 +93,8 @@ def _load_disabled_trunk_data():
     const_namespace: dict[str, object] = {"__file__": str(CONST)}
     exec(compile(CONST.read_text(), str(CONST), "exec"), const_namespace)
     namespace = {
+        "__name__": f"{PKG_NAME}.config_flow",
+        "__package__": PKG_NAME,
         "Mapping": dict,
         "Any": object,
         **const_namespace,

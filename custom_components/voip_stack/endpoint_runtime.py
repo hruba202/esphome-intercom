@@ -780,14 +780,21 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
                 TerminationInitiator.MEDIA,
             )
             return None
-        offer_sdp = sip_sdp.build_offer_directional(
-            local_ip,
-            local_ip,
-            ports.ports[0],
-            list(HA_SIP_PCM_TX_FORMATS),
-            list(HA_SIP_PCM_RX_FORMATS),
-            include_common_codecs=True,
-        )
+        try:
+            offer_sdp = sip_sdp.build_offer_directional(
+                local_ip,
+                local_ip,
+                ports.ports[0],
+                list(HA_SIP_PCM_TX_FORMATS),
+                list(HA_SIP_PCM_RX_FORMATS),
+                include_common_codecs=True,
+                codec_policy=initial.codec_policy,
+            )
+        except sip_sdp.SdpError:
+            await EndpointTerminationHandler(hass).terminate_reason(
+                initial.call_id, TerminalReason.MEDIA_INCOMPATIBLE.value, TerminationInitiator.MEDIA,
+            )
+            return None
 
         async def rollback() -> None:
             if not registry.is_generation_current(initial.call_id, session.generation):
@@ -851,6 +858,17 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     endpoint_termination = EndpointTerminationHandler(hass)
     _on_terminated = endpoint_termination.handle
 
+    def codec_policy_for_invite(initial):
+        from .core.codec_policy import CodecPolicy
+        try:
+            classified = _classified_trunk_invite(initial)
+        except ValueError:
+            return CodecPolicy()  # The routing boundary rejects ambiguous sources.
+        if not classified.received_via_trunk:
+            return CodecPolicy()
+        config = _get_trunk_config(hass, trunk_id=classified.trunk_id) if classified.trunk_id else _get_trunk_config(hass)
+        return CodecPolicy.from_config(config)
+
     supported_formats = list(HA_SIP_PCM_FORMATS)
     endpoint = SipEndpointManager(
         host="0.0.0.0",
@@ -862,6 +880,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         supported_recv_formats=list(HA_SIP_PCM_RX_FORMATS),
         on_invite=_on_invite,
         on_offerless_invite=_on_offerless_invite,
+        codec_policy_resolver=codec_policy_for_invite,
         on_terminated=_on_terminated,
         on_register=_on_register,
         on_info=_on_info,

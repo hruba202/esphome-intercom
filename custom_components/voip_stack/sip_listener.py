@@ -16,6 +16,7 @@ from .core.audio_format import AudioFormat, HA_SIP_PCM_FORMATS
 from .core.codec_capabilities import supports_dahua_pcm
 from .const import VOIP_STACK_RTP_PORT
 from .core import sdp, sip, sip_transfer
+from .core.codec_policy import CodecPolicy
 from .core.sip_dialog import (
     DialogKey,
     DialogSignalingState,
@@ -91,6 +92,7 @@ class SipInvite:
     outbound_trunk_id: str = ""
     identified_source_endpoint_id: str = ""
     replaces: sip_transfer.SipReplaces | None = None
+    codec_policy: CodecPolicy = CodecPolicy()
 
     @property
     def selected_format(self) -> sdp.RtpPcmFormat:
@@ -140,6 +142,7 @@ class SipInitialInvite:
     target_route: str = ""
     trunk_id: str = ""
     replaces: sip_transfer.SipReplaces | None = None
+    codec_policy: CodecPolicy = CodecPolicy()
 
     @property
     def routing_caller(self) -> str:
@@ -230,6 +233,7 @@ class _PendingInvite:
     connected_identity_name: str = ""
     connected_identity_user: str = ""
     delayed_offer_plan: UasDelayedOfferPlan | None = None
+    codec_policy: CodecPolicy = CodecPolicy()
 
 
 @dataclass(frozen=True, slots=True)
@@ -317,6 +321,7 @@ class _ActiveDialog(DialogSignalingState):
     local_offer_in_progress: bool = False
     local_video_reinvite_status: int = 0
     local_video_reinvite_reason: str = ""
+    codec_policy: CodecPolicy = CodecPolicy()
 
 
 @dataclass(slots=True)
@@ -527,6 +532,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         supported_recv_formats: list[AudioFormat] | None = None,
         on_invite: InviteHandler,
         on_offerless_invite: OfferlessInviteHandler | None = None,
+        codec_policy_resolver=None,
         on_terminated: TerminateHandler | None = None,
         on_register: RegisterHandler | None = None,
         on_info: InfoHandler | None = None,
@@ -551,6 +557,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         self.supported_recv_formats = supported_recv_formats or base_formats
         self.on_invite = on_invite
         self.on_offerless_invite = on_offerless_invite
+        self.codec_policy_resolver = codec_policy_resolver
         self.on_terminated = on_terminated
         self.on_register = on_register
         self.on_info = on_info
@@ -909,7 +916,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
     ) -> _ActiveDialog:
         """Build and activate one UAS dialog from its authoritative INVITE."""
 
-        invite = self._parse_invite(request, addr) if request.body else None
+        invite = self._parse_invite(request, addr, codec_policy=pending.codec_policy) if request.body else None
         initial_invite = (
             self._parse_initial_invite(request, addr) if not request.body else None
         )
@@ -926,6 +933,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             to_tag=pending.to_tag,
             cseq=_cseq_number(request.header("CSeq")) + 1,
             transport=pending.transport,
+            codec_policy=pending.codec_policy,
             remote_target_uri=remote_target,
             route_set=sip.record_route_set(request),
             status=pending.status,
@@ -1355,6 +1363,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 # it from directional runtime fields can select the opposite
                 # wire format on asymmetric ESP endpoints.
                 audio_rtp_formats=current_audio_formats,
+                codec_policy=dialog.codec_policy,
                 allow_directional_payloads=(
                     sdp.has_directional_audio_flow_attributes(current_local_sdp)
                 ),
@@ -2796,7 +2805,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             )
             return
         to_tag = sip.make_tag()
-        pending = _PendingInvite(request, addr, to_tag, self.signaling_transport)
+        pending = _PendingInvite(request, addr, to_tag, self.signaling_transport, codec_policy=signaling_invite.codec_policy)
         self.pending_invites[call_id] = pending
         self._send_response(request, addr, 100, "Trying")
         delayed_plan: UasDelayedOfferPlan | None = None
@@ -3269,7 +3278,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 or _identity_header(request.header("X-Voip-Stack-Dest-Route"))
                 or target
             )
-            return SipInitialInvite(
+            initial = SipInitialInvite(
                 source_host=str(addr[0]),
                 source_port=int(addr[1]),
                 request_uri=request_uri,
@@ -3286,6 +3295,11 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 caller_route=caller_route,
                 target_route=target_route,
             )
+            previous = self.active_dialogs.get(initial.call_id) or self.pending_invites.get(initial.call_id)
+            policy = previous.codec_policy if previous is not None else (
+                self.codec_policy_resolver(initial) if self.codec_policy_resolver is not None else CodecPolicy()
+            )
+            return replace(initial, codec_policy=policy)
         except Exception as err:
             _LOGGER.info("SIP initial INVITE parse failed: %s", err)
             return None
@@ -3297,6 +3311,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
         *,
         peer_profile: str = "",
         local_offer_sdp: str = "",
+        codec_policy=None,
     ) -> SipInvite | None:
         try:
             initial = self._parse_initial_invite(
@@ -3307,6 +3322,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             if initial is None:
                 return None
             peer_profile = initial.peer_profile
+            codec_policy = codec_policy or initial.codec_policy
             selected = (
                 sdp.negotiate_answer_directional(
                     request.body,
@@ -3321,6 +3337,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                     self.supported_send_formats,
                     self.supported_recv_formats,
                     allow_dahua_pcm=peer_profile == "dahua",
+                    codec_policy=codec_policy,
                 )
             )
             if selected is None:
@@ -3358,16 +3375,10 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                     if local_offer_sdp
                     else sdp.negotiate_video_offer_directional(
                         request.body,
-                        accepted_encodings=(
-                            "H264",
-                            "VP8",
-                            "JPEG",
-                            "H263",
-                            "H263P",
-                            "H265",
-                        )
-                        if self.enable_video_transcoding
-                        else ("H264", "VP8", "JPEG"),
+                        accepted_encodings=tuple(codec for codec in (
+                            ("H264", "VP8", "JPEG", "H263", "H263P", "H265")
+                            if self.enable_video_transcoding else ("H264", "VP8", "JPEG")
+                        ) if codec_policy.video is None or codec in codec_policy.video),
                         prefer_browser_send=self.prefer_browser_video_send,
                         allow_passthrough_fallback=self.enable_video_transcoding,
                     )
@@ -3434,6 +3445,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 received_via_trunk=initial.received_via_trunk,
                 trunk_id=initial.trunk_id,
                 peer_profile=peer_profile,
+                codec_policy=codec_policy,
                 replaces=initial.replaces,
                 **remote_video_target.as_remote_video_fields(),
             )
@@ -3455,6 +3467,7 @@ class SipUdpServer:
         supported_recv_formats: list[AudioFormat] | None = None,
         on_invite: InviteHandler,
         on_offerless_invite: OfferlessInviteHandler | None = None,
+        codec_policy_resolver=None,
         on_terminated: TerminateHandler | None = None,
         on_register: RegisterHandler | None = None,
         on_info: InfoHandler | None = None,
@@ -3474,6 +3487,7 @@ class SipUdpServer:
         self.supported_recv_formats = supported_recv_formats
         self.on_invite = on_invite
         self.on_offerless_invite = on_offerless_invite
+        self.codec_policy_resolver = codec_policy_resolver
         self.on_terminated = on_terminated
         self.on_register = on_register
         self.on_info = on_info
@@ -3501,6 +3515,7 @@ class SipUdpServer:
                     supported_recv_formats=self.supported_recv_formats,
                     on_invite=self.on_invite,
                     on_offerless_invite=self.on_offerless_invite,
+                    codec_policy_resolver=self.codec_policy_resolver,
                     on_terminated=self.on_terminated,
                     on_register=self.on_register,
                     on_info=self.on_info,
@@ -3576,6 +3591,7 @@ class SipTcpServer:
         supported_recv_formats: list[AudioFormat] | None = None,
         on_invite: InviteHandler,
         on_offerless_invite: OfferlessInviteHandler | None = None,
+        codec_policy_resolver=None,
         on_terminated: TerminateHandler | None = None,
         on_register: RegisterHandler | None = None,
         on_info: InfoHandler | None = None,
@@ -3600,6 +3616,7 @@ class SipTcpServer:
         self.supported_recv_formats = supported_recv_formats
         self.on_invite = on_invite
         self.on_offerless_invite = on_offerless_invite
+        self.codec_policy_resolver = codec_policy_resolver
         self.on_terminated = on_terminated
         self.on_register = on_register
         self.on_info = on_info
@@ -3649,6 +3666,7 @@ class SipTcpServer:
             supported_recv_formats=self.supported_recv_formats,
             on_invite=self.on_invite,
             on_offerless_invite=self.on_offerless_invite,
+            codec_policy_resolver=self.codec_policy_resolver,
             on_terminated=self.on_terminated,
             on_register=self.on_register,
             on_info=self.on_info,

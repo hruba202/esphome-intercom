@@ -537,3 +537,34 @@ async def test_first_trunk_is_default_without_toggle_second_trunk_offers_choice(
         assert catalog.data['default_trunk_id']==identity
     finally:
         await async_stop_sip_trunk(hass)
+
+
+async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disabled(hass,catalog,registrar,monkeypatch):
+    from custom_components.voip_stack import trunk_flow
+    peer,port=registrar
+    monkeypatch.setattr(trunk_flow,'async_advertise_host',AsyncMock(return_value='127.0.0.1'))
+    hass.config.components.update({'assist_pipeline','ffmpeg','http','lovelace','media_source','network'})
+    form=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'user'})
+    form=await hass.config_entries.subentries.async_configure(form['flow_id'],{
+        'name':'Limited codecs','trunk_enabled':True,'trunk_register':True,'make_default':False})
+    assert 'trunk_audio_codecs' in form['data_schema'].schema
+    assert 'trunk_video_codecs' in form['data_schema'].schema
+    result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
+        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_password':'test-only',
+        'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[]})
+    assert result['type']=='create_entry'
+    identity=result['data']['trunk_id']
+    try:
+        await hass.async_block_till_done()
+        assert sip_trunk(hass,identity).config.audio_codecs==('PCMU',)
+        assert sip_trunk(hass,identity).config.video_codecs==()
+        record=next(s for s in catalog.subentries.values() if s.data['trunk_id']==identity)
+        form=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'reconfigure','subentry_id':record.subentry_id})
+        result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
+            'name':'Limited codecs','trunk_enabled':False,'trunk_register':True,'make_default':False})
+        assert result['type']=='abort'
+        await hass.async_block_till_done()
+        assert catalog.subentries[record.subentry_id].data['trunk_audio_codecs']==['PCMU']
+        assert catalog.subentries[record.subentry_id].data['trunk_video_codecs']==[]
+    finally:
+        await async_stop_sip_trunk(hass)

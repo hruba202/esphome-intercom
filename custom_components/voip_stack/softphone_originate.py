@@ -549,6 +549,7 @@ async def async_originate_browser_call(
     )
     video_capable = (
         bool(cfg.get(CONF_SIP_VIDEO, False))
+        and (not use_trunk or bool(trunk_cfg.get("trunk_video_codecs", ["H264"])))
         and source_video_enabled
         and target_video_enabled
         and (use_trunk or not native_audio_endpoint or esphome_sip_endpoint)

@@ -117,6 +117,7 @@ class SipEndpointManager:
         supported_recv_formats: list[AudioFormat] | None = None,
         on_invite: InviteHandler,
         on_offerless_invite: OfferlessInviteHandler | None = None,
+        codec_policy_resolver=None,
         on_terminated: TerminateHandler | None = None,
         on_register: RegisterHandler | None = None,
         on_info: InfoHandler | None = None,
@@ -139,6 +140,7 @@ class SipEndpointManager:
         self.supported_recv_formats = supported_recv_formats
         self.on_invite = on_invite
         self.on_offerless_invite = on_offerless_invite
+        self.codec_policy_resolver = codec_policy_resolver
         self.on_terminated = on_terminated
         self.on_register = on_register
         self.on_info = on_info
@@ -207,6 +209,7 @@ class SipEndpointManager:
                     supported_recv_formats=self.supported_recv_formats,
                     on_invite=self.on_invite,
                     on_offerless_invite=self.on_offerless_invite,
+                    codec_policy_resolver=self.codec_policy_resolver,
                     on_terminated=self.on_terminated,
                     on_register=self.on_register,
                     on_info=self.on_info,
@@ -231,6 +234,7 @@ class SipEndpointManager:
                     supported_recv_formats=self.supported_recv_formats,
                     on_invite=self.on_invite,
                     on_offerless_invite=self.on_offerless_invite,
+                    codec_policy_resolver=self.codec_policy_resolver,
                     on_terminated=self.on_terminated,
                     on_register=self.on_register,
                     on_info=self.on_info,

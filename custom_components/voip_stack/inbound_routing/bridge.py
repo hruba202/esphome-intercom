@@ -231,6 +231,7 @@ async def route_sip_bridge(
     target_video_codec = peer_video_codec(peer_target, decision.entry)
     if (
         bool(cfg.get(CONF_SIP_VIDEO, False))
+        and (not bridge_to_trunk or bool(trunk_config.get("trunk_video_codecs", ["H264"])))
         and invite.video_format is not None
         and target_video_codec != ""
     ):

@@ -441,6 +441,7 @@ class SipCallClient:
         password: str = "",
         outbound_proxy: str = "",
         include_common_codecs: bool = False,
+        codec_policy=None,
         allow_directional_audio_payloads: bool = False,
         peer_user_agent: str = "",
         include_dahua_pcm: bool | None = None,
@@ -497,7 +498,10 @@ class SipCallClient:
         self.username = username or local_name
         self.password = password
         self.outbound_proxy = outbound_proxy
+        from .core.codec_policy import CodecPolicy
+        self.codec_policy = codec_policy or CodecPolicy()
         self.include_common_codecs = bool(include_common_codecs)
+        self.include_route_metadata = True
         self.allow_directional_audio_payloads = bool(
             allow_directional_audio_payloads
         )
@@ -508,7 +512,7 @@ class SipCallClient:
             if include_dahua_pcm is None else bool(include_dahua_pcm)
         )
         self.local_video_rtp_port = int(local_video_rtp_port or 0)
-        requested_video = tuple(video_formats or (() if video_format is None else (video_format,)))
+        requested_video = self.codec_policy.video_formats(tuple(video_formats or (() if video_format is None else (video_format,))))
         self.video_formats = requested_video if self.local_video_rtp_port > 0 else ()
         self.video_format = self.video_formats[0] if self.video_formats else None
         self.video_direction = str(video_direction or "sendrecv")
@@ -772,6 +776,14 @@ class SipCallClient:
                     pass
         finally:
             self._closed = True
+
+    def set_codec_policy(self, policy) -> None:
+        """Set the leg policy before starting SIP, preserving offered profiles."""
+        if self._invite_transaction_active or self.dialog is not None:
+            raise RuntimeError("Codec policy cannot change during a call")
+        self.codec_policy = policy
+        self.video_formats = policy.video_formats(self.video_formats)
+        self.video_format = self.video_formats[0] if self.video_formats else None
 
     def use_reused_tcp_connection(
         self,
@@ -1320,6 +1332,7 @@ class SipCallClient:
                     self.supported_send_formats,
                     self.supported_recv_formats,
                     allow_dahua_pcm=self.include_dahua_pcm,
+                    codec_policy=self.codec_policy,
                 )
             )
             if selected is None:
@@ -1336,6 +1349,8 @@ class SipCallClient:
                     )
                 )
             )
+            if self.codec_policy.video is not None:
+                accepted_video = tuple(codec for codec in accepted_video if codec in self.codec_policy.video)
             video_directional = (
                 (
                     sdp.negotiate_video_answer_directional(
@@ -1538,22 +1553,23 @@ class SipCallClient:
             remote_display_name=self._pending_target_display,
         )
         headers.extend(("Route", value) for value in routing.route_headers)
-        caller_name = _sip_header_token(self.local_name)
-        dest_name = _sip_header_token(self._pending_target_display)
-        caller_route = _sip_header_token(
-            sip.parse_sip_uri(self._pending_local_uri).user
-        )
-        dest_route = _sip_header_token(
-            sip.parse_sip_uri(self._pending_request_uri).user
-        )
-        if caller_name:
-            headers.append(("X-Voip-Stack-Caller-Name", caller_name))
-        if caller_route:
-            headers.append(("X-Voip-Stack-Caller-Route", caller_route))
-        if dest_name:
-            headers.append(("X-Voip-Stack-Dest-Name", dest_name))
-        if dest_route:
-            headers.append(("X-Voip-Stack-Dest-Route", dest_route))
+        if self.include_route_metadata:
+            caller_name = _sip_header_token(self.local_name)
+            dest_name = _sip_header_token(self._pending_target_display)
+            caller_route = _sip_header_token(
+                sip.parse_sip_uri(self._pending_local_uri).user
+            )
+            dest_route = _sip_header_token(
+                sip.parse_sip_uri(self._pending_request_uri).user
+            )
+            if caller_name:
+                headers.append(("X-Voip-Stack-Caller-Name", caller_name))
+            if caller_route:
+                headers.append(("X-Voip-Stack-Caller-Route", caller_route))
+            if dest_name:
+                headers.append(("X-Voip-Stack-Dest-Name", dest_name))
+            if dest_route:
+                headers.append(("X-Voip-Stack-Dest-Route", dest_route))
         headers.extend(
             (header, value)
             for header, (_challenge, value, _count) in self._pending_invite_auth.items()
@@ -1565,13 +1581,13 @@ class SipCallClient:
             self._pending_invite_body,
         )
 
-    def _refresh_pending_invite_authorization(self) -> None:
+    def _refresh_pending_invite_authorization(self, *, advance_nonce: bool = True) -> None:
         """Regenerate qop state when an authenticated INVITE gets a new CSeq."""
 
         for header, (challenge, _value, count) in tuple(
             self._pending_invite_auth.items()
         ):
-            count += 1
+            count += int(advance_nonce)
             self._pending_invite_auth[header] = (
                 challenge,
                 build_digest_authorization(
@@ -1992,6 +2008,7 @@ class SipCallClient:
                 send_rtp_formats=self.supported_send_rtp_formats,
                 recv_rtp_formats=self.supported_recv_rtp_formats,
                 allow_directional_payloads=self.allow_directional_audio_payloads,
+                codec_policy=self.codec_policy,
                 video_port=self.local_video_rtp_port,
                 video_format=self.video_format,
                 video_formats=self.video_formats,
@@ -2005,147 +2022,161 @@ class SipCallClient:
         self._invite_cseq = self.dialog_ids.cseq
         raw = self._build_pending_invite()
 
-        if (
-            self.signaling_transport == "UDP"
-            and len(raw) > _SIP_UDP_SAFE_REQUEST_BYTES
-            and self._reused_flow_send is None
-            and not next_hop_transport
-        ):
-            # RFC 3261 section 18.1.1 requires requests larger than 1300
-            # bytes to use a congestion-controlled transport when the path
-            # MTU is unknown. Rebuild every transport-bearing field before
-            # connecting so the Request-URI, Via and Contact all describe the
-            # TCP transaction that is actually sent.
-            udp_endpoints = endpoints
-            udp_request_uri = request_uri
-            udp_route_uri = route_uri
-            _LOGGER.debug(
-                "SIP request transport upgrade call_id=%s bytes=%s from=UDP to=TCP reason=message_size",
-                self.dialog_ids.call_id,
-                len(raw),
-            )
-            if self.transport is not None:
-                self.transport.close()
-                self.transport = None
-                self.protocol = None
-            self._resolved_signaling_target = None
-            self.signaling_transport = "TCP"
-            transport_param = (("transport", "tcp"),)
-            logical_uri = _uri_with_transport(logical_uri, "tcp")
-            request_uri = str(logical_uri)
-            route_uri = logical_uri
-            if self.outbound_proxy:
-                proxy = str(self.outbound_proxy).strip()
-                route_uri = _uri_with_transport(
-                    sip.parse_sip_uri(
-                        proxy
-                        if proxy.lower().startswith(("sip:", "sips:"))
-                        else f"sip:{proxy}"
-                    ),
-                    "tcp",
-                )
-            elif remote_host != logical_uri.host:
-                route_uri = sip.SipUri(
-                    "",
-                    remote_host,
-                    int(remote_sip_port),
-                    params=transport_param,
-                )
-            self._tls_server_name = route_uri.host
+        udp_fallback_used = False
+        sent_invite = False
+
+        async def prepare_request_transport():
+            nonlocal endpoints, endpoint_index, request_uri, route_uri, logical_uri
+            nonlocal transport_param, contact_uri, local_uri, remote_uri, raw, udp_fallback_used
+            if self.signaling_transport != "UDP" or len(raw) <= _SIP_UDP_SAFE_REQUEST_BYTES or udp_fallback_used:
+                return None
+            borrowed_flow = (self._reused_flow_send, self._reused_flow_responses, self._reused_flow_close)
+            udp_local_port = self.local_sip_port
+            # Borrowing a registration flow must not pin an oversized request to UDP.
+            # Retain its release callback until TCP succeeds or UDP is restored.
+            self._reused_flow_send = self._reused_flow_responses = self._reused_flow_close = None
             try:
-                endpoints = tuple(
-                    endpoint
-                    for candidate in await self.target_resolver.resolve(
-                        route_uri,
-                        transport="TCP",
-                    )
-                    for endpoint in candidate.endpoints()
-                )
-            except (OSError, RuntimeError, sip.SipError) as err:
-                return self._transport_failure(
-                    err,
-                    target,
-                    remote_host,
-                    remote_sip_port,
-                )
-            endpoint_index = -1
-            if not await select_next_endpoint():
-                if self._cancel_requested or self._closing or self._closed:
-                    self._invite_transaction_active = False
-                    return "cancelled"
-                # RFC 3261 18.1.1 permits UDP retry after refusal/reset or ICMP
-                # protocol-unreachable (ENOPROTOOPT on Linux), not a timeout.
-                if not selection_errors or not all(
-                    isinstance(error, OSError)
-                    and error.errno
-                    in {errno.ECONNREFUSED, errno.ECONNRESET, errno.ENOPROTOOPT}
-                    for error in selection_errors
-                ):
-                    return self._transport_failure(
-                        selection_errors[-1]
-                        if selection_errors
-                        else OSError("no SIP TCP target"),
-                        target,
-                        remote_host,
-                        remote_sip_port,
-                    )
-                _LOGGER.info(
-                    "SIP request transport fallback call_id=%s bytes=%s from=TCP to=UDP "
-                    "reason=connection_rejected_before_send",
+                # RFC 3261 section 18.1.1 requires requests larger than 1300
+                # bytes to use a congestion-controlled transport when the path
+                # MTU is unknown. Rebuild Via for the selected transport and
+                # advertise the owned TCP flow in Contact. Registration stays
+                # on its configured transport; From/To and Request-URI persist.
+                udp_endpoints = endpoints
+                udp_request_uri = request_uri
+                udp_route_uri = route_uri
+                _LOGGER.debug(
+                    "SIP request transport upgrade call_id=%s bytes=%s from=UDP to=TCP reason=message_size",
                     self.dialog_ids.call_id,
                     len(raw),
                 )
-                self.signaling_transport = "UDP"
-                transport_param = (("transport", "udp"),)
-                request_uri = udp_request_uri
-                logical_uri = sip.parse_sip_uri(request_uri)
-                route_uri = udp_route_uri
-                self._tls_server_name = route_uri.host
+                if self.transport is not None:
+                    self.transport.close()
+                    self.transport = None
+                    self.protocol = None
                 self._resolved_signaling_target = None
-                endpoints = udp_endpoints
-                endpoint_index = -1
-                if not await select_next_endpoint():
+                self.signaling_transport = "TCP"
+                transport_param = (("transport", "tcp"),)
+                # Transport selection does not rewrite the called SIP identity.
+                # Keep Request-URI/To intact, including when using an outbound proxy.
+                route_uri = _uri_with_transport(logical_uri, "tcp")
+                if self.outbound_proxy:
+                    proxy = str(self.outbound_proxy).strip()
+                    route_uri = _uri_with_transport(
+                        sip.parse_sip_uri(
+                            proxy
+                            if proxy.lower().startswith(("sip:", "sips:"))
+                            else f"sip:{proxy}"
+                        ),
+                        "tcp",
+                    )
+                elif remote_host != logical_uri.host:
+                    route_uri = sip.SipUri(
+                        "",
+                        remote_host,
+                        int(remote_sip_port),
+                        params=transport_param,
+                    )
+                self._tls_server_name = route_uri.host
+                try:
+                    endpoints = tuple(
+                        endpoint
+                        for candidate in await self.target_resolver.resolve(
+                            route_uri,
+                            transport="TCP",
+                        )
+                        for endpoint in candidate.endpoints()
+                    )
+                except (OSError, RuntimeError, sip.SipError) as err:
                     return self._transport_failure(
-                        selection_errors[-1]
-                        if selection_errors
-                        else OSError("no SIP UDP target"),
+                        err,
                         target,
                         remote_host,
                         remote_sip_port,
                     )
-            contact_uri = str(
-                sip.SipUri(
-                    self.local_uri_user,
-                    self.local_ip,
-                    self.local_sip_port,
-                    params=transport_param,
+                endpoint_index = -1
+                if not await select_next_endpoint():
+                    if self._cancel_requested or self._closing or self._closed:
+                        self._invite_transaction_active = False
+                        return "cancelled"
+                    # RFC 3261 18.1.1 permits UDP retry after refusal/reset or ICMP
+                    # protocol-unreachable (ENOPROTOOPT on Linux), not a timeout.
+                    if not selection_errors or not all(
+                        isinstance(error, OSError)
+                        and error.errno
+                        in {errno.ECONNREFUSED, errno.ECONNRESET, errno.ENOPROTOOPT}
+                        for error in selection_errors
+                    ):
+                        return self._transport_failure(
+                            selection_errors[-1]
+                            if selection_errors
+                            else OSError("no SIP TCP target"),
+                            target,
+                            remote_host,
+                            remote_sip_port,
+                        )
+                    _LOGGER.info(
+                        "SIP request transport fallback call_id=%s bytes=%s from=TCP to=UDP "
+                        "reason=connection_rejected_before_send",
+                        self.dialog_ids.call_id,
+                        len(raw),
+                    )
+                    self.signaling_transport = "UDP"
+                    udp_fallback_used = True
+                    if borrowed_flow is not None:
+                        self._reused_flow_send, self._reused_flow_responses, self._reused_flow_close = borrowed_flow
+                        if borrowed_flow[0] is not None:
+                            self.local_sip_port = udp_local_port
+                        borrowed_flow = None
+                    transport_param = (("transport", "udp"),)
+                    request_uri = udp_request_uri
+                    logical_uri = sip.parse_sip_uri(request_uri)
+                    route_uri = udp_route_uri
+                    self._tls_server_name = route_uri.host
+                    self._resolved_signaling_target = None
+                    endpoints = udp_endpoints
+                    endpoint_index = -1
+                    if not await select_next_endpoint():
+                        return self._transport_failure(
+                            selection_errors[-1]
+                            if selection_errors
+                            else OSError("no SIP UDP target"),
+                            target,
+                            remote_host,
+                            remote_sip_port,
+                        )
+                contact_uri = str(
+                    sip.SipUri(
+                        self.local_uri_user,
+                        self.local_ip,
+                        self.local_sip_port,
+                        params=transport_param,
+                    )
                 )
-            )
-            local_uri = self.local_identity_uri or contact_uri
-            remote_uri = request_uri
-            self._pending_request_uri = request_uri
-            self._pending_local_uri = local_uri
-            self._pending_contact_uri = contact_uri
-            self._pending_remote_uri = remote_uri
-            raw = self._build_pending_invite()
-            _LOGGER.info(
-                "SIP initial request is %s bytes; selected %s per RFC 3261 section 18.1.1",
-                len(raw),
-                self.signaling_transport,
-            )
-        elif (
-            self.signaling_transport == "UDP"
-            and len(raw) > _SIP_UDP_SAFE_REQUEST_BYTES
-            and bool(next_hop_transport)
-        ):
-            # An explicit URI or proxy transport is the next-hop contract. Do
-            # not silently replace a UDP-only peer merely because its offer is
-            # large.
-            _LOGGER.warning(
-                "SIP initial request is %s bytes; preserving explicit %s transport",
-                len(raw),
-                next_hop_transport,
-            )
+                if not sent_invite:
+                    local_uri = self.local_identity_uri or contact_uri
+                    remote_uri = request_uri
+                self._pending_request_uri = request_uri
+                self._pending_local_uri = local_uri
+                self._pending_contact_uri = contact_uri
+                self._pending_remote_uri = remote_uri
+                self._refresh_pending_invite_authorization(advance_nonce=False)
+                raw = self._build_pending_invite()
+                _LOGGER.info(
+                    "SIP initial request is %s bytes; selected %s per RFC 3261 section 18.1.1",
+                    len(raw),
+                    self.signaling_transport,
+                )
+                if self._cancel_requested or self._closing or self._closed:
+                    self._invite_transaction_active = False
+                    return "cancelled"
+                return None
+            finally:
+                if borrowed_flow is not None and borrowed_flow[2] is not None:
+                    borrowed_flow[2]()
+
+        transport_error = await prepare_request_transport()
+        if transport_error is not None:
+            return transport_error
 
         def refresh_pending_local_uri() -> None:
             nonlocal contact_uri, local_uri, raw
@@ -2169,6 +2200,7 @@ class SipCallClient:
                 return "cancelled"
             try:
                 await self._send_raw(raw, remote_host, int(remote_sip_port))
+                sent_invite = True
                 break
             except (ConnectionError, OSError, RuntimeError) as err:
                 if not await select_next_endpoint():
@@ -2351,13 +2383,20 @@ class SipCallClient:
                     1,
                 )
                 raw = self._build_pending_invite()
+                transport_error = await prepare_request_transport()
+                if transport_error is not None:
+                    return transport_error
                 sip.mark_sip_event(self, "INVITE")
                 try:
                     await self._send_raw(raw, remote_host, int(remote_sip_port))
                 except (ConnectionError, OSError, RuntimeError) as err:
                     return self._transport_failure(err, target, remote_host, remote_sip_port)
-                transaction.restart_retransmissions()
+                transaction = SipClientTransaction(
+                    transport=self.signaling_transport, timeout=timeout, t1=SIP_T1, t2=SIP_T2,
+                )
+                self._invite_transaction = transaction
                 received_provisional = False
+                self._received_provisional = False
                 self._reliable_rseq.clear()
                 continue
             if msg.status_code and msg.status_code >= 300:
@@ -3547,6 +3586,8 @@ class SipCallClient:
             offered_video = tuple(video_formats)
             local_video_port = int(local_video_rtp_port)
             removing_video = local_video_port == 0
+            if not removing_video:
+                offered_video = self.codec_policy.video_formats(offered_video)
             if (
                 current is None
                 or self._prepared_reinvite is not None
@@ -3609,6 +3650,7 @@ class SipCallClient:
                     send_rtp_formats=current_send_rtp_formats,
                     recv_rtp_formats=current_recv_rtp_formats,
                     allow_directional_payloads=self.allow_directional_audio_payloads,
+                    codec_policy=self.codec_policy,
                 )
                 offer = sdp.rewrite_sdp_origin(
                     offer, session_id, session_version

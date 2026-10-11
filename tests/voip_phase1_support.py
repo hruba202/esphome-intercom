@@ -32,7 +32,7 @@ CORE_MODULES = {
 def _install_runtime_data_ha_fakes() -> None:
     """Keep pure protocol tests independent from a Home Assistant install."""
 
-    if "homeassistant" in sys.modules:
+    if "homeassistant.config_entries" in sys.modules:
         return
     package = types.ModuleType("homeassistant")
     package.__path__ = []
@@ -46,9 +46,9 @@ def _install_runtime_data_ha_fakes() -> None:
 
     config_entries.ConfigEntry = ConfigEntry
     core.HomeAssistant = object
-    sys.modules["homeassistant"] = package
+    sys.modules.setdefault("homeassistant", package)
     sys.modules["homeassistant.config_entries"] = config_entries
-    sys.modules["homeassistant.core"] = core
+    sys.modules.setdefault("homeassistant.core", core)
 
 
 _install_runtime_data_ha_fakes()

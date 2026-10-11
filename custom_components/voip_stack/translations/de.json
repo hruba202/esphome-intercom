@@ -75,7 +75,9 @@
           "automation_routing_enabled": "Erlauben Sie Automatisierungen, das eingehende Ziel auszuwählen",
           "trunk_dtmf_timeout_ms": "DTMF-Timeout (Sekunden)",
           "trunk_dtmf_terminator": "DTMF-Terminator",
-          "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen"
+          "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
+          "trunk_audio_codecs": "Zulässige Audiocodecs",
+          "trunk_video_codecs": "Zulässige Videocodecs"
         },
         "data_description": {
           "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -92,7 +94,9 @@
           "automation_routing_enabled": "Veröffentlichen Sie vor der Verwendung des Fallback-Ziels eine kurze Routing-Anfrage, die möglicherweise von einer Automatisierung beantwortet wird. Explizite DTMF-Ziffern behalten immer Vorrang.",
           "trunk_dtmf_timeout_ms": "Zeitüberschreitung zwischen Ziffern, die im DTMF-Modus verwendet wird. Die erste Ziffer darf 10 Sekunden lang sein. Der Standardwert beträgt 3 Sekunden, der Höchstwert 10 Sekunden.",
           "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
-          "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich."
+          "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
+          "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
+          "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
         }
       },
       "trunk_mode": {
@@ -148,7 +152,8 @@
       "voicemail_route_conflict": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Voicemail-Adresse (*97, *98, mailbox, mailbox.*, voicemail.* oder *60 mit Nebenstelle). Benennen Sie dieses Ziel vor dem Aktivieren um.",
       "voicemail_voice_unavailable": "Wählen Sie eine Stimme, die die gewählte TTS-Engine und Sprache unterstützt.",
       "parking_configuration_invalid": "Wählen Sie eindeutige Parkcodes und Zeiten zwischen 1 und 3600 Sekunden.",
-      "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet."
+      "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet.",
+      "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",
@@ -307,7 +312,9 @@
             "automation_routing_enabled": "Erlauben Sie Automatisierungen, das eingehende Ziel auszuwählen",
             "trunk_dtmf_timeout_ms": "DTMF-Timeout (Sekunden)",
             "trunk_dtmf_terminator": "DTMF-Terminator",
-            "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen"
+            "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
+            "trunk_audio_codecs": "Zulässige Audiocodecs",
+            "trunk_video_codecs": "Zulässige Videocodecs"
           },
           "data_description": {
             "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -324,7 +331,9 @@
             "automation_routing_enabled": "Veröffentlichen Sie vor der Verwendung des Fallback-Ziels eine kurze Routing-Anfrage, die möglicherweise von einer Automatisierung beantwortet wird. Explizite DTMF-Ziffern behalten immer Vorrang.",
             "trunk_dtmf_timeout_ms": "Zeitüberschreitung zwischen Ziffern, die im DTMF-Modus verwendet wird. Die erste Ziffer darf 10 Sekunden lang sein. Der Standardwert beträgt 3 Sekunden, der Höchstwert 10 Sekunden.",
             "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
-            "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich."
+            "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
+            "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
+            "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
           }
         }
       },
@@ -338,7 +347,8 @@
         "advertise_ip_unknown": "Konfiguriere vor dem Hinzufügen dieses Trunks die angekündigte SIP-Adresse.",
         "trunk_in_use": "Beende Anrufe über diesen Trunk, bevor du seine Verbindungseinstellungen änderst.",
         "trunk_registration_failed": "Registrierung fehlgeschlagen. Prüfe Server, Transport und Zugangsdaten. Die gespeicherte Konfiguration wurde nicht geändert.",
-        "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben."
+        "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben.",
+        "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec."
       },
       "abort": {
         "reconfigure_successful": "Trunk-Konfiguration aktualisiert."
@@ -396,6 +406,27 @@
         "pcm": "Standard + Dahua PCM",
         "symmetric": "Dahua PCM, empfangenen Codec auch zum Senden nutzen"
       }
+    },
+    "trunk_audio_codecs": {
+      "options": {
+        "OPUS": "Opus",
+        "G722": "G.722",
+        "PCMA": "G.711 A-law (PCMA)",
+        "PCMU": "G.711 µ-law (PCMU)",
+        "L16": "Linear PCM 16-bit (L16)",
+        "L24": "Linear PCM 24-bit (L24)",
+        "PCM": "PCM (Dahua)"
+      }
+    },
+    "trunk_video_codecs": {
+      "options": {
+        "H264": "H.264",
+        "VP8": "VP8",
+        "JPEG": "JPEG",
+        "H263": "H.263",
+        "H263P": "H.263+",
+        "H265": "H.265 / HEVC"
+      }
     }
   },
   "system_health": {
@@ -422,6 +453,10 @@
     "media_capture_enabled": {
       "title": "Die private Medienerfassung ist aktiviert",
       "description": "VoIP Stack speichert private Anrufmedien für die Diagnose. Deaktivieren Sie die Medienerfassung, wenn die Fehlerbehebung abgeschlossen ist."
+    },
+    "default_trunk_missing": {
+      "title": "Standardleitung für ausgehende SIP-Anrufe auswählen",
+      "description": "Es ist kein vorhandener Trunk als Standard ausgewählt. Öffne VoIP Stack, konfiguriere die gewünschte Leitung neu und aktiviere \"Als Standard für ausgehende Anrufe verwenden\". Alternativ kannst du eine Leitung in den Telefonoptionen oder in der Anrufaktion auswählen. Beim Löschen einer Leitung wird niemals automatisch ein anderer Anbieter ausgewählt."
     }
   },
   "exceptions": {

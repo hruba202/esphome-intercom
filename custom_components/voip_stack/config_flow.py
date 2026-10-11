@@ -163,8 +163,12 @@ def _disabled_trunk_data(data: dict, existing: Mapping[str, Any]) -> dict:
         value = existing.get(key)
         return default if value in (None, "") else value
 
+    from .core.codec_policy import CodecPolicy
+    codecs = CodecPolicy.from_config(existing)
     data.update(
         {
+            "trunk_audio_codecs": list(codecs.audio),
+            "trunk_video_codecs": list(codecs.video),
             CONF_TRUNK_ENABLED: False,
             CONF_TRUNK_REGISTER: legacy_value(CONF_TRUNK_REGISTER, True),
             CONF_TRUNK_ALLOWED_IPS: legacy_value(CONF_TRUNK_ALLOWED_IPS, []),
@@ -223,6 +227,7 @@ class TrunkFormMixin:
         register = getattr(
             self, "_trunk_register", existing.get(CONF_TRUNK_REGISTER, True)
         )
+        from .core.codec_policy import AUDIO_CODECS, VIDEO_CODECS, normalize_codecs
         legacy_timeout = _dtmf_timeout_seconds(
             existing.get(CONF_TRUNK_DTMF_TIMEOUT_MS, 3000)
         )
@@ -253,6 +258,12 @@ class TrunkFormMixin:
         }
         schema = vol.Schema(
             {
+                vol.Required("trunk_audio_codecs", default=existing.get("trunk_audio_codecs", list(AUDIO_CODECS))):
+                    SelectSelector(SelectSelectorConfig(options=list(AUDIO_CODECS), multiple=True,
+                                                        translation_key="trunk_audio_codecs")),
+                vol.Required("trunk_video_codecs", default=existing.get("trunk_video_codecs", list(VIDEO_CODECS))):
+                    SelectSelector(SelectSelectorConfig(options=list(VIDEO_CODECS), multiple=True,
+                                                        translation_key="trunk_video_codecs")),
                 vol.Required(
                     CONF_TRUNK_TRANSPORT, default=defaults[CONF_TRUNK_TRANSPORT]
                 ): SelectSelector(
@@ -377,6 +388,12 @@ class TrunkFormMixin:
                 errors["base"] = "trunk_username_required"
             elif register and not user_input[CONF_TRUNK_PASSWORD]:
                 errors["base"] = "trunk_password_required"
+            for key, allowed, empty in (("trunk_audio_codecs", AUDIO_CODECS, False),
+                                        ("trunk_video_codecs", VIDEO_CODECS, True)):
+                try:
+                    user_input[key] = list(normalize_codecs(user_input.get(key, existing.get(key, allowed)), allowed, allow_empty=empty))
+                except ValueError:
+                    errors[key] = "trunk_codecs_invalid"
             if not errors:
                 data = dict(self._base_input or {})
                 data[CONF_TRUNK_ENABLED] = True

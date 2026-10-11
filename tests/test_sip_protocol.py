@@ -5442,6 +5442,9 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.sent: list[tuple[bytes, tuple[str, int]]] = []
 
+            def close(self):
+                pass
+
             def sendto(self, data: bytes, addr: tuple[str, int]) -> None:
                 self.sent.append((data, addr))
 
@@ -5459,6 +5462,15 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         )
         transport = FakeTransport()
         client.transport = transport  # type: ignore[assignment]
+        # This witness exercises proxy authentication against a UDP-only peer.
+        # Real TCP upgrade/authentication is covered by test_sip_large_trunk_requests.
+        async def select(host, port):
+            if client.signaling_transport == "TCP":
+                import errno
+                raise ConnectionRefusedError(errno.ECONNREFUSED, "UDP-only test peer")
+            client.transport = transport
+            client._resolved_signaling_target = (host, port)
+        client._select_initial_signaling_target = select
         response_count = 0
 
         async def read_response(_timeout: float):
@@ -5594,6 +5606,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             outbound_proxy="sip:fs1.voip.example:5060;transport=udp",
             target_resolver=Resolver(),
         )
+        client.include_route_metadata = False  # External trunk uses standard identities.
         transport = FakeTransport()
         client.transport = transport  # type: ignore[assignment]
         responses = 0

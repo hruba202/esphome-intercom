@@ -81,6 +81,8 @@ class SipTrunkConfig:
     register: bool = True
     allowed_ips: tuple[str, ...] = ()
     registration_id: int = 1
+    audio_codecs: tuple[str, ...] | None = None
+    video_codecs: tuple[str, ...] | None = None
 
 
 class SipTrunkClient:
@@ -773,6 +775,7 @@ class SipTrunkClient:
             )
             if callable(detach):
                 detach(self.inbound_endpoint)
+        from .core.codec_policy import CodecPolicy
         endpoint = SipUdpEndpoint(
             local_ip=manager.local_ip,
             local_sip_port=manager.port,
@@ -781,6 +784,7 @@ class SipTrunkClient:
             supported_send_formats=manager.supported_send_formats,
             supported_recv_formats=manager.supported_recv_formats,
             on_invite=manager.on_invite,
+            codec_policy_resolver=lambda _initial: CodecPolicy(self.config.audio_codecs, self.config.video_codecs),
             on_offerless_invite=getattr(manager, "on_offerless_invite", None),
             on_terminated=manager.on_terminated,
             on_register=getattr(manager, "on_register", None),

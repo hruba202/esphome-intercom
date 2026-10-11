@@ -45,6 +45,8 @@ def trunk_client_config(cfg: dict):
         expires=int(cfg[CONF_TRUNK_EXPIRES]),
         outbound_proxy=str(cfg[CONF_TRUNK_OUTBOUND_PROXY]),
         registration_id=int(cfg.get("trunk_registration_id", 1)),
+        audio_codecs=tuple(cfg["trunk_audio_codecs"]) if "trunk_audio_codecs" in cfg else None,
+        video_codecs=tuple(cfg["trunk_video_codecs"]) if "trunk_video_codecs" in cfg else None,
     )
 
 

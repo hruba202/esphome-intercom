@@ -75,7 +75,9 @@
           "automation_routing_enabled": "Permitir que automações selecionem o destino de entrada",
           "trunk_dtmf_timeout_ms": "Tempo limite do DTMF (segundos)",
           "trunk_dtmf_terminator": "Finalizador DTMF",
-          "trunk_allowed_ips": "Endereços IP de entrada permitidos"
+          "trunk_allowed_ips": "Endereços IP de entrada permitidos",
+          "trunk_audio_codecs": "Codecs de áudio permitidos",
+          "trunk_video_codecs": "Codecs de vídeo permitidos"
         },
         "data_description": {
           "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -92,7 +94,9 @@
           "automation_routing_enabled": "Antes de usar o destino alternativo, publica uma solicitação curta de roteamento que uma automação pode atender. Dígitos DTMF explícitos sempre têm prioridade.",
           "trunk_dtmf_timeout_ms": "Tempo entre dígitos usado no modo DTMF. O primeiro dígito pode levar até 10 segundos. O padrão é 3 segundos e o máximo é 10 segundos.",
           "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
-          "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro."
+          "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
+          "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
+          "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
         }
       },
       "trunk_mode": {
@@ -148,7 +152,8 @@
       "voicemail_route_conflict": "Um telefone, contato ou grupo usa um endereço de correio de voz (*97, *98, mailbox, mailbox.*, voicemail.* ou *60 seguido de um ramal). Renomeie esse destino antes de ativar o correio de voz.",
       "voicemail_voice_unavailable": "Selecione uma voz compatível com o mecanismo TTS e o idioma escolhidos.",
       "parking_configuration_invalid": "Escolha códigos distintos e tempos entre 1 e 3600 segundos.",
-      "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo."
+      "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo.",
+      "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
@@ -307,7 +312,9 @@
             "automation_routing_enabled": "Permitir que automações selecionem o destino de entrada",
             "trunk_dtmf_timeout_ms": "Tempo limite do DTMF (segundos)",
             "trunk_dtmf_terminator": "Finalizador DTMF",
-            "trunk_allowed_ips": "Endereços IP de entrada permitidos"
+            "trunk_allowed_ips": "Endereços IP de entrada permitidos",
+            "trunk_audio_codecs": "Codecs de áudio permitidos",
+            "trunk_video_codecs": "Codecs de vídeo permitidos"
           },
           "data_description": {
             "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -324,7 +331,9 @@
             "automation_routing_enabled": "Antes de usar o destino alternativo, publica uma solicitação curta de roteamento que uma automação pode atender. Dígitos DTMF explícitos sempre têm prioridade.",
             "trunk_dtmf_timeout_ms": "Tempo entre dígitos usado no modo DTMF. O primeiro dígito pode levar até 10 segundos. O padrão é 3 segundos e o máximo é 10 segundos.",
             "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
-            "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro."
+            "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
+            "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
+            "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
           }
         }
       },
@@ -338,7 +347,8 @@
         "advertise_ip_unknown": "Configure o endereço SIP anunciado antes de adicionar este tronco.",
         "trunk_in_use": "Encerre as chamadas que usam este tronco antes de alterar sua conexão.",
         "trunk_registration_failed": "Falha no registro. Verifique servidor, transporte e credenciais. A configuração salva não foi alterada.",
-        "trunk_validation_failed": "Verifique a conexão e as redes de origem permitidas. Troncos estáticos com o mesmo transporte não podem ter redes de origem sobrepostas."
+        "trunk_validation_failed": "Verifique a conexão e as redes de origem permitidas. Troncos estáticos com o mesmo transporte não podem ter redes de origem sobrepostas.",
+        "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio."
       },
       "abort": {
         "reconfigure_successful": "Configuração do tronco atualizada."
@@ -396,6 +406,27 @@
         "pcm": "Padrão + PCM Dahua",
         "symmetric": "PCM Dahua, usar o codec recebido também para transmitir"
       }
+    },
+    "trunk_audio_codecs": {
+      "options": {
+        "OPUS": "Opus",
+        "G722": "G.722",
+        "PCMA": "G.711 A-law (PCMA)",
+        "PCMU": "G.711 µ-law (PCMU)",
+        "L16": "Linear PCM 16-bit (L16)",
+        "L24": "Linear PCM 24-bit (L24)",
+        "PCM": "PCM (Dahua)"
+      }
+    },
+    "trunk_video_codecs": {
+      "options": {
+        "H264": "H.264",
+        "VP8": "VP8",
+        "JPEG": "JPEG",
+        "H263": "H.263",
+        "H263P": "H.263+",
+        "H265": "H.265 / HEVC"
+      }
     }
   },
   "system_health": {
@@ -422,6 +453,10 @@
     "media_capture_enabled": {
       "title": "A captura de mídia privada está ativada",
       "description": "O VoIP Stack está salvando mídia privada das chamadas para diagnóstico. Desative a captura de mídia ao concluir a solução de problemas."
+    },
+    "default_trunk_missing": {
+      "title": "Escolha o tronco SIP padrão para chamadas de saída",
+      "description": "Nenhum tronco existente está selecionado como padrão. Abra o VoIP Stack, reconfigure a linha desejada e ative \"Usar como tronco padrão de saída\". Como alternativa, selecione uma linha nas opções do telefone ou na ação de chamada. Excluir uma linha nunca seleciona outro provedor automaticamente."
     }
   },
   "exceptions": {

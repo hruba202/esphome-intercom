@@ -217,10 +217,15 @@ class EndpointDialer:
             )
             target_video_codec = peer_video_codec(peer_target, member_entry)
             video_failure_reason = ""
+            trunk = (
+                sip_trunk(self.hass, policy.trunk_id) if policy.trunk_id else sip_trunk(self.hass)
+            ) if policy.use_trunk_flow else None
+            trunk_allows_video = trunk is None or trunk.config.video_codecs != ()
             if (
                 invite is not None
                 and invite.video_format is not None
                 and policy.allow_video
+                and trunk_allows_video
                 and bool(self.config.get(CONF_SIP_VIDEO, False))
                 and target_video_codec != ""
             ):

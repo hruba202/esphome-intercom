@@ -3629,10 +3629,10 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         invite = sip.parse_message(sent[-1])
         self.assertGreater(len(sent[-1]), 1300)
         self.assertIn("SIP/2.0/TCP", invite.header("Via"))
-        self.assertIn("transport=tcp", invite.uri)
+        self.assertEqual(invite.uri, "sip:ESP@192.0.2.20")
         self.assertIn("transport=tcp", invite.header("Contact"))
 
-    async def test_large_invite_preserves_explicit_peer_udp_transport(self) -> None:
+    async def test_large_invite_uses_tcp_even_for_explicit_udp_peer(self) -> None:
         resolved_transports: list[str] = []
         sent: list[bytes] = []
 
@@ -3692,14 +3692,14 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result, "ringing")
-        self.assertEqual(resolved_transports, ["UDP"])
+        self.assertEqual(resolved_transports, ["UDP", "TCP"])
         invite = sip.parse_message(sent[-1])
         self.assertGreater(len(sent[-1]), 1300)
-        self.assertIn("SIP/2.0/UDP", invite.header("Via"))
+        self.assertIn("SIP/2.0/TCP", invite.header("Via"))
         self.assertIn("transport=udp", invite.uri)
-        self.assertIn("transport=udp", invite.header("Contact"))
+        self.assertIn("transport=tcp", invite.header("Contact"))
 
-    async def test_large_udp_invite_preserves_configured_outbound_proxy(self) -> None:
+    async def test_large_invite_uses_tcp_to_configured_outbound_proxy(self) -> None:
         resolved_transports: list[str] = []
         sent: list[bytes] = []
 
@@ -3760,12 +3760,12 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result, "ringing")
-        self.assertEqual(resolved_transports, ["UDP"])
+        self.assertEqual(resolved_transports, ["UDP", "TCP"])
         self.assertGreater(len(sent[-1]), 1300)
         invite = sip.parse_message(sent[-1])
-        self.assertIn("SIP/2.0/UDP", invite.header("Via"))
+        self.assertIn("SIP/2.0/TCP", invite.header("Via"))
         self.assertIn("transport=udp", invite.uri)
-        self.assertIn("transport=udp", invite.header("Contact"))
+        self.assertIn("transport=tcp", invite.header("Contact"))
 
     async def test_tls_client_verifies_logical_route_name(self) -> None:
         context = object()

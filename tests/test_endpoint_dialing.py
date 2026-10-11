@@ -175,7 +175,7 @@ def test_trunk_policy_uses_external_ports_and_common_builder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dialer, created, reused = _dialer(monkeypatch)
-    trunk = object()
+    trunk = SimpleNamespace(config=SimpleNamespace(video_codecs=None))
     bind_trunk = Mock(return_value=True)
     monkeypatch.setattr(endpoint_dialing, "sip_trunk", lambda _hass: trunk)
     monkeypatch.setattr(endpoint_dialing, "reuse_registered_trunk_flow", bind_trunk)
@@ -217,6 +217,29 @@ def test_trunk_policy_uses_external_ports_and_common_builder(
     assert created["generic_video_relay"] is False
     reused.assert_not_called()
     reservation.release.assert_not_called()
+
+
+def test_audio_only_trunk_does_not_reserve_video_for_incoming_video(monkeypatch):
+    dialer, created, _reused = _dialer(monkeypatch)
+    dialer.config["sip_video"] = True
+    trunk = SimpleNamespace(config=SimpleNamespace(video_codecs=()))
+    monkeypatch.setattr(endpoint_dialing, "sip_trunk", lambda _hass: trunk)
+    monkeypatch.setattr(endpoint_dialing, "reuse_registered_trunk_flow", lambda *_args: True)
+    monkeypatch.setattr(endpoint_dialing, "peer_video_codec", lambda *_args: "H264")
+    def unexpected_reservation(_hass):
+        pytest.fail("Audio-only trunk reserved video media")
+    monkeypatch.setattr(endpoint_dialing, "reserve_sip_video_relay_media", unexpected_reservation)
+    leg = dialer.prepare_outbound_leg(
+        member="100", peers=[], roster_entries=[], local_name="Caller",
+        local_rtp_port_index=1, uri_override="sip:100@example.test",
+        invite=SimpleNamespace(routing_caller="source", video_format=object()),
+        port_reservation=SimpleNamespace(ports=(12000, 12002), release=Mock()),
+        policy=endpoint_dialing.OutboundLegPolicy(use_trunk_flow=True),
+    )
+    assert leg is not None
+    assert leg.video_relay is None
+    assert created["local_video_rtp_port"] == 0
+    assert created["video_formats"] == ()
 
 
 @pytest.mark.parametrize(
