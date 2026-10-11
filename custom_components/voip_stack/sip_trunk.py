@@ -39,6 +39,7 @@ _MAX_TRUNK_REQUEST_TASKS = 32
 _MAX_TRUNK_INVITE_TASKS = 24
 _REGISTER_RETRY_INITIAL = 5.0
 _REGISTER_RETRY_MAX = 60.0
+_UDP_KEEPALIVE_INTERVAL = 25.0
 
 TrunkRequestHandler = Callable[[bytes, tuple[str, int]], Awaitable[None]]
 
@@ -151,6 +152,9 @@ class SipTrunkClient:
         self._instance_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, instance_key)}"
         self._flow_timer = 0.0
         self._keepalive_task: asyncio.Task[None] | None = None
+        self._keepalive_call_id = f"keepalive-{self.call_id}"
+        self._keepalive_cseq = 0
+        self._keepalive_responses: asyncio.Queue[sip.SipMessage] = asyncio.Queue(maxsize=4)
         self._outbound_dialogs: dict[str, asyncio.Queue[bytes]] = {}
 
     def open_outbound_dialog(self, call_id: str) -> tuple[Callable[[bytes], bool], asyncio.Queue[bytes]] | None:
@@ -419,7 +423,6 @@ class SipTrunkClient:
         if (
             not self._stopped
             and self._flow_timer > 0
-            and self.transport_name in {"TCP", "TLS"}
             and (self._keepalive_task is None or self._keepalive_task.done())
         ):
             self._keepalive_task = asyncio.create_task(
@@ -429,10 +432,49 @@ class SipTrunkClient:
 
     async def _keepalive_loop(self) -> None:
         while not self._stopped and self._flow_timer > 0:
-            await asyncio.sleep(max(2.5, self._flow_timer / 2.0))
+            interval = _UDP_KEEPALIVE_INTERVAL if self.transport_name == "UDP" else max(2.5, self._flow_timer / 2.0)
+            await asyncio.sleep(interval)
+            if self._stopped or not self.registered:
+                continue
+            if self.transport_name == "UDP":
+                try:
+                    await self._send_udp_keepalive()
+                except (OSError, ConnectionError, asyncio.TimeoutError):
+                    _LOGGER.debug("SIP trunk UDP keepalive did not complete server=%s", self.config.server)
+                continue
             tx = self._tcp_writer
             if tx is not None and not await tx.send(b"\r\n\r\n"):
                 return
+
+    async def _send_udp_keepalive(self) -> None:
+        """Maintain a NAT binding with an independent OPTIONS transaction."""
+        self._keepalive_cseq += 1
+        ids = sip.SipDialogIds(
+            call_id=self._keepalive_call_id, local_tag=self.local_tag,
+            cseq=self._keepalive_cseq, branch=sip.make_branch(),
+        )
+        headers = sip.dialog_headers(
+            request_uri=self.registration_uri, local_uri=self.address_uri,
+            remote_uri=self.registration_uri, dialog=ids, method="OPTIONS",
+            contact_uri=self.contact_uri, transport="UDP",
+            via_sent_by=(self.local_ip, self._udp_local_port),
+        )
+        raw = sip.build_request("OPTIONS", self.registration_uri, headers, b"")
+
+        async def read(timeout):
+            deadline = asyncio.get_running_loop().time() + timeout
+            while remaining := max(0.0, deadline - asyncio.get_running_loop().time()):
+                response = await asyncio.wait_for(self._keepalive_responses.get(), remaining)
+                if (response.status_code or 0) >= 200 and transaction_key(response) == ("OPTIONS", ids.cseq, ids.branch):
+                    return response
+            return None
+
+        async def send():
+            await self._send_raw(raw)
+
+        await send()
+        transaction = SipClientTransaction(transport="UDP", timeout=SIP_TIMER_F, t1=SIP_T1, t2=SIP_T2)
+        await transaction.receive(read, send)
 
     async def _refresh_loop(self) -> None:
         retry_delay = _REGISTER_RETRY_INITIAL
@@ -1003,6 +1045,9 @@ class SipTrunkClient:
                     if put_drop_oldest(dialog_responses, raw):
                         _LOGGER.debug("SIP trunk dialog queue full; dropped oldest message")
                     continue
+                if msg.is_response and msg.header("Call-ID") == self._keepalive_call_id:
+                    put_drop_oldest(self._keepalive_responses, msg)
+                    continue
                 if msg.is_response:
                     cseq = msg.header("CSeq").split()
                     is_registration = (
@@ -1155,6 +1200,14 @@ class SipTrunkClient:
                 self.registered = expires_value > 0 and granted_expires > 0
                 self.expires_at = time.time() + granted_expires if self.registered else 0.0
                 if self.registered:
+                    if self.transport_name == "UDP":
+                        via = sip.parse_via(msg.header("Via"))
+                        behind_nat = bool(
+                            (via.received and via.received != self.local_ip)
+                            or (via.rport is not None and via.rport != self._udp_local_port)
+                        )
+                        self._flow_timer = _UDP_KEEPALIVE_INTERVAL if behind_nat else 0.0
+                        self._ensure_keepalive_task()
                     if (
                         "outbound" in sip.option_tags(msg, "Require")
                         and self.transport_name in {"TCP", "TLS"}

@@ -7,7 +7,7 @@ the central phonebook and routed through HA as SIP dialogs when needed.
 
 import logging
 
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, CoreState, Event, ServiceCall
 from homeassistant.exceptions import ConfigEntryError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
@@ -762,8 +762,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) ->
     sync_trunk_devices(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_config_entry_updated))
+    _register_runtime_shutdown(hass, entry)
     create_runtime_task(hass, _deferred_phonebook_sync(hass))
     return True
+
+
+def _register_runtime_shutdown(hass: HomeAssistant, entry: VoipStackConfigEntry) -> None:
+    """Close the entry's sessions and transports when Home Assistant stops."""
+    async def stop(_event: Event) -> None:
+        await _async_stop_runtime(hass)
+
+    entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop))
+
+
+async def _async_stop_runtime(hass: HomeAssistant) -> None:
+    """Release media owners before closing the PBX runtime."""
+    from .websocket_api import _async_shutdown_all
+
+    await _async_shutdown_all(hass)
+    await _async_stop_sip_endpoint(hass)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) -> bool:
@@ -773,16 +790,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: VoipStackConfigEntry) -
         return False
     await _async_apply_assist_intents(hass, False)
 
-    # Stop sessions / bridges before tearing down listeners; otherwise
-    # orphaned transports leak sockets across config-entry reload.
-    from .websocket_api import _async_shutdown_all
-
-    await _async_shutdown_all(hass)
-
-    # The authoritative PBX runtime stops calls, trunk and listeners in one
-    # ordered cleanup barrier.  Do not tear the trunk out from under live call
-    # sessions before that owner begins shutdown.
-    await _async_stop_sip_endpoint(hass)
+    await _async_stop_runtime(hass)
     unsub = entry.runtime_data.esp_state_event_bridge_unsub
     entry.runtime_data.esp_state_event_bridge_unsub = None
     if unsub is not None:

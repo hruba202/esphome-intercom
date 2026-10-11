@@ -63,6 +63,12 @@ line or editing incoming routing does not replace its connection.
 An existing single trunk is migrated to a named **SIP trunk** entry, retaining
 its credentials, incoming routing and default selection.
 
+For UDP registrations whose SIP response reports an address or port translated
+by NAT, the trunk sends periodic SIP OPTIONS on the registered socket. This
+maintains the signaling mapping between REGISTER refreshes without changing
+the registration status or creating phone calls. Home Assistant shutdown also
+closes the owned registrations before releasing their transports.
+
 ### Choose codecs for each trunk
 
 Open the named trunk's configuration and edit **Allowed audio codecs** and **Allowed video

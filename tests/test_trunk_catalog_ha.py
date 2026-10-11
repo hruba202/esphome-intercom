@@ -586,3 +586,34 @@ def test_trunk_destination_picker_uses_real_phone_names(hass, catalog):
     assert _trunk_target_choices(hass, catalog, {})[1] == 'Renamed home'
     runtime.preferred_phone_device_id = ''
     assert _trunk_target_choices(hass, catalog, {})[1] == ''
+
+
+async def test_home_assistant_stop_unregisters_owned_trunk_binding(hass, catalog, registrar):
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+    from custom_components.voip_stack import _register_runtime_shutdown
+    peer, port = registrar
+    runtime = catalog.runtime_data
+    runtime.trunk_configs = {'home': normalized_trunk_config({
+        'trunk_enabled': True, 'trunk_register': True,
+        'trunk_server': '127.0.0.1', 'trunk_port': port,
+        'trunk_username': 'ha', 'trunk_password': 'test-only',
+    })}
+    assert await async_start_sip_trunk(hass, local_ip='127.0.0.1')
+    client = sip_trunk(hass, 'home')
+    try:
+        assert await client.wait_for_registration(timeout=2)
+        assert len(peer.contacts) == 1
+        _register_runtime_shutdown(hass, catalog)
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+        assert not peer.contacts
+        assert peer.requests[-1].header('Expires') == '0'
+        assert not client.registered
+        assert client.transport is None
+        assert client._receive_task is None
+        count = len(peer.requests)
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+        assert len(peer.requests) == count
+    finally:
+        await client.stop()
