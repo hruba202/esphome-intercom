@@ -37,8 +37,10 @@ endpoint identity and media ports:
 
 After setting up the integration, use **Add SIP trunk** on its integration page.
 Give the line a name, such as Home or Work, and choose **Register the trunk** if
-the provider requires account registration. You can choose one default outgoing
-line. The following step asks for trunk details:
+the provider requires account registration. The first trunk automatically becomes
+the outgoing default, without a default-selection switch. When adding another
+trunk, the form offers **Use as the default outgoing trunk**. The following step
+asks for trunk details:
 
 - transport: `udp` or `tcp`; `tls` is available for registered trunks
 - server, port and optional domain

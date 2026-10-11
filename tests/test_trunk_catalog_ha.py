@@ -501,3 +501,39 @@ async def test_startup_heals_saved_deleted_default_without_selecting_survivor(ha
         assert sip_trunk(hass,'work').ready
     finally:
         await async_stop_sip_trunk(hass)
+
+
+async def test_first_trunk_is_default_without_toggle_second_trunk_offers_choice(hass,catalog,registrar,monkeypatch):
+    from custom_components.voip_stack import trunk_flow
+    peer,port=registrar
+    for record in tuple(catalog.subentries.values()):
+        hass.config_entries.async_remove_subentry(catalog,record.subentry_id)
+    hass.config_entries.async_update_entry(catalog,data={'default_trunk_id':''})
+    catalog.runtime_data.trunk_configs={}
+    catalog.runtime_data.default_trunk_id=''
+    monkeypatch.setattr(trunk_flow,'async_advertise_host',AsyncMock(return_value='127.0.0.1'))
+    hass.config.components.update({'assist_pipeline','ffmpeg','http','lovelace','media_source','network'})
+    first=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'user'})
+    assert 'make_default' not in first['data_schema'].schema
+    first=await hass.config_entries.subentries.async_configure(first['flow_id'],{
+        'name':'First','trunk_enabled':True,'trunk_register':True})
+    result=await hass.config_entries.subentries.async_configure(first['flow_id'],{
+        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_password':'test-only'})
+    identity=result['data']['trunk_id']
+    try:
+        await hass.async_block_till_done()
+        assert catalog.data['default_trunk_id']==identity
+        assert catalog.runtime_data.default_trunk_id==identity
+        assert sip_trunk(hass,identity).ready
+        record=next(s for s in catalog.subentries.values() if s.data['trunk_id']==identity)
+        edit=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),
+            context={'source':'reconfigure','subentry_id':record.subentry_id})
+        assert 'make_default' not in edit['data_schema'].schema
+        hass.config_entries.subentries.async_abort(edit['flow_id'])
+        second=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'user'})
+        assert 'make_default' in second['data_schema'].schema
+        assert second['data_schema']({'name':'Second'})['make_default'] is False
+        hass.config_entries.subentries.async_abort(second['flow_id'])
+        assert catalog.data['default_trunk_id']==identity
+    finally:
+        await async_stop_sip_trunk(hass)

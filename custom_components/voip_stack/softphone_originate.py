@@ -244,7 +244,7 @@ async def async_originate_browser_call(
         target = resolved.decision.target
     route = resolved.decision
     if route.reason is RouteReason.TRUNK_UNAVAILABLE:
-        raise _service_error("The selected SIP trunk is unavailable", "trunk_required", destination=target)
+        raise trunk_selection.unavailable_error()
     policy_endpoint_ids = getattr(resolved, "forwarded_endpoint_ids", ())
     route, target, browser_destination = await _async_resolve_browser_destination(
         hass,
@@ -356,11 +356,7 @@ async def async_originate_browser_call(
         and route.entry.metadata.get("registered")
     )
     if route.action is RouteAction.TRUNK and not use_trunk:
-        raise _service_error(
-            f"{target} requires an available SIP trunk",
-            "trunk_required",
-            destination=target,
-        )
+        raise trunk_selection.unavailable_error()
     if route.action is RouteAction.GROUP and route.entry is not None:
         group_type = str((route.entry.metadata or {}).get("group_type") or "")
         if group_type == "ring":

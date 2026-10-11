@@ -252,3 +252,33 @@ async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_d
     finally:
         await client.close()
         audio.close()
+
+
+@pytest.mark.parametrize('source', ['browser', 'automation'])
+@pytest.mark.parametrize('missing', [True, False])
+async def test_external_call_distinguishes_no_line_selection_from_unavailable_line(trunks,monkeypatch,source,missing):
+    from unittest.mock import AsyncMock
+    from homeassistant.core import ServiceCall
+    from custom_components.voip_stack import softphone_originate
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint,EndpointKind
+    from custom_components.voip_stack.roster import dump_roster_json
+    lab=trunks
+    if missing:
+        lab.runtime.default_trunk_id=''
+    else:
+        await sip_trunk(lab.hass,'home').stop()
+    expected='outgoing_trunk_not_selected' if missing else 'outgoing_trunk_unavailable'
+    with pytest.raises(ServiceValidationError) as caught:
+        if source=='automation':
+            await dial(lab,Context(),destination='External')
+        else:
+            phone=PhoneEndpoint(endpoint_id='browser',name='Browser',kind=EndpointKind.BROWSER,
+                device_id='browser-device',availability='available')
+            lab.runtime.endpoints.register(phone)
+            lab.hass.states.async_set('sensor.voip_phonebook','ready',{'roster_json':dump_roster_json(lab.roster)})
+            monkeypatch.setattr(softphone_originate,'_resolve_target_device',AsyncMock(return_value=None))
+            call=ServiceCall(lab.hass,'voip_stack','call',{'device_id':'browser-device','destination':'External'})
+            await softphone_originate.async_originate_browser_call(call,endpoint_id='browser',browser_endpoint=phone)
+    assert caught.value.translation_key==expected
+    assert not any(phone.invites for phone in lab.phones)
+    assert not lab.calls.sessions

@@ -572,6 +572,12 @@
     },
     "external_calls_disabled": {
       "message": "Le chiamate esterne sono disabilitate per questo telefono."
+    },
+    "outgoing_trunk_not_selected": {
+      "message": "Nessun trunk SIP selezionato per le chiamate in uscita. Scegli una linea nelle opzioni del telefono oppure imposta un trunk predefinito."
+    },
+    "outgoing_trunk_unavailable": {
+      "message": "Il trunk SIP selezionato non è disponibile. Controlla il suo sensore Pronto."
     }
   },
   "entity": {

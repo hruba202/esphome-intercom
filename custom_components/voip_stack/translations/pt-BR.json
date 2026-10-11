@@ -568,6 +568,12 @@
     },
     "external_calls_disabled": {
       "message": "As chamadas externas estão desativadas para este telefone."
+    },
+    "outgoing_trunk_not_selected": {
+      "message": "Nenhum tronco SIP selecionado para chamadas de saída. Escolha uma linha nas opções do telefone ou defina um tronco padrão."
+    },
+    "outgoing_trunk_unavailable": {
+      "message": "O tronco SIP selecionado está indisponível. Verifique o sensor de prontidão."
     }
   },
   "entity": {

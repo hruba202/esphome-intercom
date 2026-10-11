@@ -23,6 +23,17 @@ class TrunkSelection:
     def available(self) -> bool:
         return trunk_enabled(self.config) and trunk_available(self.client)
 
+    def unavailable_error(self):
+        """Explain a failed external route without blocking ordinary local calls."""
+        from .service_errors import service_error
+
+        if not self.identity and not self.config.get("trunk_server"):
+            return service_error(
+                "No outgoing SIP trunk selected. Choose a line in the phone options or set a default trunk.",
+                "outgoing_trunk_not_selected",
+            )
+        return service_error("The selected SIP trunk is unavailable", "outgoing_trunk_unavailable")
+
 
 def resolve_trunk_selector(hass, value: str) -> str:
     """Accept a native Device selector, stable identity or unique configured name."""

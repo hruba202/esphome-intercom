@@ -66,7 +66,7 @@ async def originate_with_trunk(call, phone, destination):
         raise ServiceValidationError("Choose a phonebook name or dial-plan number of at most 64 UTF-8 bytes")
     selection = select_call_trunk(hass, requested=str(call.data["trunk_id"]), endpoint_id=phone.endpoint_id)
     if not selection.available:
-        raise ServiceValidationError("The selected SIP trunk is unavailable")
+        raise selection.unavailable_error()
     runtime = require_runtime_data(hass)
     registry = runtime.sip
     if registry is None or not registry.active:

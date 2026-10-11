@@ -53,11 +53,17 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
                 if not user_input.get("trunk_enabled", True):
                     return self._store_entry(_disabled_trunk_data({}, previous))
                 return await self.async_step_trunk()
+        records = trunk_subentries(entry)
+        show_default = bool(records) and (
+            self._current is None or len(records) > 1
+            or entry.data.get(CONF_DEFAULT_TRUNK) != self._identity
+        )
         return self.async_show_form(step_id="user", errors=errors, data_schema=vol.Schema({
             vol.Required("name", default=previous.get("name", "")): TextSelector(),
             vol.Required("trunk_enabled", default=previous.get("trunk_enabled", True)): BooleanSelector(),
             vol.Required("trunk_register", default=previous.get("trunk_register", True)): BooleanSelector(),
-            vol.Required("make_default", default=(not trunk_subentries(entry) or entry.data.get(CONF_DEFAULT_TRUNK) == self._identity)): BooleanSelector(),
+            **({vol.Required("make_default", default=entry.data.get(CONF_DEFAULT_TRUNK) == self._identity): BooleanSelector()}
+               if show_default else {}),
         }))
 
     def _store_entry(self, data):

@@ -568,6 +568,12 @@
     },
     "external_calls_disabled": {
       "message": "Externe Anrufe sind für dieses Telefon deaktiviert."
+    },
+    "outgoing_trunk_not_selected": {
+      "message": "Kein SIP-Trunk für ausgehende Anrufe ausgewählt. Wähle eine Leitung in den Telefonoptionen oder lege einen Standard-Trunk fest."
+    },
+    "outgoing_trunk_unavailable": {
+      "message": "Der ausgewählte SIP-Trunk ist nicht verfügbar. Prüfe seinen Bereitschaftssensor."
     }
   },
   "entity": {

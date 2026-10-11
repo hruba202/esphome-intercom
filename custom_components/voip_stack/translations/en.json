@@ -572,6 +572,12 @@
     },
     "external_calls_disabled": {
       "message": "External calls are disabled for this phone."
+    },
+    "outgoing_trunk_not_selected": {
+      "message": "No outgoing SIP trunk selected. Choose a line in the phone options or set a default trunk."
+    },
+    "outgoing_trunk_unavailable": {
+      "message": "The selected SIP trunk is unavailable. Check its Ready sensor."
     }
   },
   "entity": {

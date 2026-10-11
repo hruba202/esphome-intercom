@@ -131,14 +131,14 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
         uri, _, _ = dialer.sip_uri_for_member(target, peers, entries)
         route = resolve_route(target, entries)
         if route.reason is RouteReason.TRUNK_UNAVAILABLE:
-            raise ServiceValidationError("The selected SIP trunk is unavailable")
+            raise trunk_selection.unavailable_error()
         use_trunk = route.action is RouteAction.TRUNK
         cfg = trunk_selection.config
         if use_trunk:
             from .core.sip import SipUri
 
             if not trunk_selection.available:
-                raise ServiceValidationError("The selected SIP trunk is unavailable")
+                raise trunk_selection.unavailable_error()
             uri = SipUri(route.target or target, cfg["trunk_server"], cfg["trunk_port"],
                          (("transport", cfg["trunk_transport"]),))
         if uri is None and target.lower().startswith(('sip:', 'sips:')):
