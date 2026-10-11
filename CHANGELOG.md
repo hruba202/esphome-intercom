@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased: PBX development branch
+
+These changes are isolated on `feature/ha-pbx` and are not included in the
+published development preview or stable release.
+
+### ☎️ Phone defaults and multiple SIP lines
+
+- Configure optional forwarding, busy/unavailable destinations and ringing
+  timeouts per phone. Native HA automation actions can override a default for
+  their own call; a notification-only automation does not interrupt routing.
+- Retain the original caller when another destination is tried, including SIP
+  phones, browser phones and no-answer routes to voicemail. Final SIP answers
+  win over no-answer timers while audio is being prepared.
+- Add independent named trunks. Choose a line per call or phone, with a global
+  default. ESP action overrides use a correlated native API request rather than
+  changing the phone's preference or affecting its next unrelated call.
+
+### 📬 Voicemail
+
+- Enable a mailbox per phone, choose a HA TTS voice for its telephone menus, and
+  access it using the same SIP call and DTMF commands from a handset or HA phone.
+- Publish standard message-waiting notifications. The card shows messages and
+  uses the shared voicemail menu for listening and deletion.
+- Expose the original recordings through HA Media and native actions. Optional
+  transcription and delivery belong in HA automations. Removing a phone also
+  removes its mailbox and associated recordings.
+
+### 🔀 Transfer, parking and pickup
+
+- Support SIP consultation and attended transfer with REFER/Replaces while
+  retaining ownership of each participating call and cleaning up losing legs.
+- Park an audio call in a numbered slot, retrieve it from another phone, or
+  return it after a configured timeout. Optional hold audio uses HA Media.
+- Pick up an individual ringing phone with `pickup.<phone>` or `*8<extension>`.
+  The caller keeps its original call, and a simultaneous accepted answer wins.
+- Publish dialog subscriptions for SIP busy-lamp indications on phones and slots.
+
+### 🎙️ Optional conversation recording
+
+- Start and stop recording through HA actions or an optional card control.
+  Capture follows the existing media owner and stores one mixed WAV in Media.
+- Bound disk queues and storage use. A recording failure stops recording while
+  the ordinary conversation continues; transfers finish the previous recording.
+
+### 📚 Guides and qualification
+
+- Add phone routing, voicemail, parking/pickup and recording guides, keeping
+  Home Assistant calling first and ESP hardware optional in the overview.
+- Generate a searchable documentation site from the same maintained Markdown.
+- Exercise real SIP/RTP and decoded audio with baresip, and browser calls with
+  Chromium. CI builds the pinned peer and required modules independently.
+
+
 ## 2026.10.3-dev
 
 ### ESP firmware with a conventional PBX

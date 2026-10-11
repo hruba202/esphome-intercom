@@ -56,3 +56,6 @@ Thumbs.db
 
 # Internal audit reports must not be published
 /docs/audits/
+
+# Generated documentation, built from README.md and docs/*.md.
+/site/

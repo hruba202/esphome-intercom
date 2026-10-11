@@ -359,6 +359,29 @@ and online presence, which uses `presence`. Removing the monitored phone ends
 its BLF subscription with `noresource`. Subscriptions can request up to one hour
 and must refresh before expiry.
 
+## Parking and picking up calls
+
+Enable parking in the main integration configuration. Transfer an established
+call to `700`, then dial its assigned slot (normally `701` through `720`) from
+another phone. The dashboard's **Park call** button uses the same backend.
+
+To answer an individual phone that is still ringing, dial `pickup.<phone>` or
+`*8` followed by its extension. For example, `*8101` answers the ringing phone
+with extension `101`. These are local PBX dial-plan conventions, not SIP
+protocol requirements. See [parking and pickup](CALL_PARKING.md) for limits and
+return behavior.
+
+## Recording a conversation
+
+Use **VoIP Stack: Start recording** with the participating phone selected, then
+**Stop recording**, or enable **Show recording controls** in that phone card's editor.
+A hangup also finishes the recording. The conversation continues if recording
+fails or reaches its configured limit. Recordings are separate from voicemail
+and do not turn on message-waiting indicators.
+
+The [recording guide](CALL_RECORDING.md) describes file access, automation events
+and supported call paths. Recording is optional and off until requested.
+
 ## Audio and video calls
 
 Browser phones negotiate supported audio codecs and can send or receive video.

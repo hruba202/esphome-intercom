@@ -233,7 +233,8 @@ class BareSip:
             raise ValueError(f"unsupported bareSIP DTMF mode: {dtmf_mode}")
         self._temporary_config: tempfile.TemporaryDirectory[str] | None = None
         runtime_config = config
-        if headless_audio or dtmf_mode or video_codec:
+        module_path = os.environ.get("VOIP_TEST_BARESIP_MODULE_PATH", "")
+        if headless_audio or dtmf_mode or video_codec or module_path:
             self._temporary_config = tempfile.TemporaryDirectory(
                 prefix="voip-baresip-headless-"
             )
@@ -241,6 +242,8 @@ class BareSip:
             shutil.copytree(config, runtime_config, dirs_exist_ok=True)
             config_path = runtime_config / "config"
             content = config_path.read_text(encoding="utf-8")
+            if module_path:
+                content = re.sub(r"(?m)^module_path\s+.*$", lambda _match: "module_path " + module_path, content)
             if headless_audio:
                 replacements = {
                     "audio_player": "audio_player\t\taubridge,nil",

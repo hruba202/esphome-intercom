@@ -9,7 +9,7 @@ beyond the project overview in the [top-level README](../README.md).
 |---|---|
 | Learn the complete everyday workflow | [User guide](USER_GUIDE.md) |
 | Build greetings, keypad menus and call routing in the HA editor | [Automation as dialplan cookbook](AUTOMATION_DIALPLAN.md) |
-| Review the current release | [What is new in 2026.9.0](WHATS_NEW_2026_9_0.md) |
+| Review the current release | [Release history](../CHANGELOG.md) |
 | Choose a board and maintained YAML | [Deployment guide](DEPLOYMENT_GUIDE.md) |
 | Complete the shortest supported setup | [Quick start](../README.md#fastest-start) |
 | Update an existing installation | [Breaking changes](BREAKING_CHANGES.md) |
@@ -18,15 +18,9 @@ beyond the project overview in the [top-level README](../README.md).
 | Diagnose calls and media | [Testing and debug](TESTING_AND_DEBUG.md) |
 | Resolve a specific failure | [Troubleshooting](troubleshooting.md) |
 
-Published release notes live with their immutable artifacts on GitHub:
-[2026.9.0](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.9.0),
-[2026.8.2-dev](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.8.2-dev),
-[2026.8.1-dev](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.8.1-dev),
-[2026.8.0](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.8.0),
-[2026.7.1](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.7.1)
-and
-[2026.7.0](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.7.0).
-The repository keeps only the current upgrade contract.
+Published release notes and their artifacts are available in the
+[GitHub releases](https://github.com/n-IA-hane/esphome-intercom/releases).
+The guides in this branch include PBX additions that are not published yet.
 
 ## Architecture and protocols
 
@@ -45,9 +39,13 @@ The repository keeps only the current upgrade contract.
 | Topic | Document |
 |---|---|
 | Home Assistant actions and side effects | [Services](SERVICES.md) |
+| Persistent phone defaults and automation precedence | [Phone routing](PHONE_ROUTING.md) |
 | Contextual routing recipes | [Automation cookbook](AUTOMATION_DIALPLAN.md) |
 | Ring and conference groups | [Groups](GROUPS.md) |
 | Phone mailboxes, SIP message indicators and optional transcription | [Voicemail (PBX development branch)](VOICEMAIL.md) |
+| Parking, retrieval and directed pickup | [Call parking](CALL_PARKING.md) |
+| Play an ordinary ESPHome announcement or PCM sound | [ESPHome sound actions](ESPHOME_SOUND_ACTIONS.md) |
+| Record an established conversation | [Conversation recording](CALL_RECORDING.md) |
 | Provider registration and external routing | [SIP trunk](SIP_TRUNK.md) |
 | Browser and P4 video codec paths | [SIP video](SIP_VIDEO.md) |
 
@@ -93,3 +91,5 @@ Each ESPHome component ships its own README with the full option list, YAML snip
   component forks and by the split audio-stack repository.
 - `voip_simulator`, an internal test/simulation component used by the virtual
   device harness. It is not a production YAML component.
+
+For an offline or browsable copy, [build the documentation site](DOCUMENTATION_SITE.md).

@@ -78,6 +78,28 @@ when installing the Home Assistant integration alone.
 | External calls | Connect an optional provider/PBX trunk using registration or source-IP authorization. | [SIP trunk](docs/SIP_TRUNK.md) |
 | Contextual routing | Use native HA entities, conditions and services for presence, schedules, no-answer forwarding and in-call DTMF. | [Automation cookbook](docs/AUTOMATION_DIALPLAN.md) |
 
+## PBX additions on this development branch
+
+The `feature/ha-pbx` branch extends the existing backend with:
+
+- **[Phone routing defaults](docs/PHONE_ROUTING.md):** optional forwarding, busy/unavailable destinations
+  and a ringing timeout. An accepted automation action can override the default
+  for its own call. Settings belong to the phone, not to an open card.
+- **[Voicemail](docs/VOICEMAIL.md):** an ordinary SIP access menu, interruptible
+  spoken prompts, message indicators and a message list in the phone card.
+  Home Assistant Media exposes the original recordings; automations can
+  transcribe or deliver them through installed services.
+- **[Named trunks](docs/SIP_TRUNK.md):** independent provider connections, with
+  an explicit line choice per action, a phone preference and a default line.
+- **[Parking and pickup](docs/CALL_PARKING.md):** leave a caller on a parking
+  slot and retrieve the call elsewhere, or answer a phone that is still ringing.
+- **[Conversation recording](docs/CALL_RECORDING.md):** optional recording from
+  the existing audio path, controlled by HA actions or a card shortcut.
+
+These additions are not in the stable release linked above. They are developed
+without an Asterisk or FreeSWITCH runtime dependency. Existing phone calls remain
+unchanged when the optional settings are left disabled.
+
 ## Fastest start
 
 1. Install **VoIP Stack** from HACS and restart Home Assistant.

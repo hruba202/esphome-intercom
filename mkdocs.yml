@@ -1,0 +1,46 @@
+site_name: VoIP Stack
+site_description: SIP phones, calls and automations in Home Assistant, with optional ESPHome endpoints.
+repo_url: https://github.com/n-IA-hane/esphome-intercom
+repo_name: n-IA-hane/esphome-intercom
+docs_dir: docs
+site_dir: site
+hooks:
+  - scripts/docs_site.py
+theme:
+  name: mkdocs
+  navigation_depth: 3
+plugins:
+  - search
+markdown_extensions:
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
+nav:
+  - Overview: index.md
+  - Get started:
+      - User guide: USER_GUIDE.md
+      - Installation and firmware: DEPLOYMENT_GUIDE.md
+      - Documentation map: README.md
+  - Calls and routing:
+      - Phone defaults: PHONE_ROUTING.md
+      - Automations: AUTOMATION_DIALPLAN.md
+      - Voicemail: VOICEMAIL.md
+      - Parking and pickup: CALL_PARKING.md
+      - Conversation recording: CALL_RECORDING.md
+      - SIP trunks: SIP_TRUNK.md
+      - Groups and conferences: GROUPS.md
+      - Video: SIP_VIDEO.md
+      - ESP with a classic PBX: CLASSIC_PBX.md
+  - Reference:
+      - Actions: SERVICES.md
+      - Configuration: reference.md
+      - Architecture: ARCHITECTURE.md
+      - Troubleshooting: troubleshooting.md
+      - Tests and diagnostics: TESTING_AND_DEBUG.md
+      - Upgrade notes: BREAKING_CHANGES.md
+validation:
+  nav:
+    omitted_files: info
+  links:
+    not_found: warn

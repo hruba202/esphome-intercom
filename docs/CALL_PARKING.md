@@ -1,4 +1,4 @@
-# Call parking
+# Call parking and directed pickup
 
 This guide describes the implementation on `feature/ha-pbx`. It is not part of
 the published release yet. The implementation is still undergoing full qualification.
@@ -77,6 +77,28 @@ data:
   device_id: YOUR_OTHER_PHONE_DEVICE_ID
   destination: "701"
 ```
+
+## Answer another ringing phone
+
+With parking enabled, dial `pickup.kitchen` to answer the individual phone named
+`kitchen`, or `*8101` if its extension is `101`. An occupied parking slot still
+uses its normal slot number or `pickup.701`. Slot names take precedence.
+The `*8` prefix is reserved while this feature is enabled; it is a local dial-plan
+convention, not a standardized SIP feature code. Asterisk also exposes directed
+pickup through its dial plan, although its configured access code may differ.
+
+The caller keeps the same call. The original destination stops ringing and the
+phone performing pickup becomes the other participant. A simultaneous answer on
+the original phone wins if it is already accepted before pickup commits.
+Cancelling a pending pickup leaves the original ringing call available.
+Pickup also works while a parked caller is ringing its return destination: the
+caller keeps its established dialog and the existing RTP socket is handed to
+the replacement media owner.
+
+Use an identified phone connected to this HA PBX. For a dashboard phone, enter
+the same address in its card or use `voip_stack.call` with that phone selected.
+Pickup currently targets individual ringing audio calls, not a conference,
+a group branch, an active video call or an Automation-owned announcement.
 
 ## Current verification boundary
 

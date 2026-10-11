@@ -461,3 +461,24 @@ When testing real devices, cover:
 - ring group first-answer-wins;
 - conference join/leave;
 - group membership changes reflected in the phonebook.
+
+
+## Independent SIP peer for PBX development tests
+
+The PBX branch tests transfer, voicemail/MWI, parking, pickup and recording with
+baresip 4.6.0. Baresip is a test peer, not a VoIP Stack dependency. The CI build
+uses pinned source revisions and only the required audio/signaling modules.
+
+With CMake, a C compiler, OpenSSL, zlib and libsndfile development files installed:
+
+```sh
+scripts/build_sip_test_peer.sh "$PWD/test_captures/sip-peer"
+PATH="$PWD/test_captures/sip-peer/bin:$PATH" \
+VOIP_TEST_BARESIP_MODULE_PATH="$PWD/test_captures/sip-peer/lib/baresip/modules" \
+HA_PYTHON=/path/to/ha-test-venv/bin/python scripts/test_suite.sh ha --keep-going
+```
+
+Use your actual HA test interpreter in the last line. The peer is installed only
+in the supplied directory; system packages and running PBXs are not replaced.
+The override also selects its matching modules. Real peer tests must not be
+reported as hardware validation for a physical phone or ESP.
