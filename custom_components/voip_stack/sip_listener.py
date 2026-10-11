@@ -3823,10 +3823,10 @@ class SipTcpServer:
         return False
 
     async def stop(self) -> None:
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
-            self.server = None
+        server = self.server
+        self.server = None
+        if server is not None:
+            server.close()
         for tx in tuple(self._tcp_writers.values()):
             await tx.close()
         for writer in tuple(self._writers.values()):
@@ -3837,6 +3837,8 @@ class SipTcpServer:
         client_tasks = tuple(task for task in self._client_tasks if task is not current)
         if client_tasks:
             await asyncio.gather(*client_tasks, return_exceptions=True)
+        if server is not None:
+            await server.wait_closed()
         endpoint = self.endpoint
         self.endpoint = None
         if endpoint is not None:

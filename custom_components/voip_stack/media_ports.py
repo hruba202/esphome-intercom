@@ -113,7 +113,7 @@ def rtp_port_available(port: int) -> bool:
 
 
 def bind_sip_rtp_socket(port: int) -> socket.socket:
-    """Bind RTP before signaling so an immediate video IDR is retained."""
+    """Bind RTP before signaling so immediate media packets are retained."""
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:

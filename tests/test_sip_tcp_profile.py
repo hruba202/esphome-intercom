@@ -12,6 +12,7 @@ from .voip_phase1_support import (
     sip,
     sip_auth,
     sip_client,
+    sip_endpoint,
     sip_listener,
     sip_registrar,
     sip_runtime,
@@ -21,6 +22,120 @@ from .voip_phase1_support import (
 
 
 class SipTcpProfileTest(unittest.IsolatedAsyncioTestCase):
+    async def test_manager_hangup_reaches_tcp_peer_and_releases_dialog(self) -> None:
+        local = "127.0.0.1"
+        with _reserved_udp_ports(2) as ports:
+            sip_port, rtp_port = ports
+        audio = audio_format.AudioFormat(16000, "s16le", 1, 20)
+
+        async def on_invite(invite):
+            return sip_listener.SipInviteResult(
+                200, "OK", answer_sdp=sdp.build_answer_directional(
+                    local, local, rtp_port, invite.send_format, invite.recv_format,
+                ),
+            )
+
+        manager = sip_endpoint.SipEndpointManager(
+            host=local, port=sip_port, local_ip=local, local_rtp_port=rtp_port,
+            supported_formats=[audio], on_invite=on_invite,
+            udp_enabled=False, tcp_enabled=True,
+        )
+        self.assertTrue(await manager.start())
+        reader, writer = await asyncio.open_connection(local, sip_port)
+        try:
+            for cycle in range(2):
+                identity = f"tcp-manager-hangup-{cycle}"
+                headers = [
+                    ("Via", f"SIP/2.0/TCP {local}:43210;branch=z9hG4bK-{cycle};rport"),
+                    ("From", f"<sip:desk@{local}>;tag=remote-{cycle}"),
+                    ("To", f"<sip:Casa@{local}:{sip_port}>"),
+                    ("Call-ID", identity), ("CSeq", "1 INVITE"),
+                    ("Contact", f"<sip:desk@{local}:43210;transport=tcp>"),
+                    ("Content-Type", "application/sdp"),
+                ]
+                writer.write(sip.build_request(
+                    "INVITE", f"sip:Casa@{local}:{sip_port}", headers,
+                    sdp.build_offer(local, local, rtp_port + 2, [audio]).encode(),
+                ))
+                await writer.drain()
+                while True:
+                    raw = await asyncio.wait_for(sip_listener._read_sip_stream_message(reader), 1)
+                    response = sip.parse_message(raw)
+                    if response.status_code >= 200:
+                        break
+                self.assertEqual(response.status_code, 200)
+                writer.write(sip.build_request("ACK", f"sip:Casa@{local}:{sip_port}", [
+                    ("Via", f"SIP/2.0/TCP {local}:43210;branch=z9hG4bK-ack-{cycle}"),
+                    ("From", response.header("From")), ("To", response.header("To")),
+                    ("Call-ID", identity), ("CSeq", "1 ACK"),
+                ]))
+                await writer.drain()
+                task = asyncio.create_task(manager.async_send_bye(identity))
+                try:
+                    raw = await asyncio.wait_for(sip_listener._read_sip_stream_message(reader), 1)
+                    bye = sip.parse_message(raw)
+                    self.assertEqual((bye.method, bye.header("Call-ID")), ("BYE", identity))
+                    self.assertIn("SIP/2.0/TCP", bye.header("Via"))
+                    writer.write(sip.build_response(200, "OK", [
+                        (key, bye.header(key)) for key in ("Via", "From", "To", "Call-ID", "CSeq")
+                    ]))
+                    await writer.drain()
+                    self.assertTrue(await asyncio.wait_for(task, 1))
+                    self.assertFalse(manager.tcp_server.endpoint.active_dialogs)
+                    self.assertFalse(await manager.async_send_bye(identity))
+                finally:
+                    if not task.done():
+                        task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            await manager.stop()
+
+    async def test_manager_rejects_distinct_owners_of_the_same_call(self) -> None:
+        manager = sip_endpoint.SipEndpointManager(
+            host="127.0.0.1", port=0, local_ip="127.0.0.1", local_rtp_port=40000,
+            supported_formats=[], on_invite=lambda _: None,
+        )
+        owners = [sip_listener.SipUdpEndpoint(
+            local_ip="127.0.0.1", local_rtp_port=40000,
+            supported_formats=[], on_invite=lambda _: None,
+        ) for _ in range(2)]
+        for owner in owners:
+            owner.active_dialogs["ambiguous"] = object()
+        manager.udp_server = types.SimpleNamespace(endpoint=owners[0])
+        manager.tcp_server = types.SimpleNamespace(endpoint=owners[1], endpoints={owners[1]})
+        manager.attach_dialog_endpoint(owners[1])
+        self.assertEqual(list(manager._dialog_endpoints()), owners)
+        self.assertFalse(await manager.async_send_bye("ambiguous"))
+        self.assertFalse(await manager.async_send_bye())
+        self.assertTrue(all("ambiguous" in owner.active_dialogs for owner in owners))
+
+    async def test_tcp_stop_closes_connected_idle_peer_before_waiting(self) -> None:
+        server = sip_listener.SipTcpServer(
+            host="127.0.0.1", port=0, local_ip="127.0.0.1", local_rtp_port=40000,
+            supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)],
+            on_invite=lambda _: None,
+        )
+        self.assertTrue(await server.start())
+        port = server.server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"\r\n\r\n")
+        await writer.drain()
+        self.assertEqual(await asyncio.wait_for(reader.readexactly(2), 1), b"\r\n")
+        stop = asyncio.create_task(server.stop())
+        try:
+            await asyncio.wait_for(asyncio.shield(stop), 1)
+            self.assertEqual(await asyncio.wait_for(reader.read(), 1), b"")
+            self.assertFalse(server._writers)
+            self.assertFalse(server._client_tasks)
+            self.assertIsNone(server.server)
+            await server.stop()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            await asyncio.wait_for(stop, 2)
+
     async def test_tcp_listener_reports_closed_current_flow_once(self) -> None:
         local = "127.0.0.1"
         with _reserved_udp_ports(2) as ports:

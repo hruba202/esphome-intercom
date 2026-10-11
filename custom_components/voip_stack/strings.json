@@ -459,6 +459,10 @@
     "default_trunk_missing": {
       "title": "Choose the default outgoing SIP trunk",
       "description": "No existing trunk is selected as the default. Open VoIP Stack, reconfigure the desired line and enable \"Use as the default outgoing trunk\". Alternatively, select a line in the phone options or call action. Deleting a line never silently selects another provider."
+    },
+    "duplicate_extensions": {
+      "title": "Duplicate phone extensions",
+      "description": "These destinations use the same extension: {conflicts}. Assign a different extension to each phone, contact or Assist endpoint. Calls to an ambiguous extension are rejected; names and explicit SIP addresses remain available. For an ESPHome phone, change its extension on the device. This issue disappears when the phonebook has no conflicts."
     }
   },
   "exceptions": {

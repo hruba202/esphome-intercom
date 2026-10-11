@@ -7,7 +7,7 @@ from enum import StrEnum
 import re
 from typing import Literal
 
-from .roster import RosterEntry, entry_matches_extension, find_entry
+from .roster import RosterEntry, duplicate_numeric_extensions, entry_matches_extension, find_entry
 
 
 class RouteAction(StrEnum):
@@ -39,6 +39,7 @@ class RouteReason(StrEnum):
     TARGET_DISABLED = "target_disabled"
     TARGET_UNREACHABLE = "target_unreachable"
     ROUTE_NOT_FOUND = "route_not_found"
+    AMBIGUOUS_EXTENSION = "ambiguous_extension"
     MEDIA_INCOMPATIBLE = "media_incompatible"
     TRUNK_UNAVAILABLE = "trunk_unavailable"
 
@@ -220,6 +221,9 @@ def resolve_ha_router(target: str, entries: list[RosterEntry], *, trunk_ready: b
             reason=RouteReason.TRUNK_UNAVAILABLE,
         )
 
+    if target.isdigit() and target in duplicate_numeric_extensions(entries):
+        return RouteDecision(RouteAction.REJECT, target=target, status=485,
+                             reason=RouteReason.AMBIGUOUS_EXTENSION, source="phonebook")
     entry = find_entry(entries, target)
     if entry is not None and not entry.enabled:
         return RouteDecision(RouteAction.REJECT, target=target, status=403, reason=RouteReason.TARGET_DISABLED, entry=entry)
@@ -266,10 +270,12 @@ def route_inbound_trunk(ctx: CallContext, entries: list[RosterEntry], *, trunk_r
         return RouteDecision(RouteAction.ANSWER_HA, reason=RouteReason.DEFAULT_HA)
     if classify_target(ctx.route_hint) in {TargetClass.SIP_URI, TargetClass.NAME_AT_HOST}:
         return resolve_ha_router(ctx.route_hint, entries, trunk_ready=trunk_ready)
+    if ctx.route_hint.strip() in duplicate_numeric_extensions(entries):
+        return resolve_ha_router(ctx.route_hint, entries, trunk_ready=trunk_ready)
     internal_entry = find_entry(entries, ctx.route_hint, include_number=False)
     if internal_entry is None:
         return RouteDecision(RouteAction.REJECT, target=ctx.route_hint, status=404, reason=RouteReason.ROUTE_NOT_FOUND)
-    resolved = resolve_ha_router(internal_entry.extension or internal_entry.id, entries, trunk_ready=trunk_ready)
+    resolved = resolve_ha_router(internal_entry.id, entries, trunk_ready=trunk_ready)
     if resolved.action is RouteAction.REJECT:
         return RouteDecision(RouteAction.REJECT, target=ctx.route_hint, status=404, reason=RouteReason.ROUTE_NOT_FOUND)
     return resolved

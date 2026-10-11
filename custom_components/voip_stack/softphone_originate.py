@@ -54,6 +54,7 @@ from .fsm import (
 from .media_ports import (
     allocate_sip_rtp_port as _allocate_sip_rtp_port,
     reserve_sip_video_media,
+    bind_sip_rtp_socket,
 )
 from .outbound_lifecycle import (
     observe_outbound_call_result,
@@ -802,6 +803,7 @@ async def async_originate_browser_call(
         trunk_id=trunk_selection.identity if use_trunk else "",
     )
     try:
+        client.audio_rtp_socket = bind_sip_rtp_socket(local_rtp_port)
         result = await client.invite(
             target=uri.user,
             target_display_name=display_target,

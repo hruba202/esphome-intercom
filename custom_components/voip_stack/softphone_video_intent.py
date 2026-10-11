@@ -200,6 +200,20 @@ async def async_apply_send_video_intent(
                 client.abort_prepared_reinvite(previous, candidate)
                 return False
             accepted_video = candidate.video_format is not None
+            video_session = require_runtime_data(hass).media.sessions_for("video").get(
+                (call_id, endpoint_id)
+            )
+            if video_session is not None and accepted_video:
+                video_session.camera_send_enabled = bool(enabled)
+                commit_video_session_update(
+                    video_session,
+                    candidate,
+                    local_direction=candidate.local_video_direction,
+                )
+            elif video_session is not None:
+                video_session.removed = True
+                video_session.media_generation += 1
+                video_session.update_event.set()
             if reservation is not None and accepted_video:
                 client.media_reservation = reservation
                 client.video_rtp_socket = rtp_socket

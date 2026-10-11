@@ -519,6 +519,7 @@ class SipCallClient:
         self.generic_video_relay = bool(generic_video_relay)
         self.allow_video_transcoding = bool(allow_video_transcoding)
         self.media_reservation = media_reservation
+        self.audio_rtp_socket: socket.socket | None = None
         self.video_rtp_socket = video_rtp_socket
         self.video_rtcp_socket = video_rtcp_socket
         self.target_resolver = target_resolver or SipServerResolver()
@@ -655,6 +656,10 @@ class SipCallClient:
         # video sockets or an allocator reservation hostage.
         reservation = self.media_reservation
         self.media_reservation = None
+        audio_socket = self.audio_rtp_socket
+        self.audio_rtp_socket = None
+        if audio_socket is not None:
+            audio_socket.close()
         video_socket = self.video_rtp_socket
         self.video_rtp_socket = None
         if video_socket is not None:

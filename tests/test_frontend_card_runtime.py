@@ -334,6 +334,17 @@ function makeCard() {{
   return card;
 }}
 
+const manualIdentity = makeCard();
+manualIdentity._softphoneTargets = () => [{{device_id: "ball", name: "Spotpear"}}];
+manualIdentity._softphoneTargetDeviceId = "ball";
+manualIdentity._softphoneSnapshot = {{state:"remote_ringing",direction:"outgoing",call_id:"new",dialed_target:"426"}};
+assert.equal(manualIdentity._getDestination(), "426", "Use the current call, not the idle picker");
+assert.equal(manualIdentity._activeSoftphonePeerDevice(), null, "Do not attach the previously selected ESP camera");
+manualIdentity._softphoneSnapshot = {{state:"remote_ringing",direction:"outgoing",call_id:"new"}};
+assert.equal(manualIdentity._getDestination(), "Unknown");
+manualIdentity._softphoneSnapshot = {{state:"idle"}};
+assert.equal(manualIdentity._getDestination(), "Spotpear");
+
 const ws3Mirror = makeCard();
 ws3Mirror.config = {{ mode: "esp_mirror", name: "Waveshare S3 Audio" }};
 ws3Mirror._activeDeviceInfo = {{
@@ -967,6 +978,25 @@ assert.equal(outboundStart.options.shouldAbort(), false);
 outbound.isConnected = false;
 outbound.disconnectedCallback();
 assert.equal(outboundStart.options.shouldAbort(), false);
+
+// A service acknowledgement is not a complete phone-state snapshot.
+const acknowledged = makeCard();
+acknowledged.config.device_id = "device-office";
+acknowledged._softphoneSnapshot = {{...base, state:"idle", send_video:true, capabilities:["audio","video"]}};
+acknowledged._ensureHaSoftphoneAudioPath = () => {{}};
+let stateReads=0;
+acknowledged._hass.connection={{sendMessagePromise:async request=>{{
+ assert.equal(request.type,"voip_stack/ha_softphone_state");stateReads++;
+ return {{...base, state:"remote_ringing", callee:"426", peer_name:"426", send_video:true,
+  capabilities:["audio","video"], sequence:10}};
+}}}};
+engine.startHaSoftphone=async()=>({{schema_version:2,success:true,call_id:base.call_id,
+ state:"remote_ringing",destination:"426",device_id:"device-office"}});
+await acknowledged._startCall("426");
+assert.equal(stateReads,1);
+assert.equal(acknowledged._getDestination(),"426");
+assert.equal(acknowledged._softphoneSnapshot.send_video,true);
+assert.deepEqual(acknowledged._softphoneSnapshot.capabilities,["audio","video"]);
 
 // Provisional SIP responses never render as an answered call. Only the
 // authoritative final state can switch the card to "In Call".

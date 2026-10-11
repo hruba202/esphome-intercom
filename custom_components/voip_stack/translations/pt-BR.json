@@ -459,6 +459,10 @@
     "default_trunk_missing": {
       "title": "Escolha o tronco SIP padrão para chamadas de saída",
       "description": "Nenhum tronco existente está selecionado como padrão. Abra o VoIP Stack, reconfigure a linha desejada e ative \"Usar como tronco padrão de saída\". Como alternativa, selecione uma linha nas opções do telefone ou na ação de chamada. Excluir uma linha nunca seleciona outro provedor automaticamente."
+    },
+    "duplicate_extensions": {
+      "title": "Ramais duplicados",
+      "description": "Estes destinos usam o mesmo ramal: {conflicts}. Atribua um ramal diferente a cada telefone, contato ou endpoint Assist. Chamadas para um ramal ambíguo são rejeitadas; nomes únicos e endereços SIP explícitos continuam disponíveis. Para um telefone ESPHome, altere o ramal no dispositivo. O aviso desaparece quando a agenda não contém conflitos."
     }
   },
   "exceptions": {

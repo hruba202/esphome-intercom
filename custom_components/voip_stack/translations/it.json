@@ -459,6 +459,10 @@
     "default_trunk_missing": {
       "title": "Scegli il trunk predefinito per le chiamate in uscita",
       "description": "Nessun trunk esistente è selezionato come predefinito. Apri VoIP Stack, riconfigura la linea desiderata e abilita \"Usa come trunk predefinito in uscita\". Puoi anche scegliere una linea nelle opzioni del telefono o nella singola azione di chiamata. La cancellazione di una linea non seleziona automaticamente un altro provider."
+    },
+    "duplicate_extensions": {
+      "title": "Interni telefonici duplicati",
+      "description": "Queste destinazioni usano lo stesso interno: {conflicts}. Assegna un interno diverso a ogni telefono, contatto o endpoint Assist. Le chiamate a un interno ambiguo vengono rifiutate; nomi e indirizzi SIP espliciti restano disponibili. Per un telefono ESPHome, modifica l'interno sul dispositivo. La segnalazione scompare quando la rubrica non contiene conflitti."
     }
   },
   "exceptions": {

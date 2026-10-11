@@ -165,6 +165,7 @@ def softphone_originate(monkeypatch):
         },
         "media_ports": {
             "allocate_sip_rtp_port": Mock(return_value=40000),
+            "bind_sip_rtp_socket": Mock(),
             "reserve_sip_video_media": Mock(),
         },
             "outbound_lifecycle": {

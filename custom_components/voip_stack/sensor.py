@@ -403,6 +403,8 @@ class VoipPhonebookSensor(SensorEntity):
         roster_entries = roster_from_peers(
             self.hass, peers, registered_roster_entries(self.hass)
         )
+        from .repairs import async_sync_extension_issues
+        async_sync_extension_issues(self.hass, roster_entries)
         self._report_name_conflicts(roster_entries)
         phonebook = ",".join(entries)
         roster_json = dump_roster_json(roster_entries)

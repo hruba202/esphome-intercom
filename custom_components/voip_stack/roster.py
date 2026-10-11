@@ -122,6 +122,21 @@ def entry_matches_extension(entry: RosterEntry, target: str) -> bool:
     return bool(entry.extension) and normalize_roster_key(entry.extension) == normalize_roster_key(target)
 
 
+def duplicate_numeric_extensions(entries: list[RosterEntry]) -> dict[str, tuple[str, ...]]:
+    """Find numeric extensions claimed by distinct logical destinations."""
+    claims: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        extension = str(entry.extension or "").strip()
+        if not extension.isdigit():
+            continue
+        identity = str(entry.metadata.get("endpoint_id") or entry.id).casefold()
+        claims.setdefault(extension, {})[identity] = entry.display_name
+    return {
+        extension: tuple(sorted(owners.values()))
+        for extension, owners in claims.items() if len(owners) > 1
+    }
+
+
 def find_entry(
     entries: list[RosterEntry],
     target: str,

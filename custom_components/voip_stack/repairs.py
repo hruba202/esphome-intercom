@@ -72,3 +72,22 @@ def async_sync_trunk_default_issue(hass, configs, default_id) -> None:
             translation_key='default_trunk_missing')
     else:
         ir.async_delete_issue(hass, DOMAIN, 'default_trunk_missing')
+
+
+def async_sync_extension_issues(hass: HomeAssistant, entries) -> None:
+    """Report conflicting extensions in the complete discovered phonebook."""
+    from .roster import duplicate_numeric_extensions
+
+    conflicts = duplicate_numeric_extensions(entries)
+    issue_id = "duplicate_extensions"
+    if not conflicts:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    ir.async_create_issue(
+        hass, DOMAIN, issue_id, is_fixable=False, is_persistent=False,
+        severity=ir.IssueSeverity.ERROR, translation_key=issue_id,
+        translation_placeholders={"conflicts": "; ".join(
+            f"{extension}: {', '.join(names)}"
+            for extension, names in sorted(conflicts.items())
+        )},
+    )

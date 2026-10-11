@@ -132,6 +132,12 @@ def _entry_route_mappings(
             for subentry in phone_subentries(entry)
             if subentry.subentry_id != exclude_subentry_id
         )
+    runtime = getattr(entry, "runtime_data", None) if entry is not None else None
+    endpoints = getattr(getattr(runtime, "endpoints", None), "endpoints", ())
+    mappings.extend(
+        {"id": endpoint.sip_uri_user, "name": endpoint.name, "extension": endpoint.extension}
+        for endpoint in endpoints if endpoint.kind is EndpointKind.ESPHOME
+    )
     assist_extension = str(data.get(CONF_ASSIST_EXTENSION) or "").strip()
     if include_assist and data.get(CONF_ASSIST_ENDPOINT_ENABLED) and assist_extension:
         mappings.append(

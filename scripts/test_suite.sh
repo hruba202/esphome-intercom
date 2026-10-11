@@ -132,6 +132,7 @@ ha_tests=(
   tests/test_ring_group_orchestrator_behavior.py
   tests/test_trunk_inbound_router_behavior.py
   tests/test_softphone_video_intent.py
+  tests/test_video_keepalive_runtime.py
 )
 ha_ignores=()
 for test_path in "${ha_tests[@]}"; do

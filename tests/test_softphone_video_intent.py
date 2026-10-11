@@ -69,6 +69,9 @@ def intent(monkeypatch):
         },
     )
     monkeypatch.setattr(local_softphone_runtime, "local_softphone_bridge", lambda _hass: None)
+    monkeypatch.setattr(module, "require_runtime_data", lambda _hass: SimpleNamespace(
+        media=SimpleNamespace(sessions_for=lambda _kind: {}),
+    ))
     return module, store
 
 
@@ -117,13 +120,16 @@ async def test_enabling_video_commits_reserved_media_only_after_reinvite(
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypatch, enabled):
+@pytest.mark.parametrize("outgoing", [False, True])
+@pytest.mark.parametrize("committed", [False, True])
+async def test_camera_intent_wakes_existing_media_owner(intent, monkeypatch, enabled, outgoing, committed):
     module, store = intent
     store["send_video"] = enabled
     video = module.sdp.RtpVideoFormat(payload_type=26, encoding="JPEG")
     direction = "sendrecv" if enabled else "recvonly"
     candidate = SimpleNamespace(
         video_format=video, recv_video_format=video,
+        local_video_rtp_port=42002, local_video_direction=direction,
         remote_video_rtp_host="192.0.2.5", remote_video_rtp_port=44002,
         remote_video_rtcp_host="192.0.2.5", remote_video_rtcp_port=44003,
         remote_video_rtcp_mux=False, remote_video_payload_types=(26,),
@@ -136,9 +142,15 @@ async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypa
         media_generation=3, update_event=asyncio.Event(), camera_send_enabled=not enabled,
     )
     other_phone = SimpleNamespace(media_generation=9, update_event=asyncio.Event(), camera_send_enabled=not enabled)
-    registry = _Registry(None)
+    client = SimpleNamespace(
+        dialog=candidate, video_formats=(video,), last_sip_status_code=200,
+        async_prepare_video_reinvite=AsyncMock(return_value=candidate),
+        commit_prepared_reinvite=Mock(return_value=committed),
+        abort_prepared_reinvite=Mock(),
+    ) if outgoing else None
+    registry = _Registry(client)
     registry.resource_for = lambda *_args: media
-    prepared = SimpleNamespace(candidate=candidate, commit=Mock(return_value=True))
+    prepared = SimpleNamespace(candidate=candidate, commit=Mock(return_value=committed))
     manager = SimpleNamespace(
         async_prepare_video_reinvite=AsyncMock(return_value=prepared),
         video_reinvite_result=lambda _id: (200, "OK"),
@@ -150,7 +162,15 @@ async def test_inbound_camera_intent_wakes_existing_media_owner(intent, monkeypa
             ("call-1", "phone"): session, ("call-1", "other-phone"): other_phone,
         }),
     ))
-    assert await module.async_apply_send_video_intent(object(), "phone", enabled)
+    result = await module.async_apply_send_video_intent(object(), "phone", enabled)
+    if not committed:
+        assert not result
+        assert session.camera_send_enabled is not enabled
+        assert session.media_generation == 3
+        assert not session.update_event.is_set()
+        assert other_phone.media_generation == 9 and not other_phone.update_event.is_set()
+        return
+    assert result
     assert session.camera_send_enabled is enabled
     assert session.local_direction == direction
     assert session.remote_rtp_port == 44002

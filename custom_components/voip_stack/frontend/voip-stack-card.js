@@ -1184,7 +1184,7 @@ class VoipStackCard extends HTMLElement {
     if (this._isHaSoftphoneMode()) {
       const snap = this._softphoneSnapshot || {};
       if (snap.state && snap.state !== "idle") {
-        return snap.peer_name || snap.callee || snap.caller || this._getSoftphoneTargetDevice()?.name || "No endpoint";
+        return terminalPeerLabel(snap) || "Unknown";
       }
       return this._getSoftphoneTargetDevice()?.name || "No endpoint";
     }
@@ -1268,7 +1268,7 @@ class VoipStackCard extends HTMLElement {
       );
       if (target) return target;
     }
-    return this._getSoftphoneTargetDevice();
+    return snapshot.state && snapshot.state !== "idle" ? null : this._getSoftphoneTargetDevice();
   }
 
   _activeNativeCameraEntityId(espState) {
@@ -2399,7 +2399,8 @@ class VoipStackCard extends HTMLElement {
       shouldAbort: () => operationId !== this._callOperationId,
     });
     if (reply && !reply.superseded && operationId === this._callOperationId) {
-      this._applySoftphoneSnapshot(reply);
+      if (reply.schema_version === 2) await this._loadSoftphoneState();
+      else this._applySoftphoneSnapshot(reply);
     }
     return reply;
   }

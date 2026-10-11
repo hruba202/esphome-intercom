@@ -1207,6 +1207,7 @@ async def _run_video_session(
         media_queue = transcode_queue
 
     closed = asyncio.Event()
+    keepalive_updated = asyncio.Event()
     ws_send_lock = asyncio.Lock()
     # Browser AUs and RFC 6263 keepalives share one RTP source.  Serialize the
     # sequence/timestamp mutation while leaving JPEG normalization outside this
@@ -2022,6 +2023,7 @@ async def _run_video_session(
             if not await refresh_media_state(generation):
                 return
             observed_generation = generation
+            keepalive_updated.set()
             async with ws_send_lock:
                 await ws.send_json(
                     _video_negotiation_payload(session, message_type="media_update")
@@ -2226,6 +2228,7 @@ async def _run_video_session(
         generation_rx_packets = 0
         generation_tx_packets = 0
         while not closed.is_set():
+            keepalive_updated.clear()
             generation = int(session.media_generation)
             if generation != observed_generation:
                 negotiated_payload_types = {
@@ -2251,7 +2254,7 @@ async def _run_video_session(
             if session.remote_connection_held:
                 try:
                     await asyncio.wait_for(
-                        closed.wait(), timeout=_SYMMETRIC_RTP_REFRESH_INTERVAL
+                        keepalive_updated.wait(), timeout=_SYMMETRIC_RTP_REFRESH_INTERVAL
                     )
                 except TimeoutError:
                     pass
@@ -2259,7 +2262,7 @@ async def _run_video_session(
             if keepalive_payload_type is None:
                 try:
                     await asyncio.wait_for(
-                        closed.wait(), timeout=_SYMMETRIC_RTP_REFRESH_INTERVAL
+                        keepalive_updated.wait(), timeout=_SYMMETRIC_RTP_REFRESH_INTERVAL
                     )
                 except TimeoutError:
                     pass
@@ -2276,11 +2279,13 @@ async def _run_video_session(
             )
             if not probing:
                 try:
-                    await asyncio.wait_for(closed.wait(), timeout=interval)
+                    await asyncio.wait_for(keepalive_updated.wait(), timeout=interval)
                 except TimeoutError:
                     pass
                 if closed.is_set():
                     return
+                if keepalive_updated.is_set():
+                    continue
                 if (
                     last_regular_rtp_tx_at
                     and loop.time() - last_regular_rtp_tx_at < interval
@@ -2313,14 +2318,19 @@ async def _run_video_session(
                     _SYMMETRIC_RTP_KEEPALIVE_INTERVAL * (2 ** min(attempt, 6)),
                 )
                 try:
-                    await asyncio.wait_for(closed.wait(), timeout=retry_delay)
+                    await asyncio.wait_for(keepalive_updated.wait(), timeout=retry_delay)
                 except TimeoutError:
                     pass
                 continue
             counters["video_symmetric_rtp_keepalives"] += 1
             attempt += 1
             if probing:
-                await asyncio.sleep(_SYMMETRIC_RTP_KEEPALIVE_INTERVAL)
+                try:
+                    await asyncio.wait_for(
+                        keepalive_updated.wait(), timeout=_SYMMETRIC_RTP_KEEPALIVE_INTERVAL
+                    )
+                except TimeoutError:
+                    pass
 
     rx_task = asyncio.create_task(rtp_to_access_units())
     ws_task = asyncio.create_task(

@@ -382,14 +382,23 @@ class SipEndpointManager:
         return await candidates[0].async_send_bye(call_id)
 
     def _dialog_endpoints(self):
+        """Yield each dialog owner once, including shared TCP listener owners."""
+        seen: set[int] = set()
         for server in self.servers:
             endpoint = getattr(server, "endpoint", None)
-            if endpoint is not None:
+            if endpoint is not None and id(endpoint) not in seen:
+                seen.add(id(endpoint))
                 yield endpoint
             endpoints = getattr(server, "endpoints", None)
             if isinstance(endpoints, set):
-                yield from endpoints
-        yield from tuple(self._attached_dialog_endpoints)
+                for endpoint in endpoints:
+                    if id(endpoint) not in seen:
+                        seen.add(id(endpoint))
+                        yield endpoint
+        for endpoint in tuple(self._attached_dialog_endpoints):
+            if id(endpoint) not in seen:
+                seen.add(id(endpoint))
+                yield endpoint
 
     def attach_dialog_endpoint(self, endpoint: Any) -> None:
         """Expose a transport-owned endpoint through common dialog control."""

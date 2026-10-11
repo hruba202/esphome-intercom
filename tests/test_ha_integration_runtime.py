@@ -1120,3 +1120,38 @@ async def test_retired_native_phones_migrate_without_removing_supported_phones(h
     assert hass.config_entries.async_get_entry(mobile.entry_id) is mobile
     assert await async_migrate_entry(hass, entry)
     assert len(entry.subentries) == 2
+
+
+async def test_duplicate_extension_repair_names_conflicts_and_clears(hass):
+    from homeassistant.helpers import issue_registry as ir
+    from custom_components.voip_stack.repairs import async_sync_extension_issues
+    from custom_components.voip_stack.roster import RosterEntry
+
+    esp = RosterEntry(id="spotpear", name="Spotpear", extension="1000", metadata={"endpoint_id": "esphome:ball"})
+    assist = RosterEntry(id="assist", name="Assist", extension="1000", metadata={"virtual_endpoint": "assist_pipeline"})
+    async_sync_extension_issues(hass, [esp, assist])
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, "duplicate_extensions")
+    assert issue is not None
+    assert issue.severity == ir.IssueSeverity.ERROR
+    assert issue.translation_placeholders == {"conflicts": "1000: Assist, Spotpear"}
+    async_sync_extension_issues(hass, [esp, esp])
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "duplicate_extensions") is None
+    async_sync_extension_issues(hass, [esp, assist])
+    assist = RosterEntry(id="assist", name="Assist", extension="1001")
+    async_sync_extension_issues(hass, [esp, assist])
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "duplicate_extensions") is None
+
+
+async def test_flow_namespace_includes_discovered_esphome_extensions(hass):
+    from custom_components.voip_stack.config_flow import _entry_route_mappings
+    from custom_components.voip_stack.config_validation import route_namespace_conflicts
+    from custom_components.voip_stack.phone_endpoint import EndpointKind
+
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+    entry.runtime_data = SimpleNamespace(endpoints=SimpleNamespace(endpoints=(
+        SimpleNamespace(kind=EndpointKind.ESPHOME, sip_uri_user="ball", name="Spotpear", extension="1000"),
+    )))
+    mappings = _entry_route_mappings(entry, {}, include_assist=False)
+    assert route_namespace_conflicts(candidate_routes=("1000",), existing=mappings)
+    assert not route_namespace_conflicts(candidate_routes=("1001",), existing=mappings)

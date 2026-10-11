@@ -216,9 +216,20 @@ async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_
         decoded_frames = []
         try:
             for expected in expected_frames:
-                outgoing, address = await asyncio.wait_for(loop.sock_recvfrom(remote, 2048), 1)
+                async with asyncio.timeout(1):
+                    while True:
+                        outgoing, address = await loop.sock_recvfrom(remote, 2048)
+                        packet = rtp.parse_packet(outgoing)
+                        # Capture starts after negotiation. Initial RTP silence
+                        # can precede its first sample, but never replace one.
+                        initial_silence = (
+                            packet.payload_type == 0 and packet.payload == b"\xff" * 160
+                        ) or (
+                            packet.payload_type == pcm_tx_pt and packet.payload == bytes(640)
+                        )
+                        if outgoing_packets or not initial_silence:
+                            break
                 arrival_times.append(loop.time())
-                packet = rtp.parse_packet(outgoing)
                 outgoing_packets.append(packet)
                 assert address == ("127.0.0.1", local_port)
                 if symmetric:

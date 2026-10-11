@@ -107,3 +107,19 @@ class RosterResolverTest(unittest.TestCase):
             ).sip_uri,
             "sip:Salotto@192.168.1.10;transport=tcp",
         )
+
+
+def test_duplicate_numeric_extension_cannot_select_first_phone_or_fall_through_to_trunk():
+    entries = [
+        roster.RosterEntry(id="Spotpear", name="Spotpear", extension="1000", address="192.0.2.30"),
+        roster.RosterEntry(id="Assist", name="Assist", extension="1000", metadata={"virtual_endpoint": "assist_pipeline"}),
+    ]
+    for order in (entries, list(reversed(entries))):
+        result = router.resolve_ha_router("1000", order, trunk_ready=True)
+        assert result.action == router.RouteAction.REJECT
+        assert result.status == 485
+        assert result.reason.value == "ambiguous_extension"
+        assert router.resolve_ha_router("Spotpear", order).sip_uri == "sip:Spotpear@192.0.2.30"
+        assert router.resolve_ha_router("Assist", order).action == router.RouteAction.ASSIST
+    entries[1] = roster.RosterEntry(id="Assist", name="Assist", extension="1001", metadata={"virtual_endpoint": "assist_pipeline"})
+    assert router.resolve_ha_router("1000", entries).action == router.RouteAction.FORWARD

@@ -459,6 +459,10 @@
     "default_trunk_missing": {
       "title": "Standardleitung für ausgehende SIP-Anrufe auswählen",
       "description": "Es ist kein vorhandener Trunk als Standard ausgewählt. Öffne VoIP Stack, konfiguriere die gewünschte Leitung neu und aktiviere \"Als Standard für ausgehende Anrufe verwenden\". Alternativ kannst du eine Leitung in den Telefonoptionen oder in der Anrufaktion auswählen. Beim Löschen einer Leitung wird niemals automatisch ein anderer Anbieter ausgewählt."
+    },
+    "duplicate_extensions": {
+      "title": "Doppelte Nebenstellennummern",
+      "description": "Diese Ziele verwenden dieselbe Nebenstellennummer: {conflicts}. Weise jedem Telefon, Kontakt und Assist-Endpunkt eine eigene Nummer zu. Anrufe an eine mehrdeutige Nummer werden abgewiesen; eindeutige Namen und explizite SIP-Adressen bleiben nutzbar. Bei ESPHome-Telefonen muss die Nummer am Gerät geändert werden. Die Meldung verschwindet, sobald das Telefonbuch keine Konflikte mehr enthält."
     }
   },
   "exceptions": {
