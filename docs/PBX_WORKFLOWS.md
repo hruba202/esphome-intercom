@@ -1,8 +1,8 @@
 # Using the PBX features
 
-This page covers the additions on `dev` after the published
-`v2026.10.3-dev` preview at `16714a9b`. They are not included in that published
-preview. Use the documentation shipped with your installed version.
+This page covers the updated **2026.10.3-dev** preview. If you downloaded an
+earlier build with the same version label, redownload it in HACS, restart HA
+and reload the dashboard. Stable 2026.10.1 does not include these additions.
 
 Home Assistant owns the phones, calls and settings. A card is the control
 panel for one phone. Closing the card does not remove that phone's forwarding

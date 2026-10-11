@@ -21,7 +21,8 @@ beyond the project overview in the [top-level README](../README.md).
 
 Published release notes and their artifacts are available in the
 [GitHub releases](https://github.com/n-IA-hane/esphome-intercom/releases).
-The guides in this branch include PBX additions that are not published yet.
+The PBX additions in these guides are included in the updated 2026.10.3-dev
+preview, not stable 2026.10.1.
 
 ## Architecture and protocols
 

@@ -6,8 +6,8 @@ For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
 ## PBX development branch: separate SIP trunk entries
 
-This change is on `dev`, after the published `v2026.10.3-dev`
-preview at `16714a9b`. It changes where trunks are configured.
+The updated `v2026.10.3-dev` preview changes where trunks are configured.
+Older builds with the same version label used the former single-trunk flow.
 
 Previously, a single trunk was configured in the main VoIP Stack setup or
 reconfiguration flow. Now open **Settings > Devices & services > VoIP Stack**,

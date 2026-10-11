@@ -1,7 +1,7 @@
 # Call parking and directed pickup
 
-This guide describes the implementation on `dev`, after the published
-`v2026.10.3-dev` preview at `16714a9b`. It is not part of that release artifact.
+This guide describes the updated 2026.10.3-dev preview. Redownload an older
+build with the same version label to receive these additions.
 
 Parking leaves the other party connected to Home Assistant while you put down
 your phone. Another phone retrieves that conversation by calling its parking

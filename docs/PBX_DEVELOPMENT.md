@@ -2,7 +2,8 @@
 
 The work started on `feature/ha-pbx`, based on
 `16714a9b5000126278ad90d87bff1ec9cd1b6c2a`, and is being promoted to `dev`.
-The published release artifact has not been updated by that branch promotion.
+Branch promotion and prerelease publication are separate steps. The updated
+2026.10.3-dev package includes the PBX additions described here.
 Asterisk and FreeSWITCH are protocol references and test peers, not dependencies.
 
 ## Ownership and public behavior

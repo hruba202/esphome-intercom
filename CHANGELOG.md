@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased: PBX development branch
+## 2026.10.3-dev
 
-These changes are isolated on `feature/ha-pbx` and are not included in the
-published development preview or stable release.
+Development preview with changes since stable 2026.10.1.
+
+### Configuration migration: named SIP trunks
+
+Trunks are now added through the integration menu with **Add SIP trunk**, then
+edited individually. The former enabled single-trunk configuration migrates
+automatically. See [migration instructions](docs/BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries).
 
 ### ☎️ Phone defaults and multiple SIP lines
 
@@ -53,7 +58,16 @@ published development preview or stable release.
   Chromium. CI builds the pinned peer and required modules independently.
 
 
-## 2026.10.3-dev
+### Android audio and call-state corrections
+
+- Prepare capture before playback so Android chooses communication output and
+  does not mute the initial IVR greeting during its route change. Reuse prepared
+  audio resources and load processors before dialing.
+- Retain the negotiated audio contract during video changes and wake video NAT
+  maintenance when a new media description is committed.
+- Preserve the backend's complete call identity when the Call action returns its
+  acknowledgement. Report duplicate numeric extensions through HA Repairs.
+- Close shared TCP dialog owners and their transports in the correct order.
 
 ### ESP firmware with a conventional PBX
 

@@ -63,9 +63,10 @@ when installing the Home Assistant integration alone.
 
 ## PBX additions in this development branch
 
-The work on this branch adds **multiple named SIP trunks, phone forwarding rules,
-voicemail, call parking, directed pickup and conversation recording**. These
-additions are not included in the published `v2026.10.3-dev` preview at `16714a9b`.
+The [2026.10.3-dev preview](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.3-dev)
+adds **multiple named SIP trunks, phone forwarding rules, voicemail, call parking,
+directed pickup and conversation recording**. These additions are available in
+the development preview; stable 2026.10.1 does not include them.
 
 Start with the [illustrated PBX walkthrough](docs/PBX_WORKFLOWS.md). It explains
 which controls to use, what callers experience and how automations interact
