@@ -34,28 +34,26 @@ The editor saves your selection automatically. Incoming calls for that phone
 move every connected card bound to the same Device to `ringing`. The browser
 that answers becomes the media owner.
 
-<details>
-<summary>What the card editor saves in YAML</summary>
-
-`device_id` is Home Assistant's identifier for the phone you selected. The
-editor fills it in for you. This is an illustration of the saved configuration,
-not an ID to copy:
-
-```yaml
-type: custom:voip-stack-card
-mode: ha_softphone
-device_id: 0123456789abcdef0123456789abcdef
-```
-
-</details>
-
 ## Choose the calling phone in the editor
 
 In Home Assistant's automation editor or **Developer tools > Actions**, the
 **Calling phone** field in the Call action is a device picker: search for the
 phone's name and select it.
-You do not need to type or copy a long ID. Home Assistant writes `device_id`
-automatically when it saves that selection.
+No YAML editing or identifier lookup is needed. Enable the optional **Calling
+phone** field, open **Select a device**, and choose the phone by name. Home
+Assistant stores the selection for you.
+
+![Find VoIP Stack: Call in the HA action picker](images/call-action-picker.png)
+
+![Choose the calling phone by its readable name](images/call-phone-picker.png)
+
+![Calling phone and Destination filled in the visual action editor](images/call-action-fields.png)
+
+In these screenshots, **Casa** is the calling phone and **Kitchen** is the
+example destination. Nothing is executed just by filling these fields. In an
+automation, save the action; in Developer tools, **Perform action** actually
+starts the call. The optional Automation contact and outgoing trunk fields can
+stay unset for an ordinary internal phone call.
 
 **Calling phone** chooses who places the call. **Destination** chooses who receives it.
 For example, select `Reception` in **Calling phone** and enter `Kitchen` in
@@ -66,7 +64,8 @@ This is a Device selection, rather than an entity ID such as `sensor.*`.
 The picker presents the phone's readable name, just like other Home Assistant
 selectors.
 
-### What `device_id` and `endpoint_id` mean
+<details>
+<summary>For advanced users: identifiers in saved YAML</summary>
 
 If you inspect the saved YAML, these fields have different jobs:
 
@@ -78,28 +77,15 @@ destination = the remote party to call
 The same action works whether the local phone is a Home Assistant browser phone
 or a compatible ESPHome phone.
 
-<details>
-<summary>Example YAML generated after selecting the calling phone</summary>
-
-The long value below represents the selection saved by Home Assistant. Use the
-**Calling phone** picker to populate your own value.
-
-```yaml
-action: voip_stack.call
-data:
-  device_id: 0123456789abcdef0123456789abcdef
-  destination: Waveshare S3 Audio
-```
-
-</details>
-
 `endpoint_id` remains an internal stable identity used to correlate a logical
 phone, SIP session, media owner and WebSocket snapshot. It is useful to the
 backend because a Device can be temporarily unavailable while its logical
 endpoint and active session still exist. Users do not save it in card YAML and
 do not pass it to phone actions.
 
-If `device_id` is omitted, VoIP Stack uses the explicitly preferred phone. If
+</details>
+
+If **Calling phone** is left unselected, VoIP Stack uses the explicitly preferred phone. If
 no preferred phone is configured but exactly one compatible phone exists, that
 phone is used. Otherwise the action asks for a phone selection instead of
 guessing.
@@ -153,20 +139,6 @@ From an automation, use the visual editor:
 You can make the same selection in **Developer tools > Actions** to try it.
 Leaving **Calling phone** empty uses the preferred or sole compatible phone, as
 explained above.
-
-<details>
-<summary>The corresponding action in YAML</summary>
-
-Home Assistant fills `device_id` from your Calling phone selection:
-
-```yaml
-action: voip_stack.call
-data:
-  device_id: 0123456789abcdef0123456789abcdef
-  destination: Kitchen
-```
-
-</details>
 
 From an ESPHome phone, choose a contact and invoke its normal call action. The
 ESP calls the selected destination through the route published by Home
@@ -288,35 +260,9 @@ terminate SIP TLS or SRTP.
 These actions also provide a visual **Phone** picker and a **Destination** field.
 For Transfer call, the optional Phone picker is under **Advanced options**.
 Select the local phone by name; Home Assistant saves its `device_id` for you.
-Native VoIP call triggers supply the current call automatically. The explicit
-`call_id` shown below is an advanced option for selecting a particular call,
-not a value you must look up for every automation. See the
+Native VoIP call triggers supply the current call automatically. Explicit `call_id` selection is an advanced option, not a value you must look
+up for every automation. See the
 [automation cookbook](AUTOMATION_DIALPLAN.md) for examples using the current call.
-
-<details>
-<summary>Advanced YAML with an explicit phone and call</summary>
-
-Forward a call before it is established:
-
-```yaml
-action: voip_stack.forward
-data:
-  device_id: 0123456789abcdef0123456789abcdef
-  call_id: current-call-id
-  destination: Reception
-```
-
-Transfer an established call:
-
-```yaml
-action: voip_stack.transfer
-data:
-  device_id: 0123456789abcdef0123456789abcdef
-  call_id: current-call-id
-  destination: sip:desk@pbx.example
-```
-
-</details>
 
 Secure SIP identities such as `sips:desk@pbx.example:5061;transport=tls` are
 preserved across direct routing, outbound proxies and REFER targets.
