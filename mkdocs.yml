@@ -23,6 +23,7 @@ nav:
       - Installation and firmware: DEPLOYMENT_GUIDE.md
       - Documentation map: README.md
   - Calls and routing:
+      - PBX walkthrough: PBX_WORKFLOWS.md
       - Phone defaults: PHONE_ROUTING.md
       - Automations: AUTOMATION_DIALPLAN.md
       - Voicemail: VOICEMAIL.md

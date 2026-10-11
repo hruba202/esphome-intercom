@@ -7,6 +7,7 @@ beyond the project overview in the [top-level README](../README.md).
 
 | Need | Document |
 |---|---|
+| Set up the new PBX features with practical examples | [Illustrated PBX walkthrough](PBX_WORKFLOWS.md) |
 | Learn the complete everyday workflow | [User guide](USER_GUIDE.md) |
 | Build greetings, keypad menus and call routing in the HA editor | [Automation as dialplan cookbook](AUTOMATION_DIALPLAN.md) |
 | Review the current release | [Release history](../CHANGELOG.md) |

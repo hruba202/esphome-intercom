@@ -203,6 +203,15 @@ groups and video settings. Bind each card to the intended Device. Two cards in
 one browser tab do not create two physical microphones or cameras, so use a
 separate browser or Companion session for simultaneous independent media.
 
+Numeric extensions must be unique across HA phones, SIP accounts, ESPHome
+phones, manual contacts and Assist. If discovery introduces a duplicate,
+**Settings > System > Repairs** lists the extension and the conflicting
+names. Calls to that ambiguous number are rejected instead of selecting a
+phone or falling through to a trunk. Give each destination a different
+extension; for an ESPHome phone, change its extension on the device. The
+repair clears automatically after the phonebook updates. Unique names and
+explicit SIP addresses remain usable while you resolve the conflict.
+
 ## Register a SIP client or IP phone
 
 1. Enable the local registrar in **VoIP Stack > Configure**.
@@ -244,14 +253,27 @@ you do not need to change Python code or mark a static contact as registered.
 
 ## Configure a trunk
 
-Leave the trunk disabled for a local-only installation. To connect FRITZ!Box,
-Wildix, another PBX or a provider:
+A local-only installation needs no trunk. To connect a provider, FRITZ!Box or
+another PBX:
 
-1. Open **VoIP Stack > Reconfigure > Trunk**.
-2. Enter server, port, transport, domain and credentials.
-3. Set an outbound proxy only when the PBX requires one.
-4. Select the default inbound destination.
-5. Enable digit collection only when callers must choose an internal extension.
+1. Open **Settings > Devices & services > VoIP Stack**.
+2. Open the integration's three-dot menu and choose **Add SIP trunk**. The
+   integration page also has an **Add SIP trunk** shortcut.
+3. Name the line and choose whether the peer requires REGISTER.
+4. Enter its server, transport and credentials, or the allowed incoming networks
+   for a static trunk. Set an outbound proxy only when required by the peer.
+5. Choose the allowed codecs and the receiving phone under **Fallback destination**.
+6. Enable digit collection only if callers should choose an internal extension.
+
+Each trunk is a separate HA entry with its own device and readiness entity.
+Edit it through the configuration control beside that named trunk, not through
+**Reconfigure > Trunk** on the main integration. The first line becomes the
+outgoing default; additional lines can be selected per phone or per call.
+Incoming destinations are configured independently of that outgoing choice.
+
+See the illustrated [PBX walkthrough](PBX_WORKFLOWS.md), detailed
+[trunk guide](SIP_TRUNK.md) and
+[migration instructions](BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries).
 
 Public numbers and service strings such as `*` or `**621` are sent to the trunk
 without destructive normalization. Names and internal extensions are resolved

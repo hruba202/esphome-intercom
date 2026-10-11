@@ -61,6 +61,25 @@ See the [firmware migration notes](docs/BREAKING_CHANGES.md#2026100-esphome-2026
 when updating copied YAMLs. This does not force an immediate firmware update
 when installing the Home Assistant integration alone.
 
+## PBX additions in this development branch
+
+The work on this branch adds **multiple named SIP trunks, phone forwarding rules,
+voicemail, call parking, directed pickup and conversation recording**. These
+additions are not included in the published `v2026.10.3-dev` preview at `16714a9b`.
+
+Start with the [illustrated PBX walkthrough](docs/PBX_WORKFLOWS.md). It explains
+which controls to use, what callers experience and how automations interact
+with phone settings. Each phone keeps its own card; routing and messages belong
+to the backend.
+
+**Configuration change:** trunks are now separate named entries. Open the
+integration's **three-dot menu > Add SIP trunk**, then configure each line
+independently. Existing enabled single-trunk settings are migrated automatically.
+Read the [migration instructions](docs/BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries)
+before upgrading.
+
+![Add SIP trunk in the VoIP Stack integration menu](docs/images/pbx-add-trunk-menu.png)
+
 ## What can you build?
 
 ![Video doorbell and room-to-room calls through Home Assistant](docs/images/voip-doorbell-room-to-room.png)

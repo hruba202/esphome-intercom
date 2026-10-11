@@ -1,7 +1,6 @@
 # Voicemail
 
-This guide describes the implementation on the `feature/ha-pbx` development
-branch. It is not available in the current stable release.
+This guide describes the implementation on the `dev` branch. It is not available in the current stable release.
 
 A mailbox belongs to a phone, not to a dashboard card. SIP phones and the HA
 softphone call the same voicemail application. The card displays message
@@ -23,6 +22,11 @@ Enabling voicemail checks that existing phones, contacts and groups do not use
 its feature codes or named address prefixes. HA reports conflicts before saving
 the configuration. Numeric extension `97` remains distinct from feature code
 `*97`.
+
+The global switch enables the voicemail feature; a mailbox is the message
+inbox belonging to one phone. You enable them separately. For an ESP, use its
+ESP mirror card: the mailbox and recordings remain on HA, with no firmware
+storage required. Calls must pass through HA for its no-answer rules to apply.
 
 Enable the phone's mailbox in its VoIP Stack phone configuration, or with
 **Enable this phone's mailbox** in the card's Options. The native

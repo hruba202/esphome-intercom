@@ -35,7 +35,17 @@ endpoint identity and media ports:
 - optional browser SIP video
 - optional local SIP registrar
 
-After setting up the integration, use **Add SIP trunk** on its integration page.
+After setting up the integration, open **Settings > Devices & services >
+VoIP Stack**, then **three-dot menu > Add SIP trunk**. The integration page also
+has an **Add SIP trunk** shortcut. Each line is a separate configuration subentry
+with its own device and readiness entity. Use its configuration control to edit
+it; the main integration's Reconfigure flow no longer contains provider settings.
+
+![Integration menu: Add SIP trunk](images/pbx-add-trunk-menu.png)
+
+![Add a named SIP trunk](images/pbx-add-trunk.png)
+
+The screenshot shows adding an additional line to an existing installation.
 Give the line a name, such as Home or Work, and choose **Register the trunk** if
 the provider requires account registration. The first trunk automatically becomes
 the outgoing default, without a default-selection switch. When adding another

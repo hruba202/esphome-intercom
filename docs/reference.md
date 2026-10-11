@@ -293,7 +293,8 @@ enabled are invited when the room starts.
 
 ## HA setup options
 
-The setup flow has two layers:
+The integration configures the local PBX. Named SIP trunks are added separately
+through **Add SIP trunk** on its integration page:
 
 | Option | Meaning |
 | --- | --- |
@@ -311,7 +312,6 @@ The setup flow has two layers:
 | `video_transcoding_enabled` | Shown only after SIP video is enabled. Direct compatible media remains preferred. Home Assistant's FFmpeg binary may convert legacy receive codecs to browser VP8 and may convert incompatible HA-owned SIP bridge directions to the H.264 or JPEG contract negotiated by the receiver. This also applies when a peer adds video to an established audio-only bridge through re-INVITE. Browser JPEG send may use one bounded RFC 2435 normalizer. Only one transcode call owns the bounded process slot. |
 | `video_camera_send_enabled` | Shown only after SIP video is enabled. Exposes the logical HA phone's persistent **Send Camera** switch for negotiated H.264, VP8 or JPEG transmit media. Browser camera permission remains local; receiving video never needs it. |
 | `sip_registrar_enabled` | Allow standard SIP endpoints to register to HA with accounts created through the account services. This does not gate inbound calls by phonebook membership. |
-| `trunk_enabled` | Enables the second setup step for provider/PBX registration. When false, no trunk client, registration, external route or DTMF collector starts. |
 
 `sip_port` and `rtp_port` belong to the integration runtime, not to individual
 phones. Every logical phone shares the same SIP listeners and dynamic RTP pool;
@@ -323,11 +323,16 @@ When `assist_endpoint_enabled` is true, the setup flow asks for
 central phonebook/dial plan. Calls run directly against the selected HA Assist
 pipeline; no separate SIP port or Assist satellite is created.
 
-When `trunk_enabled` is true, the second step adds:
+The named trunk configuration contains:
 
 | Option | Meaning |
 | --- | --- |
-| `trunk_transport` | SIP transport used toward the provider: `udp` or `tcp`. |
+| `trunk_enabled` | Enables this named trunk. This is a trunk subentry setting, not a second main setup step. A disabled line does not start its client or accept new external calls. |
+| `trunk_register` | Register with the peer, or disable REGISTER for a static trunk. |
+| `trunk_allowed_ips` | Allowed incoming source IPs/CIDRs for a static trunk. |
+| `trunk_audio_codecs` | Audio codec allowlist for this line. At least one is required. |
+| `trunk_video_codecs` | Video codec allowlist for this line. Empty disables video on it. |
+| `trunk_transport` | SIP transport used toward the provider: `udp`, `tcp`, or `tls` for registered trunks. |
 | `trunk_server` | Provider registrar/proxy host. |
 | `trunk_port` | Provider SIP port, normally `5060`. |
 | `trunk_domain` | Optional SIP realm/domain; defaults to `trunk_server`. |
@@ -336,7 +341,7 @@ When `trunk_enabled` is true, the second step adds:
 | `trunk_password` | Digest auth password. |
 | `trunk_register_expires` | REGISTER expiration in seconds. |
 | `trunk_outbound_proxy` | Optional proxy host or `sip:host:port` used as signaling next hop. |
-| `trunk_inbound_default_target` | Canonical phonebook target used by Direct mode or by the DTMF no-digits fallback. Default `HA`. |
+| `trunk_inbound_default_target` | Receiving phone or dial-plan destination selected by name. Used when no called phonebook destination matches, or as the DTMF no-digits fallback. |
 | `trunk_inbound_mode` | `direct` resolves the default target immediately; `dtmf` pre-answers and collects an explicit phonebook extension. |
 | `automation_routing_enabled` | Legacy event-based routing opt-in, disabled by default. Matching native routing triggers activate the decision window themselves. Explicit trunk extension digits are never overridden. |
 | `trunk_dtmf_timeout_ms` | DTMF inter-digit timeout. The first digit is allowed 10 s. The setup UI shows seconds; internally this is stored in milliseconds. Default 3 s, maximum 10 s. |

@@ -1,7 +1,8 @@
 # HA PBX branch: implementation and qualification
 
-The work is isolated on `feature/ha-pbx`, based on
-`16714a9b5000126278ad90d87bff1ec9cd1b6c2a`. It is not a published release.
+The work started on `feature/ha-pbx`, based on
+`16714a9b5000126278ad90d87bff1ec9cd1b6c2a`, and is being promoted to `dev`.
+The published release artifact has not been updated by that branch promotion.
 Asterisk and FreeSWITCH are protocol references and test peers, not dependencies.
 
 ## Ownership and public behavior
@@ -67,16 +68,18 @@ directed pickup reject active video before changing ownership. Directed pickup
 targets individual phones, not branches inside a ringing group. Direct endpoint
 calls that bypass HA cannot use backend routing, voicemail or recording.
 
-Home HA remains on the separately qualified voicemail revision. The development
-lab is the deployment target for the complete candidate. Nothing in this branch
-has been pushed, published or promoted to dev/main as part of this qualification.
+The initial qualification used the development lab. Later selected changes were
+deployed to the home installation for interoperability and Companion checks.
+Those deployments do not by themselves qualify every supported device or route.
+The records below describe their respective candidates, not an exhaustive
+hardware certification of every subsequent commit.
 
 User-facing instructions are in the user guide, voicemail, parking, recording
 and SIP trunk guides. The static documentation build reads those same Markdown
 files. Detailed local runs and failure witnesses are kept in gitignored task
 captures rather than being mixed into installation instructions.
 
-## Final qualification record
+## Initial branch qualification record
 
 - Software suite: 1,983 tests and 181 subtests passed, four explicitly deselected.
 - Final HA suite: 569 tests passed with an independently built, pinned
@@ -96,3 +99,33 @@ Chromium run used the same production component tree and returned all 21
 call-resource counters to zero. Documentation/schema checks passed 42 tests.
 Qualification records remain under the private, gitignored task captures;
 public hardware claims require separate device tests.
+
+## Documentation comparison, 2026-10-11
+
+The published `v2026.10.3-dev` tag resolves to `16714a9b`; `origin/main` resolves
+to `6581cfea`. They are different comparison points. The PBX workflow guide
+covers branch additions after the published preview, including named trunks,
+phone routing, voicemail/MWI, parking/pickup, consultation transfer/dialog-state
+support and conversation recording. Existing Automation origination, TTS/media
+announcements and classic-PBX firmware support are linked as existing features.
+
+The upgrade guide now explains migration from the parent's single-trunk settings
+to named native subentries, without asking users to recreate credentials. The
+user guide and configuration reference no longer direct users to the removed
+main-flow trunk step. Screenshots were captured from the running home HA
+integration menu and an unsaved new-trunk form. No trunk was added or edited,
+and no calls or audio tests were made for this documentation task.
+
+This comparison is a documentation record, not a new qualification of all code
+in the dirty working tree or a publication to main/dev.
+
+## Remaining startup qualification
+
+The Companion Android IVR greeting was confirmed audible on the user's OnePlus
+following the capture-before-playback change. Android diagnostics had shown
+its previous media output muted during the transition to communication mode.
+This does not establish that every browser startup case is lossless: an immediate
+synthetic RTP source in the Android emulator exposed initial loss when browser
+readiness exceeded the bounded receive queue. That separate startup/burst case
+remains to be investigated; preloading worklets alone did not resolve it.
+The development branch is not being declared universally hardware-qualified.

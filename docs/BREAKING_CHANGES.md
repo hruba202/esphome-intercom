@@ -4,6 +4,35 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## PBX development branch: separate SIP trunk entries
+
+This change is on `dev`, after the published `v2026.10.3-dev`
+preview at `16714a9b`. It changes where trunks are configured.
+
+Previously, a single trunk was configured in the main VoIP Stack setup or
+reconfiguration flow. Now open **Settings > Devices & services > VoIP Stack**,
+then the integration's **three-dot menu > Add SIP trunk**. Each line has a named
+subentry, a device and a readiness entity. Edit an existing line using the
+configuration control beside that trunk. Do not create a template entity.
+
+- An enabled legacy trunk is migrated automatically to a **SIP trunk** entry,
+  retaining its connection settings, credentials, incoming routing and outgoing
+  default. A disabled, unused legacy trunk is not turned into a new active line.
+- Do not delete the integration or recreate the working trunk to migrate it.
+- Check the migrated line's readiness entity and receiving destination. If your
+  dashboards or automations refer to the former trunk status entity, select the
+  current entity on the named trunk device; do not assume its entity ID.
+- The first newly added line becomes the outgoing default. With several lines,
+  a call's explicit choice takes precedence over the phone preference and then
+  the integration default.
+- Deleting the default leaves no default selected. HA Repairs asks you to choose
+  one; the integration does not silently switch to another provider.
+- Reload dashboard pages or reopen Companion after updating to load the matching
+  card code. Updating HA does not update ESP firmware.
+
+The [illustrated walkthrough](PBX_WORKFLOWS.md) explains voicemail, phone routing,
+parking, pickup and recording alongside the new trunk setup.
+
 ## 2026.10.3-dev: implicit automation call selection
 
 Outgoing Automation sequences no longer require response variables or call IDs.

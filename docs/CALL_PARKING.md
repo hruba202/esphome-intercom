@@ -1,7 +1,7 @@
 # Call parking and directed pickup
 
-This guide describes the implementation on `feature/ha-pbx`. It is not part of
-the published release yet. The implementation is still undergoing full qualification.
+This guide describes the implementation on `dev`, after the published
+`v2026.10.3-dev` preview at `16714a9b`. It is not part of that release artifact.
 
 Parking leaves the other party connected to Home Assistant while you put down
 your phone. Another phone retrieves that conversation by calling its parking
@@ -26,6 +26,13 @@ The initial settings are:
 Configured slot numbers must not conflict with existing phones, contacts or
 groups. If hold audio cannot be read, the caller remains connected in silence;
 the ordinary return timeout still applies.
+
+## One example, without an extra transfer
+
+You are talking on Kitchen and want to continue on Office. Press **Park** on
+Kitchen's HA card, or transfer to **700** from a SIP handset. If the assigned slot
+is **701**, put Kitchen down and dial **701** from Office. You do not transfer to
+700 after parking: the Park button and the transfer to 700 are alternatives.
 
 ## From a SIP phone
 
