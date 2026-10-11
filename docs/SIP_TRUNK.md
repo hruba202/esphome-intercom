@@ -107,8 +107,11 @@ See [RFC 3261, section 18.1.1](https://www.rfc-editor.org/rfc/rfc3261.html#secti
 
 ### Route incoming calls to a particular phone
 
-Set the trunk's **Inbound default target** to the phone's name or extension,
-for example `Bedroom` or `101`, and select direct incoming routing. This is
+Select the receiving phone under **Fallback destination**, for example
+`Bedroom`, and select direct incoming routing. The selector lists configured
+phones and contacts; a group, extension or other dial-plan destination can also
+be entered. Select the actual Home Assistant phone by its name, rather than
+entering the legacy `HA` alias. This is
 independent of the outgoing default trunk. A called destination that already
 matches the phonebook takes precedence over this fallback target.
 

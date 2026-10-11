@@ -89,7 +89,7 @@
           "trunk_password": "Password digest auth.",
           "trunk_register_expires": "Scadenza REGISTER in secondi.",
           "trunk_outbound_proxy": "Proxy opzionale o sip:host:port usato come next hop di signaling.",
-          "trunk_inbound_default_target": "Nella modalità immediata viene usata solo se la destinazione chiamata non è in rubrica. La selezione DTMF e le automazioni possono scegliere una destinazione diversa.",
+          "trunk_inbound_default_target": "Seleziona il telefono destinatario per nome, oppure inserisci un gruppo, un interno o un contatto Automation. La modalità immediata usa questa destinazione quando il numero chiamato non corrisponde alla rubrica. La selezione DTMF e le automazioni possono scegliere un'altra destinazione.",
           "trunk_inbound_mode": "Instrada subito evita la raccolta cifre. Raccogli interno con DTMF risponde prima sul trunk e permette alle cifre esplicite di scegliere un interno della rubrica.",
           "automation_routing_enabled": "Prima di usare la destinazione di fallback, pubblica una breve richiesta di instradamento a cui può rispondere un'automazione. Le cifre DTMF esplicite mantengono sempre la priorità.",
           "trunk_dtmf_timeout_ms": "Timeout tra cifre usato in modalità DTMF. Per la prima cifra sono disponibili 10 secondi. Default 3 secondi, massimo 10 secondi.",
@@ -153,7 +153,8 @@
       "voicemail_voice_unavailable": "Seleziona una voce supportata dal motore TTS e dalla lingua scelti.",
       "parking_configuration_invalid": "Scegli codici distinti e tempi tra 1 e 3600 secondi.",
       "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo.",
-      "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio."
+      "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio.",
+      "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",
@@ -326,7 +327,7 @@
             "trunk_password": "Password digest auth.",
             "trunk_register_expires": "Scadenza REGISTER in secondi.",
             "trunk_outbound_proxy": "Proxy opzionale o sip:host:port usato come next hop di signaling.",
-            "trunk_inbound_default_target": "Nella modalità immediata viene usata solo se la destinazione chiamata non è in rubrica. La selezione DTMF e le automazioni possono scegliere una destinazione diversa.",
+            "trunk_inbound_default_target": "Seleziona il telefono destinatario per nome, oppure inserisci un gruppo, un interno o un contatto Automation. La modalità immediata usa questa destinazione quando il numero chiamato non corrisponde alla rubrica. La selezione DTMF e le automazioni possono scegliere un'altra destinazione.",
             "trunk_inbound_mode": "Instrada subito evita la raccolta cifre. Raccogli interno con DTMF risponde prima sul trunk e permette alle cifre esplicite di scegliere un interno della rubrica.",
             "automation_routing_enabled": "Prima di usare la destinazione di fallback, pubblica una breve richiesta di instradamento a cui può rispondere un'automazione. Le cifre DTMF esplicite mantengono sempre la priorità.",
             "trunk_dtmf_timeout_ms": "Timeout tra cifre usato in modalità DTMF. Per la prima cifra sono disponibili 10 secondi. Default 3 secondi, massimo 10 secondi.",
@@ -348,7 +349,8 @@
         "trunk_in_use": "Termina le chiamate che usano questo trunk prima di modificarne la connessione.",
         "trunk_registration_failed": "Registrazione fallita. Controlla server, trasporto e credenziali. La configurazione salvata non è stata modificata.",
         "trunk_validation_failed": "Controlla la connessione e le reti ammesse in ingresso. I trunk statici con lo stesso trasporto devono avere reti sorgenti non sovrapposte.",
-        "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio."
+        "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio.",
+        "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata."
       },
       "abort": {
         "reconfigure_successful": "Configurazione del trunk aggiornata."

@@ -148,6 +148,26 @@ def _port_selector():
     return NumberSelector(NumberSelectorConfig(min=1, max=65535, step=1, mode="box"))
 
 
+def _trunk_target_choices(hass, entry, existing):
+    """Return available trunk destinations and the configured default."""
+    from .runtime_data import runtime_data, preferred_browser_phone
+
+    runtime = runtime_data(hass)
+    names = set()
+    if runtime is not None:
+        names.update(endpoint.name for endpoint in runtime.endpoints.endpoints)
+    for item in _entry_route_mappings(entry, entry.data if entry is not None else existing):
+        name = str(item.get("name") or item.get("id") or "").strip()
+        if name:
+            names.add(name)
+        names.update(_group_route_values(item.get("ring_group"), item.get("conference_group")))
+    selected = str(existing.get(CONF_TRUNK_INBOUND_DEFAULT_TARGET) or "").strip()
+    if not selected or (selected.casefold() == "ha" and selected not in names):
+        preferred = preferred_browser_phone(hass) if runtime is not None else None
+        selected = preferred.name if preferred is not None else ""
+    return sorted(names, key=str.casefold), selected
+
+
 def _dtmf_timeout_seconds(value: object) -> int:
     raw = 3000 if value in (None, "") else int(value)
     if 0 <= raw <= 10:
@@ -224,6 +244,7 @@ class TrunkFormMixin:
 
     async def async_step_trunk(self, user_input=None):
         _current_entry, existing = self._current_entry_data()
+        target_choices, target_default = _trunk_target_choices(self.hass, _current_entry, existing)
         register = getattr(
             self, "_trunk_register", existing.get(CONF_TRUNK_REGISTER, True)
         )
@@ -246,9 +267,7 @@ class TrunkFormMixin:
             CONF_TRUNK_PASSWORD: existing.get(CONF_TRUNK_PASSWORD, ""),
             CONF_TRUNK_EXPIRES: existing.get(CONF_TRUNK_EXPIRES, 300),
             CONF_TRUNK_OUTBOUND_PROXY: existing.get(CONF_TRUNK_OUTBOUND_PROXY, ""),
-            CONF_TRUNK_INBOUND_DEFAULT_TARGET: existing.get(
-                CONF_TRUNK_INBOUND_DEFAULT_TARGET, "HA"
-            ),
+            CONF_TRUNK_INBOUND_DEFAULT_TARGET: target_default,
             CONF_TRUNK_INBOUND_MODE: existing.get(CONF_TRUNK_INBOUND_MODE, legacy_mode),
             CONF_AUTOMATION_ROUTING_ENABLED: existing.get(
                 CONF_AUTOMATION_ROUTING_ENABLED, False
@@ -296,10 +315,12 @@ class TrunkFormMixin:
                     CONF_TRUNK_OUTBOUND_PROXY,
                     default=defaults[CONF_TRUNK_OUTBOUND_PROXY],
                 ): TextSelector(),
-                vol.Optional(
+                vol.Required(
                     CONF_TRUNK_INBOUND_DEFAULT_TARGET,
-                    default=defaults[CONF_TRUNK_INBOUND_DEFAULT_TARGET],
-                ): TextSelector(),
+                    **({"default": target_default} if target_default else {}),
+                ): SelectSelector(SelectSelectorConfig(
+                    options=target_choices, custom_value=True, mode="dropdown",
+                )),
                 vol.Required(
                     CONF_TRUNK_INBOUND_MODE, default=defaults[CONF_TRUNK_INBOUND_MODE]
                 ): SelectSelector(
@@ -388,6 +409,8 @@ class TrunkFormMixin:
                 errors["base"] = "trunk_username_required"
             elif register and not user_input[CONF_TRUNK_PASSWORD]:
                 errors["base"] = "trunk_password_required"
+            if not user_input[CONF_TRUNK_INBOUND_DEFAULT_TARGET]:
+                errors[CONF_TRUNK_INBOUND_DEFAULT_TARGET] = "trunk_target_required"
             for key, allowed, empty in (("trunk_audio_codecs", AUDIO_CODECS, False),
                                         ("trunk_video_codecs", VIDEO_CODECS, True)):
                 try:

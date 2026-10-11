@@ -199,7 +199,7 @@ async def test_native_flow_adopts_validated_registration_without_second_register
         "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": False,
     })
     result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
-        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only",
+        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only", "trunk_inbound_default_target": "Kitchen",
     })
     assert result["type"] == "create_entry", result
     identity = result["data"]["trunk_id"]
@@ -230,7 +230,7 @@ async def test_failed_reconfiguration_preserves_live_registration_and_saved_cred
         "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": False,
     })
     created = await hass.config_entries.subentries.async_configure(form["flow_id"], {
-        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only",
+        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only", "trunk_inbound_default_target": "Kitchen",
     })
     assert created["type"] == "create_entry"
     identity = created["data"]["trunk_id"]
@@ -269,7 +269,7 @@ async def test_tcp_reconfiguration_unregisters_only_the_old_outbound_flow(hass, 
     })
     created = await hass.config_entries.subentries.async_configure(form["flow_id"], {
         "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_transport": "tcp",
-        "trunk_username": "ha", "trunk_password": "test-only",
+        "trunk_username": "ha", "trunk_password": "test-only", "trunk_inbound_default_target": "Kitchen",
     })
     assert created["type"] == "create_entry", created
     identity = created["data"]["trunk_id"]
@@ -403,7 +403,7 @@ async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(has
         "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": make_default,
     })
     result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
-        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only",
+        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only", "trunk_inbound_default_target": "Kitchen",
     })
     assert result["type"] == "create_entry", result
     identity = result["data"]["trunk_id"]
@@ -518,7 +518,7 @@ async def test_first_trunk_is_default_without_toggle_second_trunk_offers_choice(
     first=await hass.config_entries.subentries.async_configure(first['flow_id'],{
         'name':'First','trunk_enabled':True,'trunk_register':True})
     result=await hass.config_entries.subentries.async_configure(first['flow_id'],{
-        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_password':'test-only'})
+        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_inbound_default_target':'Kitchen','trunk_password':'test-only'})
     identity=result['data']['trunk_id']
     try:
         await hass.async_block_till_done()
@@ -550,7 +550,7 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
     assert 'trunk_audio_codecs' in form['data_schema'].schema
     assert 'trunk_video_codecs' in form['data_schema'].schema
     result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
-        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_password':'test-only',
+        'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_inbound_default_target':'Kitchen','trunk_password':'test-only',
         'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[]})
     assert result['type']=='create_entry'
     identity=result['data']['trunk_id']
@@ -568,3 +568,21 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
         assert catalog.subentries[record.subentry_id].data['trunk_video_codecs']==[]
     finally:
         await async_stop_sip_trunk(hass)
+
+
+def test_trunk_destination_picker_uses_real_phone_names(hass, catalog):
+    from custom_components.voip_stack.config_flow import _trunk_target_choices
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint
+    runtime = catalog.runtime_data
+    runtime.endpoints.register(PhoneEndpoint(endpoint_id='browser:initial', name='Casa', kind='browser', device_id='home-device'))
+    runtime.endpoints.register(PhoneEndpoint(endpoint_id='browser:test', name='Test', kind='browser', device_id='test-device'))
+    runtime.preferred_phone_device_id = 'home-device'
+    choices, selected = _trunk_target_choices(hass, catalog, {'trunk_inbound_default_target': 'HA'})
+    assert choices == ['Casa', 'Test']
+    assert selected == 'Casa'
+    assert _trunk_target_choices(hass, catalog, {'trunk_inbound_default_target': 'Test'})[1] == 'Test'
+    assert _trunk_target_choices(hass, catalog, {'trunk_inbound_default_target': 'custom-route'})[1] == 'custom-route'
+    runtime.endpoints.update('browser:initial', name='Renamed home')
+    assert _trunk_target_choices(hass, catalog, {})[1] == 'Renamed home'
+    runtime.preferred_phone_device_id = ''
+    assert _trunk_target_choices(hass, catalog, {})[1] == ''

@@ -24,7 +24,7 @@ async def test_mode_switch_hides_registration_expiry_and_requires_source_acl(has
     assert "trunk_register_expires" not in fields
     transport = next(value for key, value in form["data_schema"].schema.items() if key.schema == "trunk_transport")
     assert transport.config["options"] == ["udp", "tcp"]
-    values = form["data_schema"]({"trunk_server": "127.0.0.1", "trunk_allowed_ips": ["127.0.0.2"]})
+    values = form["data_schema"]({"trunk_server": "127.0.0.1", "trunk_allowed_ips": ["127.0.0.2"], "trunk_inbound_default_target": "Kitchen"})
     flow._store_entry = Mock(side_effect=lambda data: data)
     flow.async_set_unique_id = __import__('unittest.mock', fromlist=['AsyncMock']).AsyncMock()
     flow._abort_if_unique_id_configured = Mock()
@@ -45,6 +45,6 @@ async def test_empty_or_unrestricted_acl_cannot_be_saved(hass):
     flow._current_entry_data = lambda: (None, {})
     form = await flow.async_step_trunk_mode({"trunk_register": False})
     for ips in ([], ["bad"], ["0.0.0.0/0"]):
-        data = form["data_schema"]({"trunk_server": "127.0.0.1", "trunk_allowed_ips": ips})
+        data = form["data_schema"]({"trunk_server": "127.0.0.1", "trunk_allowed_ips": ips, "trunk_inbound_default_target": "Kitchen"})
         result = await flow.async_step_trunk(data)
         assert result["errors"] == {"trunk_allowed_ips": "trunk_allowed_ips_invalid"}

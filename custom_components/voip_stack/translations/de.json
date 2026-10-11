@@ -89,7 +89,7 @@
           "trunk_password": "Digest-Authentifizierungskennwort.",
           "trunk_register_expires": "REGISTER-Ablauf in Sekunden.",
           "trunk_outbound_proxy": "Optionaler Proxy-Host oder sip:host:port, der als nächster Signalisierungs-Hop verwendet wird.",
-          "trunk_inbound_default_target": "Beim sofortigen Routing nur verwendet, wenn das angerufene Ziel nicht im Telefonbuch steht. DTMF-Auswahl und Routing-Automationen können ein anderes Ziel wählen.",
+          "trunk_inbound_default_target": "Wähle das empfangende Telefon nach Namen oder gib eine Gruppe, Nebenstelle oder einen Automation-Kontakt ein. Die sofortige Weiterleitung verwendet dieses Ziel, wenn das angerufene Ziel nicht im Telefonbuch steht. DTMF-Auswahl und Automationen können ein anderes Ziel wählen.",
           "trunk_inbound_mode": "Route überspringt sofort die Ziffernerfassung. Beim Sammeln der Nebenstelle mit DTMF wird zunächst die Amtsleitung beantwortet, und durch explizite Ziffern kann eine Telefonbuch-Nebenstelle ausgewählt werden.",
           "automation_routing_enabled": "Veröffentlichen Sie vor der Verwendung des Fallback-Ziels eine kurze Routing-Anfrage, die möglicherweise von einer Automatisierung beantwortet wird. Explizite DTMF-Ziffern behalten immer Vorrang.",
           "trunk_dtmf_timeout_ms": "Zeitüberschreitung zwischen Ziffern, die im DTMF-Modus verwendet wird. Die erste Ziffer darf 10 Sekunden lang sein. Der Standardwert beträgt 3 Sekunden, der Höchstwert 10 Sekunden.",
@@ -153,7 +153,8 @@
       "voicemail_voice_unavailable": "Wählen Sie eine Stimme, die die gewählte TTS-Engine und Sprache unterstützt.",
       "parking_configuration_invalid": "Wählen Sie eindeutige Parkcodes und Zeiten zwischen 1 und 3600 Sekunden.",
       "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet.",
-      "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec."
+      "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
+      "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",
@@ -326,7 +327,7 @@
             "trunk_password": "Digest-Authentifizierungskennwort.",
             "trunk_register_expires": "REGISTER-Ablauf in Sekunden.",
             "trunk_outbound_proxy": "Optionaler Proxy-Host oder sip:host:port, der als nächster Signalisierungs-Hop verwendet wird.",
-            "trunk_inbound_default_target": "Beim sofortigen Routing nur verwendet, wenn das angerufene Ziel nicht im Telefonbuch steht. DTMF-Auswahl und Routing-Automationen können ein anderes Ziel wählen.",
+            "trunk_inbound_default_target": "Wähle das empfangende Telefon nach Namen oder gib eine Gruppe, Nebenstelle oder einen Automation-Kontakt ein. Die sofortige Weiterleitung verwendet dieses Ziel, wenn das angerufene Ziel nicht im Telefonbuch steht. DTMF-Auswahl und Automationen können ein anderes Ziel wählen.",
             "trunk_inbound_mode": "Route überspringt sofort die Ziffernerfassung. Beim Sammeln der Nebenstelle mit DTMF wird zunächst die Amtsleitung beantwortet, und durch explizite Ziffern kann eine Telefonbuch-Nebenstelle ausgewählt werden.",
             "automation_routing_enabled": "Veröffentlichen Sie vor der Verwendung des Fallback-Ziels eine kurze Routing-Anfrage, die möglicherweise von einer Automatisierung beantwortet wird. Explizite DTMF-Ziffern behalten immer Vorrang.",
             "trunk_dtmf_timeout_ms": "Zeitüberschreitung zwischen Ziffern, die im DTMF-Modus verwendet wird. Die erste Ziffer darf 10 Sekunden lang sein. Der Standardwert beträgt 3 Sekunden, der Höchstwert 10 Sekunden.",
@@ -348,7 +349,8 @@
         "trunk_in_use": "Beende Anrufe über diesen Trunk, bevor du seine Verbindungseinstellungen änderst.",
         "trunk_registration_failed": "Registrierung fehlgeschlagen. Prüfe Server, Transport und Zugangsdaten. Die gespeicherte Konfiguration wurde nicht geändert.",
         "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben.",
-        "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec."
+        "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
+        "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
       },
       "abort": {
         "reconfigure_successful": "Trunk-Konfiguration aktualisiert."
