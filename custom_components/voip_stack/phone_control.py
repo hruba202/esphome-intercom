@@ -196,7 +196,10 @@ class EspHomePhoneAdapter:
         call: ServiceCall,
     ) -> PhoneActionResult:
         if call.data.get("trunk_id"):
-            raise ServiceValidationError("Explicit ESPHome trunk selection requires the correlated firmware action")
+            from .esphome_origination import originate_with_trunk
+            call_id = await originate_with_trunk(call, phone, request.destination)
+            return PhoneActionResult(operation=PhoneOperation.ORIGINATE, phone=phone,
+                destination=request.destination, call_id=call_id)
         device = phone.transport_data
         await async_call_action(
             call.hass,

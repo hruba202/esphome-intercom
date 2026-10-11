@@ -438,6 +438,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         return EndpointRouteResolver(
             hass, local_ip, int(cfg["sip_port"]),
             source_endpoint_id=source.endpoint_id if source is not None and not invite.received_via_trunk else "",
+            trunk_id=invite.outbound_trunk_id,
         ).route(target, entries)
 
     async def _async_forward_existing_call(

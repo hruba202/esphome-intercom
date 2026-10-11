@@ -98,9 +98,34 @@ in HA's editor to retain the selection across renames. Replace `tts.piper` with
 your TTS entity. No browser or ESP caller is needed. The call action waits for
 the remote answer, and the following actions control that execution's call.
 
-During development, explicit per-action ESPHome trunk selection still requires
-the correlated firmware action. Persistent phone preferences apply to calls
-routed through HA; calls made directly to another device IP bypass these rules.
+### Select a line for one ESP call
+
+The same **Outgoing SIP trunk** selector works when the calling phone is an
+ESPHome device. This requires firmware exposing the native actions
+`start_call_via_ha` and `hangup_call_if_id` from the matching development branch.
+Older firmware can still make ordinary calls and use its persistent phone
+preference; choosing a line for one action returns an explicit upgrade message.
+
+```yaml
+action: voip_stack.call
+data:
+  device_id: YOUR_ESP_PHONE_DEVICE_ID
+  destination: Delivery phone
+  trunk_id: Work
+```
+
+Choose the phone and trunk through HA's device pickers. Names are shown in the
+editor; the stored device references survive renames. HA allocates a unique
+Call-ID, passes it to that ESP through its existing native API connection and
+accepts the line selection only on the matching SIP INVITE from that phone for
+that destination. The eight-second command deadline waits for this INVITE, not
+for the called person to answer. No line preference is written back to the ESP
+or saved for its next call.
+
+Cancellation targets that exact Call-ID. A late INVITE from a cancelled action
+is rejected, and a missing or unavailable selected line never falls back to
+another provider. Persistent phone preferences apply to calls routed through
+HA; calls made directly to another device IP bypass these rules.
 
 ### Static trunk without REGISTER
 

@@ -737,3 +737,32 @@ recording decoder/binding failures, disk failure/retry, duration and quota limit
 original-file retrieval/deletion and existing voicemail regressions.
 Conference recording and recording across a changed media owner are outside
 this first conversation-recording contract; the ordinary call continues.
+
+### Per-action trunk selection for ESP phones
+
+HA creates one session-owned request and passes its unique SIP Call-ID through
+the native ESPHome API. The ESP routes that call to its configured HA peer. The
+requested line is accepted only for the matching Call-ID, source endpoint and
+destination. Expired requests are rejected using the existing bounded terminal
+call history. No phone preference or global next-call setting is changed.
+
+The firmware adds `start_call_via_ha(dest, call_id)` and
+`hangup_call_if_id(call_id)` behind the existing HA integration gate. It passes
+the identifier into normal call setup and preserves ordinary direct calling.
+Readiness is rechecked after contact publication, so a competing incoming call
+cannot be overwritten by an outgoing action. No audio task, buffer or per-frame
+instrumentation is added.
+
+The correlated route tests use two independent SIP sources and two real UDP
+provider simulations, including decoded RTP in both directions, later ordinary
+calling, old firmware, unavailable lines, mismatched source/destination, late
+INVITEs, overlapping actions and repeated cancellation. A CANCEL/late-200 race
+requires ACK/BYE and complete cleanup. The focused HA contract subset passes 25
+tests; the final correlation matrix passes 11 tests.
+
+ESP VoIP Stack branch `feature/ha-pbx`, commit `1f26584`, passes all 160 tests,
+including the native DSP test using the exact esp-audio-libs source from the
+firmware build. The maintained Spotpear FULL profile compiles with all features:
+7,237,739-byte linked image and 182,271 bytes of static RAM. This was a compile-only
+fixture with dummy Wi-Fi credentials; no firmware was flashed. The two additional
+native API descriptors have not been measured on physical hardware at boot.

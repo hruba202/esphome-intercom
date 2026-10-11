@@ -169,6 +169,27 @@ async def route_invite(
         or trunk_invite
         or local_ha_origin
     )
+    registry = _call_registry(hass)
+    endpoint_registry = endpoint_directory(hass)
+    source_endpoint_id = str(
+        ((caller_roster_entry.metadata or {}).get("endpoint_id"))
+        if caller_roster_entry is not None
+        else ""
+    ).strip()
+    source_endpoint = (
+        endpoint_registry.get(source_endpoint_id) if source_endpoint_id else None
+    )
+    identified_source = source_endpoint_id if not trunk_invite and (
+        registered_source or caller_peer is not None or caller_is_known_roster_endpoint
+    ) else ""
+    from .esphome_origination import apply_correlated_invite, CorrelationError
+    try:
+        requested_trunk = apply_correlated_invite(registry, invite, identified_source)
+    except CorrelationError as err:
+        return SipInviteResult(err.status, "Forbidden" if err.status == 403 else "Call/Transaction Does Not Exist",
+                              decline_reason=err.reason)
+    if requested_trunk:
+        invite = replace(invite, outbound_trunk_id=requested_trunk)
     decision = _inbound_route_decision(invite, peers, roster_entries)
     if getattr(decision, "trunk_id", ""):
         invite = replace(invite, outbound_trunk_id=decision.trunk_id)
@@ -212,19 +233,6 @@ async def route_invite(
                 )
                 decision = _inbound_route_decision(fallback_invite, peers, roster_entries)
             trunk_direct_preprocessed = True
-    registry = _call_registry(hass)
-    endpoint_registry = endpoint_directory(hass)
-    source_endpoint_id = str(
-        ((caller_roster_entry.metadata or {}).get("endpoint_id"))
-        if caller_roster_entry is not None
-        else ""
-    ).strip()
-    source_endpoint = (
-        endpoint_registry.get(source_endpoint_id) if source_endpoint_id else None
-    )
-    identified_source = source_endpoint_id if not trunk_invite and (
-        registered_source or caller_peer is not None or caller_is_known_roster_endpoint
-    ) else ""
     local_client = registry.sip_client_for(invite.call_id)
     local_session = registry.get_session(invite.call_id)
     if local_client is not None and local_session is not None and invite.source_host in {local_ip, "127.0.0.1", "::1"}:
