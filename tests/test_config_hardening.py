@@ -59,7 +59,7 @@ def _format_fields(value: object) -> set[str]:
     }
 
 
-@pytest.mark.parametrize("language", ["de", "it", "pt-BR"])
+@pytest.mark.parametrize("language", ["cs", "de", "it", "pt-BR"])
 def test_translation_files_cover_every_english_key(language: str) -> None:
     english = json.loads((TRANSLATIONS / "en.json").read_text())
     translated = json.loads((TRANSLATIONS / f"{language}.json").read_text())
@@ -67,7 +67,7 @@ def test_translation_files_cover_every_english_key(language: str) -> None:
     assert _leaf_paths(translated) == _leaf_paths(english)
 
 
-@pytest.mark.parametrize("language", ["de", "en", "it", "pt-BR"])
+@pytest.mark.parametrize("language", ["cs", "de", "en", "it", "pt-BR"])
 def test_translation_placeholders_match_source_strings(language: str) -> None:
     source = _leaf_values(json.loads(STRINGS.read_text()))
     translated = _leaf_values(

@@ -4,6 +4,13 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Czech localization
+
+- Add Czech integration strings and Assist commands contributed by
+  [hruba202 in #140](https://github.com/n-IA-hane/esphome-intercom/pull/140).
+  Adapt the strings to the named-trunk and PBX configuration, and use the shared
+  localized response templates so Czech commands receive Czech responses.
+
 ### Configuration migration: named SIP trunks
 
 Trunks are now added through the integration menu with **Add SIP trunk**, then

@@ -1,0 +1,71 @@
+# Czech sentences contributed by hruba202 in PR #140.
+# Responses use the shared HA template contract.
+language: cs
+intents:
+  VoipCall:
+    data:
+    - sentences:
+      - zavolej {target}
+      - volej {target}
+      - zavolej na {target}
+      slots:
+        voip_response: template
+      response: default
+  VoipHangup:
+    data:
+    - sentences:
+      - típni to
+      - zavěsit
+      - ukonči hovor
+      slots:
+        voip_response: template
+      response: default
+  VoipAnswer:
+    data:
+    - sentences:
+      - přijmi hovor
+      - zvedni to
+      - přijmout
+      slots:
+        voip_response: template
+      response: default
+  VoipDecline:
+    data:
+    - sentences:
+      - odmítni hovor
+      - odmítnout
+      slots:
+        voip_response: template
+      response: default
+lists:
+  target:
+    wildcard: true
+
+responses:
+  intents:
+    VoipCall:
+      default: &voip_response >-
+        {% set messages = {
+          "unknown_origin": "Nevím, které VoIP zařízení to slyšelo.",
+          "missing_target": "Komu mám zavolat?",
+          "not_found": "Nenašel jsem kontakt s názvem " ~ slots.target ~ ".",
+          "ambiguous": "Existuje více kontaktů s názvem " ~ slots.target ~ ".",
+          "ambiguous_area": "Existuje více oblastí s názvem " ~ slots.target ~ ".",
+          "area_empty": "V oblasti " ~ slots.target ~ " není žádné VoIP zařízení.",
+          "ambiguous_area_device": "V oblasti " ~ slots.target ~ " je více než jedno VoIP zařízení.",
+          "call_failed": "Volání kontaktu " ~ slots.target ~ " se nezdařilo.",
+          "hangup_failed": "Zavěšení se nezdařilo.",
+          "answer_failed": "Hovor se nepodařilo spojit.",
+          "decline_failed": "Odmítnutí se nezdařilo.",
+          "VoipCall": "Volám " ~ slots.target ~ ".",
+          "VoipHangup": "Zavěšuji.",
+          "VoipAnswer": "Přijímám hovor.",
+          "VoipDecline": "Odmítám hovor."
+        } %}
+        {{ messages.get(slots.error or slots.action, messages.call_failed) }}
+    VoipHangup:
+      default: *voip_response
+    VoipAnswer:
+      default: *voip_response
+    VoipDecline:
+      default: *voip_response

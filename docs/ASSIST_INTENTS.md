@@ -109,3 +109,18 @@ spoken errors, so retain an error branch if you want failures announced.
 
 See Home Assistant's [custom sentence documentation](https://www.home-assistant.io/voice_control/custom_sentences_yaml)
 for the standard file layout and response syntax.
+
+## Czech commands
+
+The [Czech example](../examples/home-assistant/custom_sentences/cs/voip_stack.yaml)
+includes call, answer, decline and hangup commands with localized responses.
+Copy it into `custom_sentences/cs/voip_stack.yaml` in your HA configuration and
+reload custom sentences or restart HA. HACS does not copy these example files
+into your configuration. The active Assist language must be Czech.
+
+Thanks to [hruba202](https://github.com/hruba202) for the Czech integration
+translation and sentences in [PR #140](https://github.com/n-IA-hane/esphome-intercom/pull/140).
+The sentences use the shared template contract introduced from Gafielt's
+contribution, retaining contact names and HA error responses. Czech HA strings
+do not by themselves add Czech translations to the separate dashboard card or
+the voicemail IVR languages.

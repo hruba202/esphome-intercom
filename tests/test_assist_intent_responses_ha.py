@@ -46,6 +46,7 @@ async def prepare(hass, monkeypatch, language, *, legacy=False, silent=False):
 
 
 @pytest.mark.parametrize("language,text,expected", [
+    ("cs", "zavolej kuchyn", "Volám Kitchen phone."),
     ("en", "call kitchen", "Calling Kitchen phone."),
     ("it", "chiama cucina", "Chiamo Kitchen phone."),
     ("de", "rufe küche an", "Ich rufe Kitchen phone an."),
@@ -59,6 +60,7 @@ async def test_localized_success_uses_resolved_contact(hass, monkeypatch, langua
 
 
 @pytest.mark.parametrize("language,text,fragment", [
+    ("cs", "zavolej nikam", "nikam"),
     ("en", "call nowhere", "nowhere"),
     ("it", "chiama nessuno", "nessuno"),
     ("de", "rufe niemand an", "niemand"),
@@ -87,6 +89,7 @@ async def test_explicit_empty_template_is_silent_without_cancelling_action(hass,
 
 
 @pytest.mark.parametrize("language,sentences,expected", [
+    ("cs", ("típni to", "přijmi hovor", "odmítni hovor"), ("Zavěšuji.", "Přijímám hovor.", "Odmítám hovor.")),
     ("en", ("hang up", "answer", "decline"), ("OK.", "Answering.", "Declining.")),
     ("it", ("riaggancia", "rispondi", "rifiuta"), ("Va bene.", "Rispondo.", "Rifiuto la chiamata.")),
     ("de", ("auflegen", "annehmen", "ablehnen"), ("OK.", "Ich nehme den Anruf an.", "Ich lehne den Anruf ab.")),
