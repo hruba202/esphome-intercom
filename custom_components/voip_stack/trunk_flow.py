@@ -132,3 +132,15 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
             else:
                 self.hass.async_create_task(candidate.stop())
         super().async_remove()
+        if self._saved:
+            entry = self.hass.config_entries.async_get_entry(self.handler[0])
+            if entry is not None:
+                from .trunk_runtime import async_reconcile_trunks
+
+                # Finish the validated client's ownership handoff after HA has
+                # persisted the subentry. The ordinary update listener may run
+                # earlier; reconciliation is locked and idempotent.
+                self.hass.async_create_task(
+                    async_reconcile_trunks(self.hass, entry),
+                    "voip-trunk-flow-adoption", eager_start=False,
+                )

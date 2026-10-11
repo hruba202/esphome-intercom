@@ -84,10 +84,14 @@ class TrunkReadyBinarySensor(BinarySensorEntity):
 
     @callback
     def refresh_state(self):
-        from .config import trunk_config
-        from .runtime_data import sip_trunk
+        from .runtime_data import runtime_data, sip_trunk
 
-        config = trunk_config(self._runtime_hass, self.identity)
+        runtime = runtime_data(self._runtime_hass)
+        config = runtime.trunk_configs.get(self.identity) if runtime is not None else None
+        # HA persists the subentry before the validated transport is adopted.
+        # Its entity must exist during that interval, without claiming readiness.
+        self._attr_available = config is not None
+        config = config or {}
         client = sip_trunk(self._runtime_hass, self.identity)
         self._attr_is_on = bool(client is not None and client.ready)
         self._attr_extra_state_attributes = {

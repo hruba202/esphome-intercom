@@ -380,3 +380,64 @@ async def test_native_trunk_readiness_updates_from_lifecycle_events_without_poll
         assert sensors["work"].extra_state_attributes["registration_enabled"] is False
     finally:
         await async_stop_sip_trunk(hass)
+
+
+@pytest.mark.parametrize('with_listener', [True, False])
+async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(hass, catalog, registrar, monkeypatch, with_listener):
+    from custom_components.voip_stack import trunk_flow
+    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
+
+    from custom_components.voip_stack.config_entry_runtime import async_config_entry_updated
+    from custom_components.voip_stack.binary_sensor import async_setup_entry
+    from custom_components.voip_stack import mailbox
+    monkeypatch.setattr(mailbox, 'async_refresh_mailbox_state', AsyncMock())
+    unsubscribe = catalog.add_update_listener(async_config_entry_updated) if with_listener else lambda: None
+    added = []
+    await async_setup_entry(hass, catalog, lambda entities, **kwargs: added.extend(entities))
+    peer, port = registrar
+    monkeypatch.setattr(trunk_flow, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+    form = await hass.config_entries.subentries.async_init((catalog.entry_id, "trunk"), context={"source": "user"})
+    form = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+        "name": "Carrier", "trunk_enabled": True, "trunk_register": True, "make_default": False,
+    })
+    result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+        "trunk_server": "127.0.0.1", "trunk_port": port, "trunk_username": "ha", "trunk_password": "test-only",
+    })
+    assert result["type"] == "create_entry", result
+    identity = result["data"]["trunk_id"]
+    await hass.async_block_till_done()
+    candidate = sip_trunk(hass, identity)
+    assert candidate is not None and candidate.ready
+    assert len(peer.contacts) == 1
+    count = len(peer.requests)
+    try:
+        assert identity in {entity.identity for entity in added}
+        assert sip_trunk(hass, identity) is candidate
+        assert len(peer.requests) == count
+        assert ";line=" in candidate.contact_uri
+        assert catalog.runtime_data.default_trunk_id == "home"
+    finally:
+        unsubscribe()
+        await async_stop_sip_trunk(hass)
+    assert not peer.contacts
+
+
+async def test_sensor_exists_while_saved_trunk_waits_for_runtime_adoption(hass, catalog):
+    from custom_components.voip_stack.binary_sensor import async_setup_entry
+    from homeassistant.helpers.dispatcher import async_dispatcher_send
+    from custom_components.voip_stack.trunk_config import TRUNK_UPDATE_SIGNAL
+    record = ConfigSubentry(subentry_type='trunk',title='Pending carrier',unique_id='trunk:pending',
+        data={'trunk_id':'pending','trunk_enabled':True,'trunk_register':True,'trunk_server':'example.invalid','trunk_transport':'udp'})
+    hass.config_entries.async_add_subentry(catalog,record)
+    added=[]
+    await async_setup_entry(hass,catalog,lambda entities,**kwargs:added.extend(entities))
+    sensor=next(entity for entity in added if entity.identity=='pending')
+    assert sensor.available is False
+    assert sensor.is_on is False
+    catalog.runtime_data.trunk_configs=entry_trunk_configs(catalog)
+    async_dispatcher_send(hass,TRUNK_UPDATE_SIGNAL,'pending')
+    await hass.async_block_till_done()
+    assert sensor.available is True
+    assert sensor.is_on is False
+    assert len([entity for entity in added if entity.identity=='pending'])==1
