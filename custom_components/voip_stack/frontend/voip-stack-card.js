@@ -3234,12 +3234,23 @@ class VoipStackCard extends HTMLElement {
       this._populateGroupSuggestions(controls.input, controls.options, names, destination?.name || target);
     }
     this._renderRingingControls(deviceId, policy, entries);
-    this._renderTrunkPreference(policy);
+    this._renderTrunkPreference(self?.metadata?.call_policy ?? null);
   }
 
   _renderTrunkPreference(policy) {
     const select = this._els?.trunkSelect;
     if (!select) return;
+    if (policy == null) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = this._t("Loading...");
+      select.replaceChildren(option);
+      delete select.dataset.options;
+      select.value = "";
+      select.disabled = true;
+      this._els.trunkRow.hidden = false;
+      return;
+    }
     const choices = Object.values(this._hass?.devices || {}).flatMap((device) => {
       if (device.model !== "SIP trunk" || device.disabled_by) return [];
       const identity = (device.identifiers || []).find(([domain, value]) =>

@@ -423,7 +423,11 @@ routingCard._hass.devices = {{ line: {{ model: "SIP trunk", name: "Office",
 routingCard._els.trunkRow = {{ hidden: true }};
 let trunkOptions = [];
 routingCard._els.trunkSelect = {{ value: "", dataset: {{}}, replaceChildren(...items) {{ trunkOptions = items; }} }};
+routingCard._renderTrunkPreference(null);
+assert.equal(routingCard._els.trunkSelect.disabled, true);
+assert.equal(trunkOptions[0].textContent, "Loading...");
 routingCard._renderTrunkPreference({{ outbound_trunk_id: "work" }});
+assert.equal(routingCard._els.trunkSelect.disabled, false);
 assert.equal(routingCard._els.trunkSelect.value, "work");
 assert.equal(trunkOptions[1].textContent, "Office");
 routingCard._renderTrunkPreference({{ outbound_trunk_id: "removed-line" }});
