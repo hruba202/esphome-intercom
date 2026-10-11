@@ -32,8 +32,10 @@ find custom_components/voip_stack/frontend -name '*.js' -print0 \
 
 ## Candidate qualification
 
-Qualification runs locally and never starts merely because a branch was
-pushed. The tools resolve the current commits of `esphome-intercom`,
+Live device qualification is a separate, explicitly started operation. CI runs
+software, HA-runtime and documentation checks on pushes and pull requests, but
+does not call your physical phones or flash devices. The local qualification
+tools resolve the current commits of `esphome-intercom`,
 `esphome-voip-stack`, `esphome-audio-stack` and
 `esphome-runtime-controller`, record them in `candidate-lock.json`, and use
 local component checkouts for candidate firmware builds.
@@ -42,8 +44,8 @@ The complete plan includes `software-full`, the real Home Assistant runtime,
 coverage, mutation, isolated peers, a real browser, firmware compilation and
 the selected S3/P4 hardware jobs. The maintained YAML files remain readable
 and reference the four `dev` branches. Test operators must record the resolved
-commits with the resulting evidence because GitHub does not run or preserve a
-qualification automatically.
+commits with the resulting evidence: a green CI run is not a physical-device
+qualification.
 
 This software and compile gate still does not claim physical interoperability.
 A release candidate also needs the applicable live browser, SIP peer and ESP
@@ -117,9 +119,9 @@ an asset named exactly `voip_stack.zip`. Publish or backfill that flat asset
 before making the setting visible on the default branch; a differently named
 or nested ZIP is not a HACS release asset.
 
-GitHub does not build or test the project automatically. After completing the
-applicable local qualification, build and validate the archive locally, then
-upload that exact file explicitly when publishing a release:
+The CI workflow tests software, HA behavior and the documentation. Publishing
+a release asset remains a separate operation. After the applicable checks,
+build and validate the archive, then upload that exact file explicitly:
 
 ```bash
 ./.venv/bin/python scripts/build_hacs_zip.py

@@ -35,13 +35,13 @@ STYLE_MARKDOWN_FILES = (
 )
 CURRENT_SERVICE_DOCS = (
     ROOT / "README.md",
-    DOCS / "AUTOMATION_DIALPLAN.md",
-    DOCS / "GROUPS.md",
-    DOCS / "SERVICES.md",
-    DOCS / "SIP_TRUNK.md",
-    DOCS / "reference.md",
-    DOCS / "troubleshooting.md",
+    *(
+        path for path in sorted(DOCS.glob("*.md"))
+        if not path.name.startswith("WHATS_NEW_")
+        and path.name not in {"BREAKING_CHANGES.md", "PBX_DEVELOPMENT.md"}
+    ),
 )
+
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 HTML_IMAGE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)", re.IGNORECASE)

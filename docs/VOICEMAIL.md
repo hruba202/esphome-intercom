@@ -30,10 +30,18 @@ storage required. Calls must pass through HA for its no-answer rules to apply.
 
 Enable the phone's mailbox in its VoIP Stack phone configuration, or with
 **Enable this phone's mailbox** in the card's Options. The native
-**VoIP Stack: Set voicemail settings** action provides the same control and the
+**VoIP Stack: Configure voicemail** action provides the same control and the
 advanced options, including PIN, greeting and recording limit. Select its phone
 with the device picker. The recording limit defaults to 180 seconds. A greeting
 uses HA's media picker; without one, the caller hears a recording tone.
+
+![Configure a phone mailbox using named GUI fields](images/voicemail-settings-action.png)
+
+In this action, select the phone in **Phone mailbox**, enable the optional
+**Accept voicemail** field and turn its switch on. The checkboxes beside optional
+fields mean "change this setting"; leaving one unchecked preserves its current
+value. Choose greeting media and a message duration only if you want to change
+those settings. The screenshot is an unsubmitted form, not an active mailbox.
 
 Enabling a mailbox does not enable forwarding. In the phone card's
 **Options > Call routing** section,

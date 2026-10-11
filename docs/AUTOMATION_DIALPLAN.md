@@ -22,6 +22,21 @@ This cookbook describes the native call automation interface developed for
 2026.9.2. Existing event and state automations have a
 [migration guide](#move-existing-automations-gradually).
 
+## Start with the smallest rule
+
+For a fixed phone setting, such as "Kitchen rings for 20 seconds, then takes a
+message", use [phone routing defaults](PHONE_ROUTING.md). An automation is useful
+when the result depends on time, presence or a caller's keypad selection.
+
+Start with one trigger and one action in HA's visual editor. Native VoIP
+triggers supply the call they describe, and an outgoing Automation call keeps
+its context for the following actions. You do not need a copied Call-ID for
+these ordinary sequences. The advanced examples later explain explicit
+selection, concurrency and routing decisions when you need them.
+
+A call-control action can override the default for its own call. A notification
+alone does not take ownership or disable the phone's normal fallback.
+
 ## Find the example you need
 
 | I want to... | Start here |

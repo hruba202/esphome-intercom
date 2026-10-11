@@ -186,13 +186,10 @@ ESPHome device. This requires firmware exposing the native actions
 Older firmware can still make ordinary calls and use its persistent phone
 preference; choosing a line for one action returns an explicit upgrade message.
 
-```yaml
-action: voip_stack.call
-data:
-  device_id: YOUR_ESP_PHONE_DEVICE_ID
-  destination: Delivery phone
-  trunk_id: Work
-```
+In **VoIP Stack: Call**, select the ESP in **Calling phone**, select the named
+line in **Outgoing SIP trunk**, and enter the contact or number in **Destination**.
+The [action-picker screenshots](USER_GUIDE.md#choose-the-calling-phone-in-the-editor)
+show how to choose the phone by name.
 
 Choose the phone and trunk through HA's device pickers. Names are shown in the
 editor; the stored device references survive renames. HA allocates a unique
@@ -280,11 +277,11 @@ registration. There is no proprietary intercom compatibility route.
 ## Inbound routing
 
 Provider inbound calls arrive at HA's SIP endpoint and use the shared phonebook
-as their default dial plan. **Inbound default target** accepts HA, a phonebook
-name, extension, group, registered SIP phone, Assist extension, SIP URI or a
-routable number.
+as their default dial plan. **Fallback destination** accepts a phonebook name,
+extension, group, registered SIP phone, Assist extension, SIP URI or routable
+number. Select the actual HA phone by its displayed name.
 
-Choose one routing mode in the config flow:
+Choose one routing mode in that named trunk's configuration:
 
 - **Route immediately** first resolves the destination from the incoming SIP
   request against the phonebook. A known extension or contact keeps its normal
@@ -298,12 +295,9 @@ Choose one routing mode in the config flow:
 
 DTMF digits resolve against the central phonebook `extension` field:
 
-```yaml
-service: voip_stack.add_contact
-data:
-  name: Kitchen
-  extension: "100"
-```
+For example, assign extension `100` to the Kitchen phone in its configuration.
+For an ESP, edit its exposed extension control. Creating a name-only contact
+does not create a physical or browser phone: the destination must be callable.
 
 Example user flow:
 
@@ -312,7 +306,7 @@ Example user flow:
 3. The caller sends post-dial digits such as `100`.
 4. HA routes the call to the phonebook entry whose `extension` is `100`.
 5. If no digits/route hint arrive before timeout, HA resolves the configured
-   default target (`HA` is only the default value).
+   fallback destination selected for that trunk.
 6. If explicit digits arrive but do not resolve, HA terminates the answered leg
    as `route_not_found`.
 

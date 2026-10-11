@@ -18,7 +18,7 @@ ESP hardware is optional. Start with two dashboard phones or your existing SIP
 phones, then add the features you need. The ESP firmware also works with
 [conventional PBXs](#use-esp-firmware-with-an-existing-pbx).
 
-**[Install VoIP Stack](#installation) · [Choose an ESPHome device](#supported-hardware) · [Build call automations](docs/AUTOMATION_DIALPLAN.md)**
+**[Start with the basic concepts](docs/CONCEPTS.md) · [Install VoIP Stack](#installation) · [Choose an ESPHome device](#supported-hardware) · [Build call automations](docs/AUTOMATION_DIALPLAN.md)**
 
 *Developed and maintained by n-IA-hane, with community contributions and support. [❤️ Sponsor the project](https://github.com/sponsors/n-IA-hane)*
 
@@ -61,7 +61,7 @@ See the [firmware migration notes](docs/BREAKING_CHANGES.md#2026100-esphome-2026
 when updating copied YAMLs. This does not force an immediate firmware update
 when installing the Home Assistant integration alone.
 
-## PBX additions in this development branch
+## PBX additions in the development preview
 
 The [2026.10.3-dev preview](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.3-dev)
 adds **multiple named SIP trunks, phone forwarding rules, voicemail, call parking,
@@ -81,6 +81,20 @@ before upgrading.
 
 ![Add SIP trunk in the VoIP Stack integration menu](docs/images/pbx-add-trunk-menu.png)
 
+- **[Phone routing defaults](docs/PHONE_ROUTING.md):** optional forwarding, busy/unavailable destinations
+  and a ringing timeout. An accepted automation action can override the default
+  for its own call. Settings belong to the phone, not to an open card.
+- **[Voicemail](docs/VOICEMAIL.md):** an ordinary SIP access menu, interruptible
+  spoken prompts, message indicators and a message list in the phone card.
+  Home Assistant Media exposes the original recordings; automations can
+  transcribe or deliver them through installed services.
+- **[Named trunks](docs/SIP_TRUNK.md):** independent provider connections, with
+  an explicit line choice per action, a phone preference and a default line.
+- **[Parking and pickup](docs/CALL_PARKING.md):** leave a caller on a parking
+  slot and retrieve the call elsewhere, or answer a phone that is still ringing.
+- **[Conversation recording](docs/CALL_RECORDING.md):** optional recording from
+  the existing audio path, controlled by HA actions or a card shortcut.
+
 ## What can you build?
 
 ![Video doorbell and room-to-room calls through Home Assistant](docs/images/voip-doorbell-room-to-room.png)
@@ -97,28 +111,6 @@ before upgrading.
 | Callable Assist | Give a native Assist pipeline an extension and talk to it from ESP, SIP or trunk callers. | [Assist calls](#assist-as-a-phone-extension) |
 | External calls | Connect an optional provider/PBX trunk using registration or source-IP authorization. | [SIP trunk](docs/SIP_TRUNK.md) |
 | Contextual routing | Use native HA entities, conditions and services for presence, schedules, no-answer forwarding and in-call DTMF. | [Automation cookbook](docs/AUTOMATION_DIALPLAN.md) |
-
-## PBX additions on this development branch
-
-The `feature/ha-pbx` branch extends the existing backend with:
-
-- **[Phone routing defaults](docs/PHONE_ROUTING.md):** optional forwarding, busy/unavailable destinations
-  and a ringing timeout. An accepted automation action can override the default
-  for its own call. Settings belong to the phone, not to an open card.
-- **[Voicemail](docs/VOICEMAIL.md):** an ordinary SIP access menu, interruptible
-  spoken prompts, message indicators and a message list in the phone card.
-  Home Assistant Media exposes the original recordings; automations can
-  transcribe or deliver them through installed services.
-- **[Named trunks](docs/SIP_TRUNK.md):** independent provider connections, with
-  an explicit line choice per action, a phone preference and a default line.
-- **[Parking and pickup](docs/CALL_PARKING.md):** leave a caller on a parking
-  slot and retrieve the call elsewhere, or answer a phone that is still ringing.
-- **[Conversation recording](docs/CALL_RECORDING.md):** optional recording from
-  the existing audio path, controlled by HA actions or a card shortcut.
-
-These additions are not in the stable release linked above. They are developed
-without an Asterisk or FreeSWITCH runtime dependency. Existing phone calls remain
-unchanged when the optional settings are left disabled.
 
 ## Fastest start
 
@@ -591,13 +583,15 @@ calls, and the measured Asterisk 16 kHz microphone / 48 kHz playback setup.
 
 ## Optional SIP trunk
 
-The trunk is disabled by default. Enable it to connect HA to a provider or another
-PBX. Keep **Register the trunk** enabled for account registration, or disable it
-for a static trunk and configure the allowed incoming SIP source IPs.
+Local calls need no trunk. Add a named line to connect HA to a provider or another
+PBX. In the development preview, use the integration's **Add SIP trunk** menu
+and edit each line separately. Keep **Register the trunk** enabled for account
+registration, or disable it for a static trunk and configure its allowed
+incoming SIP source IPs.
 
 Inbound mode can route immediately or collect an internal extension through
 negotiated RTP `telephone-event`/compatible SIP INFO DTMF. Outbound contacts
-with public numbers use the same trunk. Explicit digits, no-digit fallback and
+with public numbers use the selected outgoing line. Explicit digits, no-digit fallback and
 automation overrides have distinct, documented precedence.
 
 Use **Set external call access** to allow or block trunk calls per phone.

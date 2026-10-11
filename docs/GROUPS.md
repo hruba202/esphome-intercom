@@ -3,6 +3,18 @@
 VoIP Stack implements two PBX-style group primitives on the HA side. ESP
 devices and SIP endpoints only declare membership and place normal SIP calls.
 
+## Choose the group type
+
+| What should happen? | Choose |
+| --- | --- |
+| Ring Kitchen and Office, then speak only to the first person who answers | Ring group |
+| Let Kitchen, Office and another phone all talk together | Conference group |
+
+For HA phones, open each phone's configuration and assign the same group name.
+For an ESP, use its group entities in HA when exposed by the maintained firmware.
+The group appears in the shared phonebook; call that group name like a contact.
+The detailed membership and YAML options below cover custom setups.
+
 ## Ring group
 
 A ring group is the PBX "ring many, first answer wins" primitive.

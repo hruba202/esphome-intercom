@@ -34,6 +34,8 @@ Kitchen's HA card, or transfer to **700** from a SIP handset. If the assigned sl
 is **701**, put Kitchen down and dial **701** from Office. You do not transfer to
 700 after parking: the Park button and the transfer to 700 are alternatives.
 
+![Park on one phone and retrieve from another](images/park-and-retrieve.svg)
+
 ## From a SIP phone
 
 While speaking to someone, transfer the call to `700`. The PBX retains the
@@ -64,26 +66,17 @@ Select **VoIP Stack: Park call** and choose the phone currently participating
 in the conversation. Leave the slot empty to select the first free slot.
 The optional response contains `slot`, `call_id` and `generation`.
 
-```yaml
-action: voip_stack.park
-data:
-  device_id: YOUR_PHONE_DEVICE_ID
-response_variable: parked
-```
+In the action editor, select **VoIP Stack: Park call**, then select the phone
+currently on the call in **Phone**. The response reports the assigned slot.
+If a native VoIP trigger already supplies this call, keep that call context.
 
-The UI supplies the device selector. The example identifier represents that
-selection, not a phone name or an extension. A native VoIP call trigger can
-supply the current call and phone. An explicit `call_id` must belong to the
-selected phone; `expected_generation` can reject a stale command.
+To retrieve it from another phone, add **VoIP Stack: Call**, select that other
+phone in **Calling phone** and enter the reported slot (for example `701`) in
+**Destination**. You can also dial the slot on its card or SIP handset.
 
-To retrieve a slot, use the existing call action or dial it from the phone:
-
-```yaml
-action: voip_stack.call
-data:
-  device_id: YOUR_OTHER_PHONE_DEVICE_ID
-  destination: "701"
-```
+Only advanced automation code needs to inspect `call_id`, `expected_generation`
+or save a response variable. The [action reference](SERVICES.md) documents those
+fields; a phone selected with the GUI does not require a hand-written device ID.
 
 ## Answer another ringing phone
 

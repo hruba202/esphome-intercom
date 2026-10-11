@@ -10,6 +10,25 @@ include its firmware logs and applicable diagnostic dumps as described below.
 Negotiated formats, RTP counters and a short audio recording can help with
 audio faults. Use the SIP capture for signaling that passes through HA.
 
+## Start with the failing step
+
+| What you observe | First checks |
+| --- | --- |
+| The wrong phone places the call | Check Calling phone and the card's selected phone. Destination is the other party. |
+| No outgoing trunk is selected | Choose a default line or an explicit phone/action preference; check HA Repairs. |
+| The phone rings but audio is missing | State which direction is silent. Collect SIP negotiation and media diagnostics; ringing alone proves no audio path. |
+| An ESP has no contacts although its API is connected | Check its VoIP endpoint discovery and phonebook diagnostics. Updating HACS does not update old firmware. |
+| Turning Send Camera off still shows remote video | This disables your transmission, not the other party's. See the video direction guide. |
+| A mailbox is enabled but callers never record a message | Set a no-answer voicemail rule, or route the call there explicitly. Enabling storage does not enable forwarding. |
+| A message or call stays active unexpectedly | Preserve diagnostics before restarting and include how it was answered and ended. |
+
+Report the exact route, for example **HA card > trunk Work > door station**,
+and whether the fault is signaling, received audio, transmitted audio or video.
+Start with [HA integration diagnostics](../README.md#before-opening-an-issue).
+Use the ESP steps below only when an ESP is involved; use SIP capture for calls
+that pass through HA. The [developer test guide](TESTING_AND_DEBUG.md) is for
+maintainers reproducing a fault, not a requirement for opening a useful issue.
+
 ## Collect a runtime snapshot from an ESP
 
 **Only if the problem involves an ESP device, run its diagnostic dumps:**
@@ -53,7 +72,7 @@ entries are **ESPHome firmware actions**, not HA services to paste directly into
 HA's Actions editor. These dumps do not require verbose audio tracing.
 
 The dumps report component state, negotiated formats and existing counters.
-They work without enabling verbose audio tracing. Older firmware must be
+Older firmware must be
 rebuilt to add them; installing a HACS update does not change ESP firmware.
 The VoIP action is part of ESP VoIP Stack 2026.10.0, and the Audio action requires
 Audio Stack 2026.10.1 (or the corresponding development previews).

@@ -22,17 +22,7 @@ limit. Network failures, caller cancellation and SIP transaction timers still
 end failed attempts. A timeout and its outcome are configured together, so
 turning on a timeout never silently enables voicemail.
 
-A SIP final answer ends the ringing period. Early media or a provisional `183`
-does not count as answering. An already-connected caller can still be waiting
-for a different phone, for example during a parking return. The deadline follows
-that destination leg, not the caller's answered state. If a phone answers while its audio bridge is being
-prepared, the no-answer rule cannot take the call away.
-
-The caller remains on the same call when a failed or unanswered destination is
-replaced. Its old SIP transaction is retired by the existing call owner. A slow
-CANCEL exchange cannot delay audio to the replacement. Busy fallback does not
-convert a `603 Decline` into another call, and authentication/permission errors
-are not treated as temporary unavailability.
+![Optional ringing timeout and its three outcomes](images/phone-no-answer-policy.svg)
 
 ## Choose a simple default first
 
@@ -41,19 +31,14 @@ Leave the destination empty to use the kitchen's mailbox. Enable that mailbox
 separately in the phone configuration. To ring another phone instead, choose
 **forward** and enter its name or extension.
 
-The corresponding action, after selecting the phone through HA's picker, is:
+To set the same policy in an automation, add **VoIP Stack: Configure phone
+routing**, select Kitchen in **Phone**, set **Ringing timeout** to 20 and choose
+**Voicemail** in **When nobody answers**. The picker saves the phone reference;
+no device-ID lookup is required.
 
-```yaml
-action: voip_stack.set_phone_settings
-data:
-  device_id: YOUR_KITCHEN_PHONE_DEVICE_ID
-  ringing_timeout: 20
-  no_answer_action: voicemail
-```
-
-The placeholder represents the picker selection. It is not an extension number.
-Omitted fields stay unchanged. Set `ringing_timeout: 0` to disable the deadline;
-use an empty forwarding destination to clear that rule.
+Omitted fields keep their current settings. Set the timeout to zero to disable
+it, or clear a forwarding destination to remove that rule. The
+[action reference](SERVICES.md) retains the advanced field names.
 
 ## Let an automation decide
 
@@ -76,6 +61,23 @@ A ring group controls its own attempts and fallback. Individual members do not
 apply personal no-answer forwarding while other group phones are still ringing.
 Explicit forwarding actions retain their configured failure policy. Routing
 loops are rejected rather than creating an unbounded chain of new calls.
+
+<details>
+<summary>Advanced: answers, cancellation and failed destinations</summary>
+
+A SIP final answer ends the ringing period. Early media or a provisional `183`
+does not count as answering. An already-connected caller can still be waiting
+for a different phone, for example during a parking return. The deadline follows
+that destination leg, not the caller's answered state. If a phone answers while its audio bridge is being
+prepared, the no-answer rule cannot take the call away.
+
+The caller remains on the same call when a failed or unanswered destination is
+replaced. Its old SIP transaction is retired by the existing call owner. A slow
+CANCEL exchange cannot delay audio to the replacement. Busy fallback does not
+convert a `603 Decline` into another call, and authentication/permission errors
+are not treated as temporary unavailability.
+
+</details>
 
 ## Multiple providers
 

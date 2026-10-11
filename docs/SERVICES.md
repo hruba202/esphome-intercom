@@ -7,6 +7,18 @@ fallback routing.
 The card uses these services too. The card does not implement private routing
 logic.
 
+## Start in the visual editor
+
+This page is the detailed action reference. For ordinary use, add an action in
+HA's automation editor or **Developer tools > Actions**, choose **VoIP Stack**,
+and fill its named fields. Phone and trunk pickers save their identifiers for
+you. See the [illustrated Call action](USER_GUIDE.md#choose-the-calling-phone-in-the-editor).
+
+Use [phone defaults](PHONE_ROUTING.md) for a persistent rule such as a ringing
+timeout. Use a [call automation](AUTOMATION_DIALPLAN.md) when the result depends
+on time, presence or keypad input. The reference below explains exact fields,
+call context and failure behavior for more complex sequences.
+
 ## External call permissions
 
 ### `voip_stack.set_external_call_access`

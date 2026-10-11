@@ -23,6 +23,22 @@ offers two independent capabilities:
 If video setup, decoding, camera permission or transcoding fails, the SIP
 dialog and browser audio remain active whenever audio negotiation succeeded.
 
+## Start with one picture
+
+1. Make a working audio call between the two endpoints first.
+2. Enable SIP video in the integration and allow the required codecs on a trunk
+   if the call uses one.
+3. Turn **Send Camera** on only on the side that should transmit its camera.
+   Grant that browser camera permission. The other side can receive without
+   sending its own camera.
+4. During the call, turn either camera off to stop that direction. Turning your
+   camera off does not prohibit receiving the other party's video.
+
+For a door station, the common goal is two-way audio with video only from the
+station. Use the [Dahua guide](DAHUA.md) for its explicit compatibility settings.
+The codec matrix below explains what happens when endpoints support different
+formats; it is not a checklist you must complete for every call.
+
 ## Capability matrix
 
 The browser path keeps H.264 and VP8 encoded media off the HA decoder. JPEG

@@ -4,11 +4,23 @@ This guide covers installation, firmware selection and network settings.
 `transport: udp` or `transport: tcp` selects SIP signaling transport; RTP audio
 and video use UDP in both cases.
 
-For 2026.10.0, use Home Assistant 2026.7.0 or newer. Firmware builds require
+Use Home Assistant 2026.7.0 or newer. Firmware builds require
 ESPHome 2026.9.0 or newer. HA and ESP firmware do not need matching version
 numbers: a HACS update and a device firmware update are separate operations.
 We recommend rebuilding from an updated maintained YAML to receive device
 fixes, particularly on Generic S3.
+
+## Choose what to install
+
+| What you want | What to install |
+| --- | --- |
+| Calls between dashboards or standard SIP phones | The VoIP Stack HA integration and a card for each browser phone. No ESP is needed. |
+| A physical ESP phone connected to HA | The integration plus the maintained VoIP-only firmware for that board. |
+| An ESP with calls, wake word, Assist and media | The integration plus that board's Full profile. Check flash and PSRAM requirements. |
+| An ESP phone for an existing Asterisk/FreeSWITCH PBX | Its VoIP firmware and a static peer in that PBX. Follow the classic-PBX guide. |
+
+For the first HA call, follow the [visual user guide](USER_GUIDE.md). The YAML,
+network and firmware details below are for the parts you actually install.
 
 ## YAML tree
 
@@ -25,8 +37,9 @@ network settings. Do not start from historical `*-tcp`, `*-udp` or
 
 ## Network
 
-SIP signaling listens on `sip_port` and may use UDP or TCP. RTP media always
-uses UDP on `rtp_port`.
+SIP signaling listens on `sip_port` and may use UDP or TCP. RTP media uses
+the UDP ports negotiated for each call. On HA, `rtp_port` is the base of its
+media-port allocation, not a promise that every call uses one fixed port.
 
 ![SIP TCP or UDP signaling with RTP media](images/tcp-udp-choice.png)
 
@@ -256,7 +269,7 @@ With DTMF extension selection enabled, HA answers the incoming call to collect d
 RTP `telephone-event` or compatible legacy SIP INFO. Normal mobile dialers can use
 post-dial pauses, for example a contact that dials the provider number, waits,
 and sends `100`. If no digits arrive, HA resolves the configured default target
-(`HA` is the initial default). If digits arrive, HA resolves them through
+selected for that named trunk. If digits arrive, HA resolves them through
 central phonebook `extension` values.
 If digits arrive and do not resolve, HA terminates the answered leg with
 `route_not_found`.

@@ -3,6 +3,22 @@
 These pages cover installation, protocols, routing, media and diagnostics
 beyond the project overview in the [top-level README](../README.md).
 
+## Learn in stages
+
+1. **First call:** learn [phone, card and destination](CONCEPTS.md), then follow
+   the [user guide](USER_GUIDE.md). Start with two phones and no external trunk.
+2. **Everyday telephone system:** add [groups](GROUPS.md), a [provider line](SIP_TRUNK.md)
+   and optional [phone defaults](PHONE_ROUTING.md). Use the GUI first.
+3. **Messages and handoffs:** add [voicemail](VOICEMAIL.md), [parking/pickup](CALL_PARKING.md)
+   or [recording](CALL_RECORDING.md) only where you need them.
+4. **Context-dependent behavior:** use the [automation recipes](AUTOMATION_DIALPLAN.md)
+   for schedules, presence, announcements and menus.
+5. **Custom integrations or difficult faults:** continue with the protocol,
+   service and testing references below. They do not replace the user walkthrough.
+
+Historical release notes and migration entries describe their named versions.
+Do not use an old release example as the current installation procedure.
+
 ## Pick your path
 
 | Need | Document |
@@ -44,7 +60,7 @@ preview, not stable 2026.10.1.
 | Persistent phone defaults and automation precedence | [Phone routing](PHONE_ROUTING.md) |
 | Contextual routing recipes | [Automation cookbook](AUTOMATION_DIALPLAN.md) |
 | Ring and conference groups | [Groups](GROUPS.md) |
-| Phone mailboxes, SIP message indicators and optional transcription | [Voicemail (PBX development branch)](VOICEMAIL.md) |
+| Phone mailboxes, SIP message indicators and optional transcription | [Voicemail](VOICEMAIL.md) |
 | Parking, retrieval and directed pickup | [Call parking](CALL_PARKING.md) |
 | Play an ordinary ESPHome announcement or PCM sound | [ESPHome sound actions](ESPHOME_SOUND_ACTIONS.md) |
 | Record an established conversation | [Conversation recording](CALL_RECORDING.md) |

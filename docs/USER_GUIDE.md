@@ -2,7 +2,8 @@
 
 This guide describes the normal VoIP Stack workflow from installation to the
 first local, SIP and trunk calls. Protocol and developer details are linked at
-the end.
+the end. For the difference between a phone, card, contact and trunk, see
+[basic concepts](CONCEPTS.md).
 
 ## Install Home Assistant VoIP Stack
 
@@ -286,7 +287,7 @@ does not silently remove negotiated video.
 
 ## Voicemail
 
-Voicemail is available on the `feature/ha-pbx` development branch. Enable it in
+Voicemail is available in the updated 2026.10.3-dev preview. Enable it in
 VoIP Stack's settings and select a Home Assistant TTS voice and language for the
 spoken telephone menus. Then enable the mailbox for each phone that needs one.
 
@@ -341,8 +342,8 @@ return behavior.
 
 ## Recording a conversation
 
-Use **VoIP Stack: Start recording** with the participating phone selected, then
-**Stop recording**, or enable **Show recording controls** in that phone card's editor.
+Use **VoIP Stack: Start call recording** with the participating phone selected, then
+**Stop call recording**, or enable **Show recording controls** in that phone card's editor.
 A hangup also finishes the recording. The conversation continues if recording
 fails or reaches its configured limit. Recordings are separate from voicemail
 and do not turn on message-waiting indicators.

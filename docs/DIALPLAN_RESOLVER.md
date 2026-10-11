@@ -1,7 +1,6 @@
 # Dial plan and resolver
 
-This document is the practical routing contract for VoIP Stack. The central
-idea is simple: Home Assistant owns the dial plan through
+This document is the practical routing contract for VoIP Stack. Home Assistant owns the dial plan and exposes its shared phonebook through
 `sensor.voip_phonebook`, and every caller uses names, extensions, SIP URIs,
 groups or public numbers against that same roster.
 
@@ -16,7 +15,7 @@ The central roster is rebuilt from these sources:
 
 - Online ESPHome `voip_stack` endpoint sensors, plus optional sibling group
   entities on the same ESPHome device.
-- The Home Assistant softphone virtual endpoint.
+- Home Assistant logical phones, including the phone created during setup.
 - Manual contacts created with `voip_stack.add_contact` or
   `voip_stack.set_contacts`.
 - Local SIP endpoint accounts that are currently registered to HA.

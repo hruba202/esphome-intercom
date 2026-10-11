@@ -30,27 +30,19 @@ owns its stop control and saved file.
 
 ## Use an automation
 
-The existing `call_connected` trigger can start recording after the destination
-answers. Choose the phone through the action's device picker. For example:
+In the automation editor:
 
-```yaml
-alias: Record answered kitchen calls
-mode: parallel
-triggers:
-  - trigger: voip_stack.call_connected
-    options:
-      destination: Kitchen
-actions:
-  - action: voip_stack.start_recording
-    data:
-      device_id: YOUR_KITCHEN_PHONE_DEVICE_ID
-      max_seconds: 1800
-```
+1. Add the native **VoIP call connected** trigger and filter its destination to
+   the phone you want, for example Kitchen.
+2. Add **VoIP Stack: Start call recording**.
+3. Select Kitchen in the action's **Phone** picker and set the desired limit,
+   for example 1800 seconds.
 
-The trigger supplies the current call and generation. You do not need to find
-or copy a Call-ID. The YAML identifier above represents the phone selected in
-HA's device picker. Outside a native call trigger, selecting a phone uses that
-phone's active call; an explicit `call_id` must belong to it.
+The trigger supplies the current call and generation. The phone picker saves
+its device reference; you do not need to find or copy a Call-ID or a long device
+ID. Outside a native call trigger, selecting a phone uses its active call.
+An explicit `call_id` must belong to that phone. See the
+[action reference](SERVICES.md) for fields used by advanced scripts.
 
 For a browser phone, the connected event can arrive before its audio WebSocket
 opens. Recording attaches when that existing media adapter starts, without

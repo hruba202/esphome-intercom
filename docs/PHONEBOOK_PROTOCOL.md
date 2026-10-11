@@ -10,6 +10,13 @@ For behavior-level routing examples, see
 [CALL_FLOWS.md](CALL_FLOWS.md). For service calls that mutate the roster, see
 [SERVICES.md](SERVICES.md).
 
+## If you only want to edit contacts
+
+Use the integration's **Add contact** flow or the phonebook UI first. This page
+is the wire-format reference for custom firmware and integrations, not a request
+to replace your whole roster JSON by hand. See [basic concepts](CONCEPTS.md)
+for the difference between a phone, contact, extension and external number.
+
 ## ESP static contacts
 
 Declare static local entries directly in `voip_stack` only when an ESP must

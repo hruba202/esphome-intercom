@@ -1,0 +1,11 @@
+/* Keep wide reference tables scrollable without widening the whole page. */
+.table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Long API identifiers must not widen mobile reference pages. */
+body {
+  overflow-wrap: anywhere;
+}
