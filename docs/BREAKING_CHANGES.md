@@ -4,6 +4,16 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## 2026.10.3-dev: disabling a phone's mailbox deletes it
+
+**Enable mailbox** now controls whether that phone has a mailbox. Explicitly
+turning it off from the card, phone configuration or `set_voicemail_settings`
+action permanently deletes its messages, files, PIN and mailbox settings.
+Turning it on again creates an empty mailbox. Omitted action fields keep their
+current values. Updating, restarting or taking a phone offline does not delete
+mailboxes, including mailboxes disabled by an older build. Separate conversation
+recordings and other phones' mailboxes are preserved.
+
 ## PBX development branch: separate SIP trunk entries
 
 The updated `v2026.10.3-dev` preview changes where trunks are configured.

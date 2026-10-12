@@ -21,8 +21,8 @@ HA integration tests with `./scripts/test_suite.sh ha`; that mode selects
 `../ha-voip-lab/.venv/bin/python`, or the interpreter supplied through
 `HA_PYTHON`. Do not invoke HA test modules with the repository `.venv`.
 
-The complete local gate also runs Ruff and parses every shipped JavaScript
-module:
+CI checks Python with Ruff. The complete local gate also parses every shipped
+JavaScript module:
 
 ```bash
 ./.venv/bin/ruff check custom_components scripts tests
@@ -42,10 +42,17 @@ local component checkouts for candidate firmware builds.
 
 The complete plan includes `software-full`, the real Home Assistant runtime,
 coverage, mutation, isolated peers, a real browser, firmware compilation and
-the selected S3/P4 hardware jobs. The maintained YAML files remain readable
-and reference the four `dev` branches. Test operators must record the resolved
-commits with the resulting evidence: a green CI run is not a physical-device
-qualification.
+the selected S3/P4 hardware jobs. Keep published references in maintained YAMLs
+unchanged and create a disposable local-source variant for candidate builds.
+Test operators must record the resolved commits with the resulting evidence:
+a green CI run is not a physical-device qualification.
+
+The browser startup regression delays worklet downloads in real Chromium and
+checks the first rendered samples after preparation, using silent virtual
+devices. A separate SIP/UDP test checks that initial PCMU frames survive an
+80 ms browser-readiness handshake. These checks cover frontend preparation and
+the RTP/WebSocket boundary; they do not qualify a physical phone's audio route
+or promise lossless playback after an arbitrarily long browser suspension.
 
 This software and compile gate still does not claim physical interoperability.
 A release candidate also needs the applicable live browser, SIP peer and ESP

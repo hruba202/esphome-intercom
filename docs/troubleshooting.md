@@ -251,9 +251,10 @@ as `16000:s16le:1:16`, `16000:s16le:1:32`, `16000:s16le:1:20`, or
 `48000:s16le:1:10`. A call also needs one common packet time across the selected
 TX and RX directions; rates may differ, but `frame_ms`/`ptime` must match.
 
-ESP devices are PCM-only. HA softphone/trunk legs can negotiate common VoIP
-codecs where supported, but the bridge must still be able to convert the ESP
-leg to a compatible PCM format.
+Check the ESP firmware codec: FULL and P4 profiles use PCM; ESP32-S3 VoIP-only
+profiles can use Opus. HA softphone/trunk legs can negotiate additional codecs,
+but the bridge must support conversion to the format actually selected by the
+ESP. PCM and Opus are separate firmware choices.
 
 ## HA cannot route a name
 

@@ -277,13 +277,14 @@ Direct mode routes the incoming call without this digit-collection step.
 
 ## Media
 
-ESP accepts compatible PCM SDP only. Unsupported codecs or oversized/unsupported
-formats must receive a SIP failure such as `488 Not Acceptable Here`.
+ESP firmware accepts the codecs compiled into its profile: PCM for FULL/P4,
+or optional Opus for ESP32-S3 VoIP-only. Unsupported codecs or oversized formats
+receive a SIP failure such as `488 Not Acceptable Here`.
 
 HA can bridge and resample between supported formats. Trunk/softphone legs may
 negotiate Opus, G.722, PCMA or PCMU when the HA runtime provides the required
 codec in both directions; optional codecs are not advertised when unavailable.
-G.722 exists only on the HA/standard-SIP leg: ESP legs remain PCM-only and keep
-their native quality. HA keeps the best negotiated quality per leg when
+G.722 exists only on the HA/standard-SIP leg; ESP legs use their configured
+PCM or Opus profile. HA keeps the best negotiated quality per leg when
 conversion is available. If a conversion cannot be built, HA terminates the
 setup with `media_incompatible`.

@@ -38,10 +38,15 @@ uses HA's media picker; without one, the caller hears a recording tone.
 ![Configure a phone mailbox using named GUI fields](images/voicemail-settings-action.png)
 
 In this action, select the phone in **Phone mailbox**, enable the optional
-**Accept voicemail** field and turn its switch on. The checkboxes beside optional
+**Enable mailbox** field and turn its switch on. The checkboxes beside optional
 fields mean "change this setting"; leaving one unchecked preserves its current
 value. Choose greeting media and a message duration only if you want to change
 those settings. The screenshot is an unsubmitted form, not an active mailbox.
+
+Turning **Enable mailbox** off permanently removes that phone's mailbox,
+messages, files, PIN and mailbox settings. Turning it on again creates an empty
+mailbox. This also applies when changing the setting through an HA automation.
+It does not remove other phones' messages or separate conversation recordings.
 
 Enabling a mailbox does not enable forwarding. In the phone card's
 **Options > Call routing** section,

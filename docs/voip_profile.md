@@ -148,7 +148,11 @@ capability and security boundaries.
 
 ## SDP and RTP
 
-ESP media is PCM-only.
+PCM and Opus are separate compile-time firmware choices. FULL and P4 profiles
+use PCM. Maintained ESP32-S3 VoIP-only profiles can use Opus, advertised as
+`opus/48000/2` even when the captured audio is mono. The RTP clock is 48 kHz.
+
+For PCM profiles:
 
 - Mandatory: RTP `L16`
 - Optional: RTP `L24`, only when packed as RTP L24
@@ -162,12 +166,13 @@ ESP must convert at the RTP boundary:
 - internal `S16LE` to RTP `L16` network byte order
 - internal `S24LE_IN_S32` to packed RTP `L24` network byte order
 
-Compressed codecs are not implemented on ESP. If a SIP softphone offers only
-compressed codecs such as PCMU, PCMA, Opus, Speex, GSM or G.722, ESP returns
-`488 Not Acceptable Here`.
+ESP does not implement PCMU, PCMA, Speex, GSM or G.722. A direct SIP peer must
+offer a format supported by the selected firmware. A call through HA may use
+its transcoding bridge instead. See the [component codec matrix](https://github.com/n-IA-hane/esphome-voip-stack#codec-profiles-and-media-route).
 
-ESP devices never advertise or decode video. The optional HA softphone video
-path is not routed into an ESP, ring group, conference room or Assist pipeline.
+Audio-only profiles do not advertise video. Supported P4 video profiles add
+their explicitly configured JPEG or H.264 paths; video is not automatically
+enabled for other boards. See [SIP video](SIP_VIDEO.md).
 
 ## Roster
 
@@ -181,8 +186,8 @@ Direct calls use SIP URIs such as:
 - `sip:Salotto@192.168.1.52:5060;transport=udp`
 
 Phone numbers and unresolved names route through the Home Assistant SIP bridge when
-configured. If an optional HA trunk is configured and registered, unresolved
-external targets can route through that trunk. Missing endpoint metadata must
+configured. Unresolved external targets can use the selected available HA
+trunk, either registered or static. Missing endpoint metadata must
 not invent a direct SIP route.
 
 Inbound trunk calls can use RFC2833/telephone-event DTMF digits as local

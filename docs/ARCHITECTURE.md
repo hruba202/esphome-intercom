@@ -27,7 +27,7 @@ Home Assistant is more than a card backend:
 - HA is the central phonebook/dial-plan publisher;
 - HA is a SIP router/B2BUA for logical names, numbers, bridge requests and
   transport boundaries;
-- HA can optionally register one provider/PBX trunk;
+- HA supports independently configured provider/PBX trunks, registered or static;
 - HA can optionally act as a local registrar for standard SIP endpoints such as
   Zoiper, Linphone, baresip or pjsua;
 - HA can optionally expose one native Assist pipeline as a local phonebook
@@ -76,9 +76,8 @@ second user-selectable identity and is never stored by new card configuration.
 
 ### HA runtime ownership model
 
-The PBX ownership core is built alongside the existing SIP dispatcher as a
-migration seam; it is not a second router and a call never passes through two
-independent dial plans.
+The SIP dispatcher resolves each call through one dial plan. The PBX session
+core owns its participants, media resources and termination.
 
 - `SipEndpointRuntime` owns endpoint-wide components such as listeners,
   registrar, trunk and conference manager.
@@ -176,9 +175,10 @@ of bypassing an intervening proxy.
 SDP offer/answer negotiates RTP. RTP media is always UDP, even when SIP
 signaling uses TCP.
 
-ESP devices are PCM-only endpoints. The supported ESP profile is linear PCM
-with network byte order on RTP; incompatible SDP receives `488 Not Acceptable
-Here` or the equivalent terminal reason.
+ESP firmware selects PCM or Opus at compile time. FULL and P4 profiles use
+linear PCM with network byte order on RTP; maintained ESP32-S3 VoIP-only
+profiles can use Opus. Unsupported media receives `488 Not Acceptable Here`
+or the equivalent terminal reason. See the [ESP media profile](voip_profile.md#sdp-and-rtp).
 
 HA can accept richer media on softphone/trunk legs when it has a bidirectional
 converter for the selected codec. Optional codecs are capability-gated and are
@@ -231,7 +231,7 @@ or SBC boundary.
 
 ### Telephone applications and voicemail
 
-On the PBX development branch, Automation and voicemail use
+Automation and voicemail use
 `LocalCallApplication` for answer and media setup. The existing
 `EndpointCallSession` owns their tasks, RTP reservation and termination. Changing
 from an announcement to voicemail transfers that application's control within

@@ -101,7 +101,8 @@ entity, language and, when offered, voice for the spoken menus. Then enable
 **Enable this phone's mailbox** in the desired phone card's Options. This also
 works for an ESP mirror card. Messages are stored on HA, not in the ESP's flash.
 Enabling the mailbox alone does not redirect unanswered calls: configure the
-no-answer rule separately.
+no-answer rule separately. Disabling **Enable this phone's mailbox** permanently
+deletes that mailbox, its messages, PIN and settings. Re-enabling starts empty.
 
 On an HA softphone, **Voicemail** appears when messages exist. Open it to see the
 caller and date, select a message to listen, or use Delete for that message.

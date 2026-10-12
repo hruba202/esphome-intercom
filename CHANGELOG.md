@@ -4,6 +4,19 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### 🔧 Storage and configuration corrections
+
+- Release completed recording resources even when the final disk-usage scan
+  fails. Keep saved messages accessible and reconcile the storage quota before
+  accepting a new recording.
+- Make **Enable mailbox** control the existence of one phone's mailbox.
+  Disabling it deletes its messages, files, PIN and mailbox settings; enabling
+  it again creates an empty mailbox. Other mailboxes and call recordings remain.
+- Transfer RTP port-release ownership inside the existing relay splice and
+  restore the original relays if reservation preparation fails.
+- Correct outdated single-trunk, PCM-only and REGISTER requirements in current
+  guides. Add Python lint checks to CI and clarify fixture imports.
+
 ### Czech localization
 
 - Add Czech integration strings and Assist commands contributed by
