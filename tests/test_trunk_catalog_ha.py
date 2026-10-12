@@ -124,7 +124,8 @@ class Registrar(asyncio.DatagramProtocol):
             headers.append(("WWW-Authenticate", 'Digest realm="lab", nonce="fixed-nonce", algorithm=MD5, qop="auth"'))
         else:
             fields = {key: value.strip('"') for key, value in re.findall(r'(\w+)=("[^"]*"|[^, ]+)', auth)}
-            md5 = lambda value: hashlib.md5(value.encode()).hexdigest()
+            def md5(value):
+                return hashlib.md5(value.encode()).hexdigest()
             expected = md5(f'{md5("ha:lab:test-only")}:{fields["nonce"]}:{fields["nc"]}:{fields["cnonce"]}:auth:{md5("REGISTER:" + fields["uri"])}')
             status, reason = (200, "OK") if fields["response"] == expected else (403, "Forbidden")
             if status == 200:
@@ -386,7 +387,6 @@ async def test_native_trunk_readiness_updates_from_lifecycle_events_without_poll
 @pytest.mark.parametrize('make_default', [True, False])
 async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(hass, catalog, registrar, monkeypatch, with_listener, make_default):
     from custom_components.voip_stack import trunk_flow
-    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
 
     from custom_components.voip_stack.config_entry_runtime import async_config_entry_updated
     from custom_components.voip_stack.binary_sensor import async_setup_entry

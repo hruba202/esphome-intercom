@@ -100,4 +100,3 @@ class InitialTransitionTest(unittest.IsolatedAsyncioTestCase):
             release.set()
             await asyncio.gather(task, return_exceptions=True)
             endpoint.connection_lost(None)
-

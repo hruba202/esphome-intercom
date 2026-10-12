@@ -16,7 +16,7 @@ from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointK
 from custom_components.voip_stack.roster import RosterEntry
 from custom_components.voip_stack.sip_registrar import SipAccount
 from custom_components.voip_stack.store import config_entry
-from .test_trunk_calls_ha import trunks, lab
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
 
 pytestmark = [pytest.mark.ha, pytest.mark.skipif(shutil.which("baresip") is None, reason="baresip is not installed")]
 

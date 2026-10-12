@@ -15,7 +15,7 @@ from custom_components.voip_stack.roster import RosterEntry
 from custom_components.voip_stack.runtime_data import sip_trunk, sip_trunks
 from custom_components.voip_stack.trunk_runtime import async_start_sip_trunk, async_stop_sip_trunk
 
-from .test_automation_originate_ha import lab, dial, tts_fixture
+from .test_automation_originate_ha import lab as lab, dial, tts_fixture
 
 pytestmark = pytest.mark.ha
 

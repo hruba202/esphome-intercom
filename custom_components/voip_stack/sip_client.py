@@ -1874,15 +1874,10 @@ class SipCallClient:
         timeout: float = 8.0,
         delayed_offer: bool = False,
     ) -> str:
-        supplied_request_uri = bool(str(request_uri or "").strip())
         transport_param = (("transport", self.signaling_transport.lower()),)
         request_uri = request_uri or str(sip.SipUri(target, remote_host, int(remote_sip_port), params=transport_param))
         logical_uri = sip.parse_sip_uri(request_uri)
         route_uri = logical_uri
-        request_transport = (
-            _explicit_uri_transport(logical_uri) if supplied_request_uri else ""
-        )
-        next_hop_transport = request_transport
         if self.outbound_proxy:
             proxy = str(self.outbound_proxy).strip()
             route_uri = sip.parse_sip_uri(
@@ -1890,7 +1885,6 @@ class SipCallClient:
                 if proxy.lower().startswith(("sip:", "sips:"))
                 else f"sip:{proxy}"
             )
-            next_hop_transport = _explicit_uri_transport(route_uri)
         elif remote_host != logical_uri.host:
             # The caller supplied an already selected next hop while keeping
             # the logical Request-URI intact, as required for trunks/proxies.

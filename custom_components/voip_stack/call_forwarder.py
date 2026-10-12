@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import copy_context
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import partial
 import logging
 from typing import Any, Awaitable, Callable
@@ -74,7 +74,7 @@ from .ring_group import (
 )
 from .ring_group_fork import build_ring_group_fork
 from .router import RouteAction
-from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, call_external_call_denied, is_trunk_uri
+from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, call_external_call_denied
 from .route_abort import (
     RouteAbortContext,
     RouteAbortIntent,

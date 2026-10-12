@@ -32,8 +32,10 @@ def test_inbound_offer_rejects_disallowed_audio_and_selects_allowed_alternative(
 
 
 def test_empty_audio_rejected_empty_video_explicitly_supported():
-    with pytest.raises(ValueError):CodecPolicy.from_config({'trunk_audio_codecs':[]})
-    with pytest.raises(ValueError):CodecPolicy.from_config({'trunk_audio_codecs':['G729']})
+    with pytest.raises(ValueError):
+        CodecPolicy.from_config({'trunk_audio_codecs':[]})
+    with pytest.raises(ValueError):
+        CodecPolicy.from_config({'trunk_audio_codecs':['G729']})
     policy=CodecPolicy.from_config({'trunk_video_codecs':[]})
     offer=sdp.build_offer_directional('192.0.2.1','192.0.2.1',40000,list(HA_TRUNK_AUDIO_FORMATS),list(HA_TRUNK_AUDIO_FORMATS),
         include_common_codecs=True,video_port=40002,video_formats=sdp.DEFAULT_VIDEO_FORMATS,codec_policy=policy)

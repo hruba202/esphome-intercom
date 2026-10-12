@@ -20,7 +20,6 @@ from ..media_ports import (
 )
 from ..phone_endpoint import (
     EndpointAvailability,
-    EndpointKind,
     PhoneEndpoint,
 )
 from ..router import RouteReason

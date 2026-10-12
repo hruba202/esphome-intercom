@@ -86,7 +86,7 @@ def softphone_originate(monkeypatch):
     dependencies = {
         "trunk_selection": {
             "select_call_trunk": lambda hass, **_kwargs: SimpleNamespace(
-                identity="", config=module._get_trunk_config(hass), client=module.sip_trunk(hass),
+                identity="", config=sys.modules[f"{module.__package__}.config"].trunk_config(hass), client=sys.modules[f"{module.__package__}.runtime_data"].sip_trunk(hass),
             ),
         },
         "inbound_routing.targets": {
@@ -479,8 +479,8 @@ def test_restricted_browser_rejects_trunk_before_call_start(softphone_originate,
     source = SimpleNamespace(endpoint_id="caller", device_id="browser", availability=_Availability.AVAILABLE)
     route = SimpleNamespace(action=action, sip_uri=uri, entry=None, reason=None)
     module._get_transport_config = Mock(return_value={"external_call_blocked_endpoints": ["caller"]})
-    module._get_trunk_config = Mock(return_value={"trunk_server": "provider.example"})
-    hass.runtime = SimpleNamespace(trunk_configs={}, trunk_config=module._get_trunk_config(hass), sip=None)
+    sys.modules[f"{module.__package__}.config"].trunk_config = Mock(return_value={"trunk_server": "provider.example"})
+    hass.runtime = SimpleNamespace(trunk_configs={}, trunk_config=sys.modules[f"{module.__package__}.config"].trunk_config(hass), sip=None)
     module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, "441234567890", None))
     module._async_prepare_ha_outbound_call = AsyncMock()
@@ -516,7 +516,7 @@ def test_static_dahua_contact_builds_full_offer_for_direct_and_trunk(
     module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, "8001", None))
     module._get_transport_config = Mock(return_value={"sip_port": 5060, "sip_video": True, "video_camera_send": True})
-    module._get_trunk_config = Mock(return_value={
+    sys.modules[f"{module.__package__}.config"].trunk_config = Mock(return_value={
         "trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha",
     })
     module._trunk_enabled = Mock(return_value=True)
@@ -577,7 +577,7 @@ def test_trunk_video_reception_is_independent_from_camera_capture(softphone_orig
     module.ha_router_decision = Mock(return_value=route)
     module._async_resolve_browser_destination = AsyncMock(return_value=(route, route.target, None))
     module._get_transport_config = Mock(return_value={"sip_port": 5060, "sip_video": True, "video_camera_send": True})
-    module._get_trunk_config = Mock(return_value={"trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha", "trunk_video_codecs": ["H264"] if allow_video else []})
+    sys.modules[f"{module.__package__}.config"].trunk_config = Mock(return_value={"trunk_server": "pbx.example.test", "trunk_port": 5060, "trunk_transport": "udp", "trunk_username": "ha", "trunk_video_codecs": ["H264"] if allow_video else []})
     module._trunk_enabled = Mock(return_value=True)
     module.reserve_sip_video_media = Mock(return_value=(SimpleNamespace(ports=(40000, 40002)), object(), object()))
     captured = {}

@@ -6,7 +6,7 @@ import secrets
 
 from homeassistant.exceptions import ServiceValidationError
 
-from .endpoint_session import CleanupStage, TerminationIntent
+from .endpoint_session import CleanupStage
 from .call_scope import has_ringing_destination
 from .runtime_data import require_runtime_data, sip_endpoint_manager
 from .sip_listener import SipInviteResult

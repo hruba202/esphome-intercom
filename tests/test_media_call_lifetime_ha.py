@@ -27,4 +27,3 @@ async def test_browser_media_end_notification_runs_on_ha_loop(hass,monkeypatch):
         assert threads==[threading.get_ident()]
     finally:
         unsubscribe()
-

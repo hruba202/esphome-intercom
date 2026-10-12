@@ -16,7 +16,6 @@ from .endpoint_entity_manager import (
     EndpointEntityManager,
     register_endpoint_entity_manager,
 )
-from .phone_endpoint import EndpointKind
 
 
 @dataclass(frozen=True, slots=True)

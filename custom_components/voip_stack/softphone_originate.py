@@ -15,7 +15,6 @@ from .core.audio_format import HA_TRUNK_AUDIO_FORMATS
 from .authorization import async_require_service_admin
 from .config import (
     transport_config as _get_transport_config,
-    trunk_config as _get_trunk_config,
     trunk_enabled as _trunk_enabled,
     trunk_identity_uri as _trunk_identity_uri,
     trunk_leg_identity as _trunk_leg_identity,
@@ -73,7 +72,6 @@ from .runtime_data import (
     endpoint_directory,
     require_runtime_data,
     sip_registrar,
-    sip_trunk,
 )
 from .service_endpoints import (
     async_require_phone_service_control as _require_phone_service_control,

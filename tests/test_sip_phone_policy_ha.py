@@ -7,8 +7,8 @@ import pytest
 from custom_components.voip_stack.phone_policy import PhonePolicy
 from custom_components.voip_stack.phone_policy_runtime import setup_phone_policy_events
 from custom_components.voip_stack.store import config_entry
-from .test_sip_phone_transfers_ha import registered_phones
-from .test_trunk_calls_ha import trunks, lab
+from .test_sip_phone_transfers_ha import registered_phones as registered_phones
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
 
 pytestmark = pytest.mark.ha
 
@@ -452,7 +452,6 @@ async def test_native_unanswered_automation_overrides_phone_default(
 async def test_caller_hangup_waits_for_retired_destination_and_never_dials_next(
     trunks, registered_phones, monkeypatch
 ):
-    from homeassistant.exceptions import ServiceValidationError
 
     runtime = trunks
     runtime.runtime.endpoints.update("transfer_b", device_id="receiving-phone")

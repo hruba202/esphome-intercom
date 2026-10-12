@@ -13,7 +13,6 @@ from .endpoint_entity_manager import (
     EndpointEntityManager,
     register_endpoint_entity_manager,
 )
-from .phone_endpoint import EndpointKind
 from .runtime_data import endpoint_directory
 
 

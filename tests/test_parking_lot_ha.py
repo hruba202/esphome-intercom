@@ -8,9 +8,9 @@ import pytest
 from custom_components.voip_stack.parking_lot import ParkingLot, ParkingError
 from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
 from custom_components.voip_stack.endpoint_session import TerminationIntent
-from .test_sip_phone_transfers_ha import registered_phones
-from .test_trunk_calls_ha import trunks, lab
-from .test_voicemail_ha import custom_integrations
+from .test_sip_phone_transfers_ha import registered_phones as registered_phones
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
+from .test_voicemail_ha import custom_integrations as custom_integrations
 
 pytestmark = pytest.mark.ha
 
@@ -342,7 +342,8 @@ async def test_browser_pickup_uses_existing_call_and_actual_rtp(registered_phone
     monkeypatch.setattr(softphone_originate,'_resolve_target_device',AsyncMock(return_value=None))
     async def wait_for(predicate):
         async with asyncio.timeout(5):
-            while not predicate():await asyncio.sleep(0.01)
+            while not predicate():
+                await asyncio.sleep(0.01)
     if retained_outgoing:
         await asyncio.to_thread(registered_phones[0].dial,'transfer_b')
         await wait_for(lambda:any(s.state=='in_call' for s in runtime.calls.sessions.values()))
@@ -364,7 +365,10 @@ async def test_browser_pickup_uses_existing_call_and_actual_rtp(registered_phone
     assert session.call_id==source_id
     class Browser:
         def __init__(self):
-            self.audio=asyncio.Queue();self.messages=asyncio.Queue();self.ready=asyncio.Event();self.closed=False
+            self.audio=asyncio.Queue()
+            self.messages=asyncio.Queue()
+            self.ready=asyncio.Event()
+            self.closed=False
         def force_close(self):self.closed=True
         def __aiter__(self):return self
         async def __anext__(self):return await self.messages.get()
@@ -418,12 +422,14 @@ async def test_browser_pickup_uses_existing_call_and_actual_rtp(registered_phone
             with wave.open(str(path),'rb') as recording:
                 rate=recording.getframerate()
                 values=struct.unpack(f'<{recording.getnframes()}h',recording.readframes(recording.getnframes()))
-            if len(values)<800:continue
+            if len(values)<800:
+                continue
             power={frequency:max(abs(sum(value*complex(math.cos(2*math.pi*frequency*i/rate),math.sin(2*math.pi*frequency*i/rate)) for i,value in enumerate(values[start:start+800]))) for start in range(0,len(values)-799,400)) for frequency in (450,650)}
             heard |= power[650]>power[450]*5 and power[650]>10000
         assert heard, 'The SIP caller did not receive browser PCM after pickup'
     finally:
-        if not task.done():task.cancel()
+        if not task.done():
+            task.cancel()
         await asyncio.gather(task,return_exceptions=True)
 
 
@@ -438,7 +444,8 @@ async def test_sip_refer_parks_established_caller_without_redial(registered_phon
     caller,operator,picker=registered_phones
     async def wait_for(predicate):
         async with asyncio.timeout(5):
-            while not predicate():await asyncio.sleep(0.01)
+            while not predicate():
+                await asyncio.sleep(0.01)
     await asyncio.to_thread(caller.dial,'transfer_b')
     await wait_for(lambda: any(s.state=='in_call' for s in runtime.calls.sessions.values()))
     original=next(iter(runtime.calls.sessions.values()))
@@ -478,12 +485,14 @@ async def test_sip_refer_parks_established_caller_without_redial(registered_phon
 async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(registered_phones,trunks):
     from custom_components.voip_stack.store import config_entry
     from custom_components.voip_stack.parking import get_parking_lot
-    runtime=trunks;entry=config_entry(runtime.hass)
+    runtime=trunks
+    entry=config_entry(runtime.hass)
     runtime.hass.config_entries.async_update_entry(entry,data={**entry.data,'parking':{'enabled':True}})
     operator,remaining,picker=registered_phones
     async def wait_for(predicate):
         async with asyncio.timeout(5):
-            while not predicate():await asyncio.sleep(0.01)
+            while not predicate():
+                await asyncio.sleep(0.01)
     await asyncio.to_thread(operator.dial,'transfer_b')
     await wait_for(lambda: any(s.state=='in_call' for s in runtime.calls.sessions.values()))
     original=next(iter(runtime.calls.sessions.values()))
@@ -515,16 +524,21 @@ async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(regist
 async def test_failed_pickup_handoff_keeps_original_call_and_allows_retry(registered_phones,trunks,monkeypatch):
     from custom_components.voip_stack.store import config_entry
     from custom_components.voip_stack.parking import get_parking_lot
-    runtime=trunks;entry=config_entry(runtime.hass)
+    runtime=trunks
+    entry=config_entry(runtime.hass)
     runtime.hass.config_entries.async_update_entry(entry,data={**entry.data,'parking':{'enabled':True}})
     caller,first,second=registered_phones
     async def wait_for(predicate):
         async with asyncio.timeout(5):
-            while not predicate():await asyncio.sleep(0.01)
+            while not predicate():
+                await asyncio.sleep(0.01)
     await asyncio.to_thread(caller.dial,'700')
-    lot=get_parking_lot(runtime.hass);parked=lot.calls['701']
+    lot=get_parking_lot(runtime.hass)
+    parked=lot.calls['701']
     media=runtime.calls.resource_for(parked.session.call_id,'relay')
-    transport=media.transport;protocol=transport.get_protocol();original_set=transport.set_protocol
+    transport=media.transport
+    protocol=transport.get_protocol()
+    original_set=transport.set_protocol
     failures=[]
     def fail_once(value):
         if not failures:

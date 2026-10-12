@@ -7,8 +7,8 @@ import wave
 
 import pytest
 from custom_components.voip_stack.store import config_entry
-from .test_sip_phone_transfers_ha import registered_phones
-from .test_trunk_calls_ha import trunks, lab
+from .test_sip_phone_transfers_ha import registered_phones as registered_phones
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
 
 pytestmark = pytest.mark.ha
 
@@ -269,7 +269,7 @@ async def test_sip_phone_picks_up_local_browser_call(
                 capabilities=frozenset({"audio", "dtmf"}),
             )
         )
-    bridge = async_setup_local_softphone_bridge(runtime.hass)
+    async_setup_local_softphone_bridge(runtime.hass)
     call = start_local_softphone_call(
         runtime.hass, "local-a", "local-b", caller_owner_id="owner-a"
     )

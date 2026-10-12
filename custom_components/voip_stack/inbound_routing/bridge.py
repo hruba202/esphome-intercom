@@ -56,7 +56,6 @@ from ..outbound_bridge_commit import (
     BridgeCommitPolicy,
     async_commit_outbound_bridge,
 )
-from ..phone_endpoint import EndpointKind
 from ..peer import sip_uri_for_peer
 from ..runtime_data import call_runtime_artifacts, sip_trunk
 from ..trunk_signaling import reuse_registered_trunk_flow

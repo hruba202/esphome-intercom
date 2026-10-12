@@ -53,7 +53,8 @@ int main(){
  assert(!filter(false).value());
 }
 '''
-    cpp=tmp_path/'button.cpp'; cpp.write_text(source)
+    cpp=tmp_path/'button.cpp'
+    cpp.write_text(source)
     binary=tmp_path/'button'
     subprocess.run(['g++','-std=c++17',str(cpp),'-o',str(binary)],check=True,capture_output=True)
     subprocess.run([str(binary)],check=True,capture_output=True)

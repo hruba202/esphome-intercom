@@ -9,7 +9,7 @@ import pytest
 from custom_components.voip_stack.call_ivr import CallIVR
 from custom_components.voip_stack.core import rtp
 from custom_components.voip_stack.endpoint_session import TerminationIntent
-from .test_automation_call import application
+from .test_automation_call import application as application
 
 pytestmark = pytest.mark.ha
 

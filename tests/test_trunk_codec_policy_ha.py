@@ -1,6 +1,5 @@
 """Configured trunk codecs reach actual SIP offers and encoded RTP."""
 
-import asyncio
 from dataclasses import replace
 import struct
 
@@ -8,7 +7,7 @@ import pytest
 from homeassistant.core import Context
 from custom_components.voip_stack.core import sdp,rtp,g711
 from custom_components.voip_stack.runtime_data import sip_trunk
-from .test_trunk_calls_ha import trunks,lab
+from .test_trunk_calls_ha import trunks as trunks,lab as lab
 from .test_automation_originate_ha import dial,tts_fixture
 
 pytestmark=pytest.mark.ha
@@ -40,7 +39,8 @@ async def test_two_trunks_keep_independent_offers_and_real_pcmu_announcement(tru
     await runtime.hass.services.async_call('voip_stack','hangup',{},blocking=True,context=context)
     voiced=[]
     while not peer.audio.empty():
-        raw,_=peer.audio.get_nowait();packet=rtp.parse_packet(raw)
+        raw,_=peer.audio.get_nowait()
+        packet=rtp.parse_packet(raw)
         assert packet.payload_type==0
         pcm=g711.ulaw_to_s16le(packet.payload)
         samples=struct.unpack(f'<{len(pcm)//2}h',pcm)

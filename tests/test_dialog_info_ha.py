@@ -10,9 +10,9 @@ from custom_components.voip_stack.core import sip
 from custom_components.voip_stack.call_projection import publish_bridge_projection
 from custom_components.voip_stack.sip_application import SipApplicationMethods
 from custom_components.voip_stack.sip_registrar import SipRegistrar, SipAccount, SipRegistration
-from .test_automation_originate_ha import lab
-from .test_trunk_calls_ha import trunks
-from .test_sip_phone_transfers_ha import registered_phones
+from .test_automation_originate_ha import lab as lab
+from .test_trunk_calls_ha import trunks as trunks
+from .test_sip_phone_transfers_ha import registered_phones as registered_phones
 
 pytestmark = pytest.mark.ha
 NS = {"d": "urn:ietf:params:xml:ns:dialog-info"}

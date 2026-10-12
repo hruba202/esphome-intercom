@@ -752,7 +752,8 @@ async def test_two_scripts_speak_and_hang_up_their_own_call_without_ids(lab, mon
         while not phone.audio.empty():
             raw, _ = phone.audio.get_nowait()
             payload = rtp.parse_packet(raw).payload
-            if any(payload): voiced.append(payload)
+            if any(payload):
+                voiced.append(payload)
         assert b''.join(voiced) == b'\x01\x80' * 960
     assert not lab.calls.sessions
     assert not lab.runtime.softphones

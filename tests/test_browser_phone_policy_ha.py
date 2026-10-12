@@ -22,7 +22,7 @@ from custom_components.voip_stack.roster import RosterEntry, dump_roster_json
 from custom_components.voip_stack.sip_runtime import enable_reused_tcp_connection, uri_transport
 from custom_components.voip_stack.core import rtp
 
-from .test_automation_originate_ha import lab
+from .test_automation_originate_ha import lab as lab
 
 pytestmark = pytest.mark.ha
 

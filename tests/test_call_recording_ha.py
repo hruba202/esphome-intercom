@@ -9,8 +9,10 @@ import numpy as np
 import pytest
 from homeassistant.exceptions import ServiceValidationError
 
-from .test_sip_phone_transfers_ha import registered_phones
-from .test_trunk_calls_ha import trunks, lab
+
+from .test_sip_phone_transfers_ha import registered_phones as registered_phones
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
+from .test_browser_phone_policy_ha import browser_lab as browser_lab
 
 pytestmark = pytest.mark.ha
 
@@ -114,7 +116,6 @@ async def test_sip_conversation_recording_keeps_audio_and_owns_one_file(
     assert not (archive.root / (response['recording_id'] + '.json')).exists()
 
 
-from .test_browser_phone_policy_ha import browser_lab
 
 
 @pytest.mark.parametrize('ending', ['stop', 'remote', 'capture_error'])

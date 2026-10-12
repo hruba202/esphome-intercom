@@ -14,7 +14,6 @@ def wave_format(message):
     width = max(item["sample_width"] for item in segments)
     channels = max(item["channels"] for item in segments)
     destination = AudioFormat(rate, {2: "s16le", 3: "s24le", 4: "s32le"}[width], channels, 20)
-    stride = width * channels
     total_frames = max(round(item["start"] * rate) + round(item["frames"] * rate / item["sample_rate"])
                        for item in segments)
     return destination, total_frames
