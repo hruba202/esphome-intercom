@@ -425,3 +425,63 @@ async def test_conversation_quota_keeps_room_for_partial_final_file(archive, mod
         assert wav.getnframes() >= 320
     assert list(archive.root.glob('*.wav')) == [path]
     assert archive._used <= archive.quota_bytes and archive._reserved == 0
+
+
+async def test_final_size_scan_failure_keeps_committed_audio_and_allows_retry(archive, module):
+    archive.quota_bytes = 100000
+    original_io = archive.run_io
+    fail_scan = True
+
+    async def io(function, *args):
+        if function is module._audio_bytes and fail_scan:
+            raise OSError("Temporary directory access failure")
+        return await original_io(function, *args)
+
+    archive.run_io = io
+    writer = await archive.begin("kitchen")
+    pcm = struct.pack("<320h", *range(320))
+    assert writer.offer(pcm, module.AudioFormat(16000, frame_ms=20), offset=0)
+    entry = await writer.finish()
+    assert not archive._active
+    assert archive._reserved == 0
+    assert not writer.disk.open_files
+    assert archive.message(entry["id"], "kitchen") == entry
+    with wave.open(str(archive.segment_path(entry["id"], "kitchen")), "rb") as audio:
+        assert audio.readframes(320) == pcm
+    with pytest.raises(module.ArchiveError, match="storage"):
+        await archive.begin("kitchen")
+    assert not archive._active and archive._reserved == 0
+    fail_scan = False
+    retry = await archive.begin("kitchen")
+    assert retry.offer(pcm, module.AudioFormat(16000, frame_ms=20), offset=0)
+    assert await retry.finish() is not None
+    await archive.load()
+    assert archive.counts("kitchen") == (2, 0)
+    assert archive._used == module._audio_bytes(archive.root)
+    assert archive._reserved == 0
+
+
+async def test_delete_scan_failure_keeps_deletion_committed_and_recovers_quota(archive, module):
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(640), module.AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    original_io = archive.run_io
+
+    async def io(function, *args):
+        if function is module._audio_bytes:
+            raise OSError("Temporary directory access failure")
+        return await original_io(function, *args)
+
+    archive.run_io = io
+    try:
+        await archive.delete(message["id"], "kitchen")
+        assert archive.counts("kitchen") == (0, 0)
+        assert not list(archive.root.iterdir())
+        with pytest.raises(module.ArchiveError, match="storage"):
+            await archive.begin("kitchen")
+    finally:
+        archive.run_io = original_io
+    retry = await archive.begin("kitchen")
+    assert await retry.finish() is None
+    assert archive._used == archive._reserved == 0
+    assert not archive._active
