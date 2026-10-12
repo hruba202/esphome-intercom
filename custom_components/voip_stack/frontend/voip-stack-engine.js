@@ -51,6 +51,12 @@ const TERMINAL_CALL_EVENT_TYPES = new Set([
   "failed",
 ]);
 
+class AudioSetupSupersededError extends Error {
+  constructor() {
+    super("Audio setup superseded");
+  }
+}
+
 function settleWithin(promise, timeoutMs = MEDIA_CLEANUP_TIMEOUT_MS) {
   let timer;
   const schedule = globalThis.setTimeout || globalThis.window?.setTimeout;
@@ -1592,10 +1598,10 @@ class VoipStackEngine extends EventTarget {
         setupGeneration !== this._audioSetupGeneration ||
         this._callId !== expectedCallId
       ) {
-        throw new Error("Audio setup superseded");
+        throw new AudioSetupSupersededError();
       }
       if (attachKey && this._sessionAttachKey !== attachKey) {
-        throw new Error("Audio setup superseded");
+        throw new AudioSetupSupersededError();
       }
     };
 
@@ -1750,7 +1756,7 @@ class VoipStackEngine extends EventTarget {
         { ...negotiated, audio_direction: direction },
       );
     } catch (err) {
-      if (String(err?.message || err).includes("superseded")) return;
+      if (err instanceof AudioSetupSupersededError) return;
       console.warn("voip-stack-engine: audio media update failed", err);
       this.dispatchEvent(new CustomEvent("error", {
         detail: `Audio media update failed: ${err?.message || String(err)}`,
@@ -1838,6 +1844,8 @@ class VoipStackEngine extends EventTarget {
       }
       return true;
     } catch (err) {
+      // A retired setup cannot terminate the replacement sharing its Call-ID.
+      if (err instanceof AudioSetupSupersededError) return false;
       if (attachKey && this._sessionAttachKey !== attachKey) {
         return false;
       }
