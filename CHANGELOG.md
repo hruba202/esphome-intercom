@@ -6,6 +6,10 @@ Development preview with changes since stable 2026.10.1.
 
 ### 🔧 Storage and configuration corrections
 
+- Keep edited ringing-timeout fields visible until the updated phonebook state
+  confirms the save. Label the outcome and destination separately as
+  **After timeout**, **Mailbox** or **Forward to**.
+
 - Keep the voicemail language default inside the supported menu languages,
   including providers whose own default language is outside that set.
 - Release completed recording resources even when the final disk-usage scan

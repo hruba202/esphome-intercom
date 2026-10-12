@@ -74,7 +74,7 @@ For example, to let Kitchen ring for 20 seconds and then take a message:
 
 1. Enable Kitchen's mailbox as described below.
 2. Enable **Ringing timeout** and enter **20 seconds**.
-3. Choose **Voicemail** under **When nobody answers**.
+3. Choose **Voicemail** under **After timeout**.
 4. Leave the mailbox destination empty to use Kitchen's own mailbox.
 
 Choose **Forward** and another phone name or extension to ring that phone

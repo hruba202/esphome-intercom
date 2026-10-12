@@ -14,7 +14,7 @@ Open the phone card's **Options > Call routing**, or choose the native action
 | When busy or Do not disturb | Use the alternate destination when the phone is already busy, has DND enabled, or returns SIP `486 Busy Here`. |
 | When unavailable | Use the alternate destination when the phone is offline or the SIP attempt reports temporary unavailability. |
 | Ringing timeout | Optional number of seconds to wait for an answer. |
-| When nobody answers | Hang up, forward, or enter an enabled voicemail mailbox. |
+| After timeout | Hang up, forward, or enter an enabled voicemail mailbox. |
 | Preferred outgoing SIP trunk | Choose this phone's default provider for external calls. |
 
 With no ringing timeout configured, the PBX adds no application-level ringing

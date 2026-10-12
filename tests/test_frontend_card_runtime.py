@@ -460,7 +460,21 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen",
     ringing_timeout: 25, no_answer_action: "forward", no_answer_to: "Renamed bedroom" }},
 ]);
+assert.equal(routingCard._ringingDraft.seconds, "25");
+// Keep the submitted form visible until the matching backend state arrives.
+routingCard._els.ringingControls = Object.fromEntries(
+  ["enabled","seconds","action","destination","secondsRow","actionRow","destinationRow","save"].map(key => [key, {{}}])
+);
+const ringingEntries = [
+  {{name:"Kitchen",metadata:{{device_id:"device-kitchen",endpoint_id:"kitchen"}}}},
+  {{name:"Renamed bedroom",metadata:{{endpoint_id:"bedroom"}}}},
+];
+routingCard._renderRingingControls("device-kitchen", {{}}, ringingEntries);
+assert.equal(routingCard._els.ringingControls.seconds.value, "25");
+assert.equal(routingCard._els.ringingControls.enabled.checked, true);
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:25,no_answer:{{kind:"contact",target:"bedroom"}}}}, ringingEntries);
 assert.equal(routingCard._ringingDraft, null);
+
 routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: false,
   seconds: "25", action: "forward", destination: "Renamed bedroom" }};
 await routingCard._saveRingingPolicy();
@@ -477,6 +491,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_phone_settings", {{device_id: "device-kitchen",
     ringing_timeout: 30, no_answer_action: "voicemail", no_answer_to: ""}},
 ]);
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:10,no_answer:{{kind:"voicemail",target:"kitchen"}}}}, ringingEntries);
+assert.equal(routingCard._els.ringingControls.seconds.value, "30");
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:30,no_answer:{{kind:"voicemail",target:"kitchen"}}}}, ringingEntries);
+assert.equal(routingCard._ringingDraft, null);
 routingCard._loadSoftphoneState = async () => {{}};
 await routingCard._setMailboxEnabled(true);
 assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [

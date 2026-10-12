@@ -3281,9 +3281,30 @@ class VoipStackCard extends HTMLElement {
   _renderRingingControls(deviceId, policy, entries) {
     const controls = this._els?.ringingControls;
     if (!controls) return;
-    if (this._ringingDraft?.deviceId !== deviceId) this._ringingDraft = null;
+    if (this._ringingDraft?.deviceId !== deviceId) {
+      this._ringingDraft = null;
+      this._savedRingingDraft = null;
+    }
     const target = policy.no_answer?.target || "";
     const destination = entries.find((entry) => entry.metadata?.endpoint_id === target);
+    const saved = this._savedRingingDraft;
+    if (saved && this._ringingDraft === saved) {
+      const self = entries.find((entry) => entry.metadata?.device_id === deviceId);
+      const requested = String(saved.destination || "").trim();
+      const sameTarget = saved.action === "hangup" ||
+        (saved.action === "voicemail" && !requested
+          ? target === self?.metadata?.endpoint_id
+          : requested === target || [destination?.name, destination?.id, destination?.extension,
+            destination?.metadata?.extension].some(value => value && this._samePeerName(value, requested)));
+      const confirmed = saved.enabled
+        ? Number(policy.ringing_timeout) === Number(saved.seconds) &&
+          policy.no_answer?.kind === (saved.action === "forward" ? "contact" : saved.action) && sameTarget
+        : policy.ringing_timeout == null;
+      if (confirmed) {
+        this._ringingDraft = null;
+        this._savedRingingDraft = null;
+      }
+    }
     const draft = this._ringingDraft || {
       enabled: policy.ringing_timeout != null,
       seconds: policy.ringing_timeout ?? "",
@@ -3299,6 +3320,12 @@ class VoipStackCard extends HTMLElement {
     controls.secondsRow.hidden = !draft.enabled;
     controls.actionRow.hidden = !draft.enabled;
     controls.destinationRow.hidden = !draft.enabled || !["forward", "voicemail"].includes(draft.action);
+    if (controls.actionRow.firstElementChild) {
+      controls.actionRow.firstElementChild.textContent = this._t("After timeout");
+    }
+    if (controls.destinationRow.firstElementChild) {
+      controls.destinationRow.firstElementChild.textContent = this._t(draft.action === "voicemail" ? "Mailbox" : "Forward to");
+    }
     controls.destination.placeholder = this._t(draft.action === "voicemail" ? "This phone's mailbox" : "Disabled");
     for (const field of ["enabled", "seconds", "action", "destination"]) {
       controls[field].disabled = !!this._routingSettingsBusy;
@@ -3344,7 +3371,8 @@ class VoipStackCard extends HTMLElement {
     this._render();
     try {
       await this._hass.callService("voip_stack", "set_phone_settings", data);
-      if (this._ringingDraft === draft) this._ringingDraft = null;
+      // Service completion can precede the matching phonebook state event.
+      if (this._ringingDraft === draft) this._savedRingingDraft = draft;
     } catch (err) {
       this._showError(err.message || String(err));
     } finally {
