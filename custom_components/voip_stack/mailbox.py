@@ -10,7 +10,7 @@ from urllib.parse import quote
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
-from .core.media_archive import MediaArchive
+from .core.media_archive import ArchiveError, MediaArchive
 from .phone_config import phone_subentry_by_endpoint_id, update_phone_subentry
 from .phone_endpoint import EndpointKind
 from .runtime_data import require_runtime_data
@@ -100,6 +100,9 @@ async def async_set_voicemail_settings(call: ServiceCall) -> None:
     entry = config_entry(call.hass)
     if entry is None:
         raise ServiceValidationError("VoIP Stack configuration is unavailable")
+    if call.data.get("enabled") is False:
+        await async_remove_mailbox(call.hass, endpoint.endpoint_id)
+        return
     settings = mailbox_settings(call.hass, endpoint.endpoint_id)
     for key in ("enabled", "max_seconds"):
         if key in call.data:
@@ -193,9 +196,12 @@ async def async_remove_mailbox(hass, endpoint_id):
     """Permanently remove one phone's mailbox after its applications release it."""
     from .session_cleanup import async_wait_for_cleanup
 
-    await async_wait_for_cleanup(asyncio.create_task(
-        _remove_mailbox(hass, endpoint_id), name="voip-mailbox-remove",
-    ))
+    try:
+        await async_wait_for_cleanup(asyncio.create_task(
+            _remove_mailbox(hass, endpoint_id), name="voip-mailbox-remove",
+        ))
+    except (OSError, ArchiveError) as error:
+        raise ServiceValidationError("The mailbox could not be deleted. Restore access to the media directory and try again.") from error
 
 
 async def _remove_mailbox(hass, endpoint_id):
@@ -220,6 +226,9 @@ async def _remove_mailbox(hass, endpoint_id):
     if barriers:
         await asyncio.gather(*barriers)
     archive = owner.component("media_archive")
+    path = archive_path(hass)
+    if archive is None and path is not None:
+        archive = await get_archive(hass)
     if archive is not None:
         await archive.remove_mailbox(endpoint_id)
     entry = config_entry(hass)
@@ -227,6 +236,8 @@ async def _remove_mailbox(hass, endpoint_id):
         settings = dict(entry.data[CONF_ESPHOME_MAILBOXES])
         settings.pop(endpoint_id)
         hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_ESPHOME_MAILBOXES: settings})
+    if entry is not None and phone_subentry_by_endpoint_id(entry, endpoint_id) is not None:
+        update_phone_subentry(hass, entry, endpoint_id, {"voicemail": {}})
     hass.bus.async_fire(EVENT_VOICEMAIL_CHANGED, {"endpoint_id": endpoint_id, "removed": True})
 
 

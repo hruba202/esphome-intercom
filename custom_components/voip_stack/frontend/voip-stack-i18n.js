@@ -1,4 +1,5 @@
 const PT_BR = {
+  "Disabling the mailbox permanently deletes its messages and settings.": "Desativar a caixa postal exclui permanentemente suas mensagens e configurações.",
   "Finishing recording": "Finalizando gravação",
   "Show recording controls": "Mostrar controles de gravação",
   "Record call": "Gravar chamada",
@@ -139,6 +140,7 @@ const PT_BR = {
 };
 
 const DE = {
+  "Disabling the mailbox permanently deletes its messages and settings.": "Beim Deaktivieren werden Nachrichten und Mailbox-Einstellungen dauerhaft gelöscht.",
   "Finishing recording": "Aufzeichnung wird abgeschlossen",
   "Show recording controls": "Aufzeichnungssteuerung anzeigen",
   "Record call": "Anruf aufzeichnen",

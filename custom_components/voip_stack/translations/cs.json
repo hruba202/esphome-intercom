@@ -22,7 +22,7 @@
           "sip_port": "Naslouchací port pro SIP koncový bod HA. HA na tomto portu ambientně přijímá SIP signalizaci přes UDP i TCP.",
           "rtp_port": "Základní RTP UDP port pro média a přenosy HA.",
           "advertise_host": "Volitelné přepsání adresy zveřejňované v telefonních seznamech ESP. Použijte v případě, že se HA nachází za směrovačem, NAT, LXC, VPN nebo ve více podsítích a automaticky oznámená adresa není pro zařízení ESP dostupná.",
-          "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. „Hey Jarvis, call Kitchen“). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
+          "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. \"Hey Jarvis, call Kitchen\"). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
           "assist_endpoint_enabled": "Přidat SIP klapku propojenou přímo s konverzačním asistentem Home Assistant Assist. Není vyžadována žádná samostatná VoIP integrace ani SIP posluchač.",
           "debug_mode": "Povolí podrobnou diagnostiku a logování SIP/RTP/médií bez zaznamenávání samotného zvuku hovorů.",
           "media_capture": "Explicitně zaznamenává zvuk soukromých hovorů: až 15 sekund pro každý směr HA-softphonu a 8 sekund pro každou větev přenosu. Data se ukládají jako WAV/JSON do ~/.cache/voip_stack_debug (režim 0700) a promazávají se na limit 24 souborů / 64 MiB. Ponechte zakázané, pokud zrovna neshromažďujete diagnostický vzorek.",
@@ -190,13 +190,14 @@
             "video_enabled": "Povolit video",
             "auto_answer": "Automatický příjem",
             "send_video": "Odesílat video",
-            "voicemail_enabled": "Povolit hlasovou schránku pro tento telefon"
+            "voicemail_enabled": "Zapnout hlasovou schránku"
           },
           "data_description": {
             "name": "Vyžadované jméno telefonu používané kartou, telefonním seznamem a směrováním hovorů.",
             "extension": "Volitelná unikátní volitelná klapka. Logický telefon zůstává dostupný pro vyzvánění, i když není připojená žádná karta v prohlížeči.",
             "auto_answer": "Automaticky přijmout hovor, pokud má připojený prohlížeč oprávnění k mikrofonu.",
-            "send_video": "Ve výchozím nastavení odesílat obraz z kamery připojeného prohlížeče, pokud je vyjednáno video a je k dispozici oprávnění."
+            "send_video": "Ve výchozím nastavení odesílat obraz z kamery připojeného prohlížeče, pokud je vyjednáno video a je k dispozici oprávnění.",
+            "voicemail_enabled": "Vypnutím trvale odstraníte zprávy, soubory, PIN a nastavení schránky. Opětovné zapnutí vytvoří prázdnou schránku."
           }
         },
         "sip_account": {
@@ -215,7 +216,10 @@
             "video_enabled": "Povolit vyjednávání videa",
             "offline_policy": "Pokud není registrován",
             "offline_forward_target": "Cíl přesměrování",
-            "voicemail_enabled": "Povolit hlasovou schránku pro tento telefon"
+            "voicemail_enabled": "Zapnout hlasovou schránku"
+          },
+          "data_description": {
+            "voicemail_enabled": "Vypnutím trvale odstraníte zprávy, soubory, PIN a nastavení schránky. Opětovné zapnutí vytvoří prázdnou schránku."
           }
         },
         "reconfigure": {
@@ -227,7 +231,8 @@
         "phone_username_invalid": "Používejte pouze písmena, číslice, tečky, podtržítka nebo pomlčky.",
         "phone_password_required": "Je vyžadováno SIP heslo.",
         "phone_forward_target_required": "Pro strategii Přesměrování je vyžadován cílový bod.",
-        "phone_alias_conflict": "Jméno, klapka nebo uživatelské jméno je již využíváno jiným telefonem."
+        "phone_alias_conflict": "Jméno, klapka nebo uživatelské jméno je již využíváno jiným telefonem.",
+        "mailbox_removal_failed": "Schránku nelze odstranit. Obnovte přístup ke složce médií a zkuste to znovu."
       },
       "abort": {
         "reconfigure_successful": "Telefon byl úspěšně překonfigurován.",
@@ -458,7 +463,7 @@
     },
     "default_trunk_missing": {
       "title": "Vyberte výchozí odchozí SIP trunk",
-      "description": "Žádný existující trunk není vybrán jako výchozí. Otevřete VoIP Stack, upravte požadovanou linku a zapněte „Použít jako výchozí odchozí trunk“. Linku můžete také vybrat v možnostech telefonu nebo v akci volání. Odstranění linky nikdy bez upozornění nevybere jiného poskytovatele."
+      "description": "Žádný existující trunk není vybrán jako výchozí. Otevřete VoIP Stack, upravte požadovanou linku a zapněte \"Použít jako výchozí odchozí trunk\". Linku můžete také vybrat v možnostech telefonu nebo v akci volání. Odstranění linky nikdy bez upozornění nevybere jiného poskytovatele."
     },
     "duplicate_extensions": {
       "title": "Duplicitní telefonní klapky",

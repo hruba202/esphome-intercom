@@ -190,13 +190,14 @@
             "video_enabled": "Allow video",
             "auto_answer": "Auto answer",
             "send_video": "Send video",
-            "voicemail_enabled": "Enable voicemail for this phone"
+            "voicemail_enabled": "Enable mailbox"
           },
           "data_description": {
             "name": "Required phone name used by the card, phonebook and call routing.",
             "extension": "Optional unique dialable extension. The logical phone remains ringable when no browser card is connected.",
             "auto_answer": "Automatically answer when an attached browser has microphone permission.",
-            "send_video": "Send an attached browser camera by default when video is negotiated and permission is available."
+            "send_video": "Send an attached browser camera by default when video is negotiated and permission is available.",
+            "voicemail_enabled": "Disabling this mailbox permanently deletes its messages, files, PIN and mailbox settings. Enabling it again creates an empty mailbox."
           }
         },
         "sip_account": {
@@ -215,7 +216,10 @@
             "video_enabled": "Allow video negotiation",
             "offline_policy": "When not registered",
             "offline_forward_target": "Forward destination",
-            "voicemail_enabled": "Enable voicemail for this phone"
+            "voicemail_enabled": "Enable mailbox"
+          },
+          "data_description": {
+            "voicemail_enabled": "Disabling this mailbox permanently deletes its messages, files, PIN and mailbox settings. Enabling it again creates an empty mailbox."
           }
         },
         "reconfigure": {
@@ -227,7 +231,8 @@
         "phone_username_invalid": "Use only letters, numbers, dots, underscores or hyphens.",
         "phone_password_required": "A SIP password is required.",
         "phone_forward_target_required": "A forward destination is required for the Forward policy.",
-        "phone_alias_conflict": "The name, extension or username is already used by another phone."
+        "phone_alias_conflict": "The name, extension or username is already used by another phone.",
+        "mailbox_removal_failed": "The mailbox could not be deleted. Restore access to the media directory and try again."
       },
       "abort": {
         "reconfigure_successful": "Phone reconfigured successfully.",

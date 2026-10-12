@@ -190,13 +190,14 @@
             "video_enabled": "Permitir vídeo",
             "auto_answer": "Atendimento automático",
             "send_video": "Enviar vídeo",
-            "voicemail_enabled": "Ativar correio de voz para este telefone"
+            "voicemail_enabled": "Ativar caixa postal"
           },
           "data_description": {
             "name": "Nome obrigatório do telefone usado pelo card, pela agenda telefônica e pelo roteamento de chamadas.",
             "extension": "Extensão discável exclusiva opcional. O telefone lógico continua podendo receber chamadas mesmo sem um card de navegador conectado.",
             "auto_answer": "Atende automaticamente quando um navegador conectado tiver permissão para usar o microfone.",
-            "send_video": "Envia por padrão a câmera do navegador conectado quando o vídeo for negociado e houver permissão."
+            "send_video": "Envia por padrão a câmera do navegador conectado quando o vídeo for negociado e houver permissão.",
+            "voicemail_enabled": "Desativar exclui permanentemente as mensagens, arquivos, PIN e configurações da caixa postal. Ativar novamente cria uma caixa vazia."
           }
         },
         "sip_account": {
@@ -215,7 +216,10 @@
             "video_enabled": "Permitir negociação de vídeo",
             "offline_policy": "Quando não estiver registrado",
             "offline_forward_target": "Destino de encaminhamento",
-            "voicemail_enabled": "Ativar correio de voz para este telefone"
+            "voicemail_enabled": "Ativar caixa postal"
+          },
+          "data_description": {
+            "voicemail_enabled": "Desativar exclui permanentemente as mensagens, arquivos, PIN e configurações da caixa postal. Ativar novamente cria uma caixa vazia."
           }
         },
         "reconfigure": {
@@ -227,7 +231,8 @@
         "phone_username_invalid": "Use somente letras, números, pontos, sublinhados ou hífens.",
         "phone_password_required": "A senha SIP é obrigatória.",
         "phone_forward_target_required": "Um destino de encaminhamento é obrigatório para a política Encaminhar.",
-        "phone_alias_conflict": "O nome, a extensão ou o usuário já está sendo usado por outro telefone."
+        "phone_alias_conflict": "O nome, a extensão ou o usuário já está sendo usado por outro telefone.",
+        "mailbox_removal_failed": "Não foi possível excluir a caixa postal. Restaure o acesso ao diretório de mídia e tente novamente."
       },
       "abort": {
         "reconfigure_successful": "Telefone reconfigurado com sucesso.",

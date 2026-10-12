@@ -859,6 +859,10 @@ export function buildMainCardSkeleton(cardVersion) {
     mailboxLabel.textContent = translate("Enable this phone's mailbox");
     mailboxRow.appendChild(mailboxLabel);
     settingsPanel.appendChild(mailboxRow);
+    const mailboxHelp = document.createElement("small");
+    mailboxHelp.textContent = translate("Disabling the mailbox permanently deletes its messages and settings.");
+    mailboxHelp.style.display = "block";
+    mailboxLabel.appendChild(mailboxHelp);
 
     const ringtoneRow = document.createElement("div");
     ringtoneRow.className = "auto-answer-row";

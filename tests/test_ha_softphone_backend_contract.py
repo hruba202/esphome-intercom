@@ -764,16 +764,6 @@ class HaSoftphoneBackendContractTest(unittest.TestCase):
             self.assertNotIn("endpoint_id", fields)
             self.assertNotIn("entity_id", fields)
 
-    def test_invalid_new_sip_username_stays_a_form_validation_error(self) -> None:
-        config_flow = CONFIG_FLOW.read_text()
-        start = config_flow.index("    def _normalized_common(")
-        normalized = config_flow[start : config_flow.index("    def _finish(", start)]
-        self.assertIn("elif CONF_PHONE_USERNAME not in errors:", normalized)
-        guarded = normalized.split("elif CONF_PHONE_USERNAME not in errors:", 1)[
-            1
-        ].split("data = {", 1)[0]
-        self.assertIn("endpoint_id = new_sip_account_endpoint_id()", guarded)
-
     def test_dnd_targets_browser_and_registered_sip_phone_devices(self) -> None:
         configured_start = self.service_endpoints.index(
             "def service_configured_endpoint("

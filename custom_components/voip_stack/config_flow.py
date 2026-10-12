@@ -1091,8 +1091,22 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
         data[CONF_PHONE_POLICY] = policy_data
         return data, errors
 
-    def _finish(self, data: dict[str, Any]):
+    async def _finish(self, data: dict[str, Any], *, remove_mailbox: bool = False):
         if self._reconfigure:
+            if remove_mailbox and self._current_data().get("voicemail", {}).get("enabled"):
+                from .mailbox import async_remove_mailbox
+                from homeassistant.exceptions import ServiceValidationError
+
+                try:
+                    await async_remove_mailbox(self.hass, data[CONF_PHONE_ENDPOINT_ID])
+                except ServiceValidationError:
+                    is_sip = self._kind is EndpointKind.SIP_ACCOUNT
+                    return self.async_show_form(
+                        step_id="sip_account" if is_sip else "browser",
+                        data_schema=self._common_schema(sip_account=is_sip),
+                        errors={"base": "mailbox_removal_failed"},
+                    )
+                data["voicemail"] = {}
             return self.async_update_and_abort(
                 self._get_entry(),
                 self._get_reconfigure_subentry(),
@@ -1138,7 +1152,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                 user_input, kind=EndpointKind.BROWSER
             )
             if not errors:
-                return self._finish(data)
+                return await self._finish(data, remove_mailbox=user_input.get("voicemail_enabled") is False)
             return self.async_show_form(
                 step_id="browser",
                 data_schema=self._common_schema(sip_account=False),
@@ -1155,7 +1169,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                 user_input, kind=EndpointKind.SIP_ACCOUNT
             )
             if not errors:
-                return self._finish(data)
+                return await self._finish(data, remove_mailbox=user_input.get("voicemail_enabled") is False)
             return self.async_show_form(
                 step_id="sip_account",
                 data_schema=self._common_schema(sip_account=True),

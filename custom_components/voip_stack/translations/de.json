@@ -190,13 +190,14 @@
             "video_enabled": "Video zulassen",
             "auto_answer": "Automatische Antwort",
             "send_video": "Video senden",
-            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
+            "voicemail_enabled": "Mailbox aktivieren"
           },
           "data_description": {
             "name": "Erforderlicher Telefonname, der von der Karte, dem Telefonbuch und der Anrufweiterleitung verwendet wird.",
             "extension": "Optionale, eindeutig wählbare Nebenstelle. Das logische Telefon bleibt klingelbar, wenn keine Browserkarte angeschlossen ist.",
             "auto_answer": "Automatische Antwort, wenn ein angeschlossener Browser über eine Mikrofonberechtigung verfügt.",
-            "send_video": "Senden Sie standardmäßig eine angeschlossene Browserkamera, wenn Video ausgehandelt wird und die Erlaubnis verfügbar ist."
+            "send_video": "Senden Sie standardmäßig eine angeschlossene Browserkamera, wenn Video ausgehandelt wird und die Erlaubnis verfügbar ist.",
+            "voicemail_enabled": "Beim Deaktivieren werden Nachrichten, Dateien, PIN und Mailbox-Einstellungen dauerhaft gelöscht. Erneutes Aktivieren erstellt eine leere Mailbox."
           }
         },
         "sip_account": {
@@ -215,7 +216,10 @@
             "video_enabled": "Videoverhandlung zulassen",
             "offline_policy": "Wenn nicht registriert",
             "offline_forward_target": "Ziel weiterleiten",
-            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
+            "voicemail_enabled": "Mailbox aktivieren"
+          },
+          "data_description": {
+            "voicemail_enabled": "Beim Deaktivieren werden Nachrichten, Dateien, PIN und Mailbox-Einstellungen dauerhaft gelöscht. Erneutes Aktivieren erstellt eine leere Mailbox."
           }
         },
         "reconfigure": {
@@ -227,7 +231,8 @@
         "phone_username_invalid": "Verwenden Sie nur Buchstaben, Zahlen, Punkte, Unterstriche oder Bindestriche.",
         "phone_password_required": "Ein SIP-Passwort ist erforderlich.",
         "phone_forward_target_required": "Für die Weiterleitungsrichtlinie ist ein Weiterleitungsziel erforderlich.",
-        "phone_alias_conflict": "Der Name, die Durchwahl oder der Benutzername wird bereits von einem anderen Telefon verwendet."
+        "phone_alias_conflict": "Der Name, die Durchwahl oder der Benutzername wird bereits von einem anderen Telefon verwendet.",
+        "mailbox_removal_failed": "Die Mailbox konnte nicht gelöscht werden. Stellen Sie den Zugriff auf das Medienverzeichnis wieder her und versuchen Sie es erneut."
       },
       "abort": {
         "reconfigure_successful": "Telefon erfolgreich neu konfiguriert.",

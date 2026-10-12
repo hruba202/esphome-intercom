@@ -18,7 +18,10 @@ from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpo
 from custom_components.voip_stack.store import config_entry
 from custom_components.voip_stack.websocket_api import CALL_EVENT
 
-from .test_automation_originate_ha import lab, simple_sequence, tts_fixture, dial
+
+from .test_automation_originate_ha import lab as lab, simple_sequence, tts_fixture, dial
+from .test_browser_phone_policy_ha import browser_lab as browser_lab, originate
+from .test_trunk_calls_ha import trunks as trunks
 
 pytestmark = pytest.mark.ha
 
@@ -469,6 +472,12 @@ async def test_native_phone_flow_can_enable_mailbox(mailbox_lab, custom_integrat
     values = {"name": "Study", "extension": "202", "voicemail_enabled": True}
     if kind == "sip_account":
         values.update(username="study", password="test-only")
+        invalid = await lab.hass.config_entries.subentries.async_configure(
+            form["flow_id"], form["data_schema"]({**values, "username": "invalid user"}),
+        )
+        assert invalid["type"] == "form"
+        assert invalid["errors"] == {"username": "phone_username_invalid"}
+        assert not any(item.title == "Study" for item in entry.subentries.values())
     result = await lab.hass.config_entries.subentries.async_configure(form["flow_id"], form["data_schema"](values))
     assert result["type"] == "create_entry"
     created = next(item for item in entry.subentries.values() if item.title == "Study")
@@ -496,7 +505,6 @@ async def test_phone_rename_preserves_private_mailbox_settings(mailbox_lab, cust
     assert updated.data["endpoint_id"] == "kitchen"
 
 
-from .test_browser_phone_policy_ha import browser_lab, originate
 
 
 async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(browser_lab, tmp_path, monkeypatch):
@@ -582,7 +590,6 @@ async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(bro
         unsubscribe()
 
 
-from .test_trunk_calls_ha import trunks
 
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
@@ -678,7 +685,7 @@ async def test_mailbox_settings_reject_contact_collision_before_persisting(mailb
         await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
             "device_id": "mailbox-device", "enabled": True,
         }, blocking=True)
-    assert mailbox_settings(lab.hass, "kitchen")["enabled"] is False
+    assert mailbox_settings(lab.hass, "kitchen") == {}
 
 
 async def test_enabled_mailbox_reserves_contact_aliases_and_can_be_reconfigured(mailbox_lab):
@@ -1227,3 +1234,81 @@ async def test_permanent_esphome_device_removal_purges_mailbox(mailbox_lab):
         assert "esp-test" not in entry.data["esphome_mailboxes"]
     finally:
         remove()
+
+
+@pytest.mark.parametrize("via_flow", [False, True])
+async def test_disabling_mailbox_deletes_only_its_messages_and_recreates_empty(
+    mailbox_lab, custom_integrations, via_flow,
+):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.mailbox import mailbox_settings
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    paths = {}
+    for mailbox, kind in (("kitchen", "voicemail"), ("other", "voicemail"), ("kitchen", "recording")):
+        writer = await archive.begin(mailbox, kind=kind)
+        assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+        message = await writer.finish()
+        paths[mailbox, kind] = archive.segment_path(message["id"], mailbox)
+    if via_flow:
+        entry = config_entry(lab.hass)
+        child = next(item for item in entry.subentries.values() if item.data.get("endpoint_id") == "kitchen")
+        lab.hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+        form = await lab.hass.config_entries.subentries.async_init(
+            (entry.entry_id, "phone"), context={"source": "reconfigure", "subentry_id": child.subentry_id},
+        )
+        result = await lab.hass.config_entries.subentries.async_configure(
+            form["flow_id"], {**form["data_schema"]({}), "voicemail_enabled": False},
+        )
+        assert result["type"] == "abort"
+    else:
+        await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
+            "device_id": "mailbox-device", "enabled": False,
+        }, blocking=True)
+    assert mailbox_settings(lab.hass, "kitchen") == {}
+    assert archive.counts("kitchen") == (0, 0)
+    assert not paths["kitchen", "voicemail"].exists()
+    assert paths["other", "voicemail"].exists()
+    assert paths["kitchen", "recording"].exists()
+    await archive.load()
+    assert archive.counts("kitchen") == (0, 0)
+    await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
+        "device_id": "mailbox-device", "enabled": True,
+    }, blocking=True)
+    assert mailbox_settings(lab.hass, "kitchen") == {"enabled": True}
+    assert archive.counts("kitchen") == (0, 0)
+
+
+async def test_mailbox_delete_storage_failure_is_retryable(mailbox_lab):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.mailbox import mailbox_settings
+    from homeassistant.exceptions import ServiceValidationError
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    path = archive.segment_path(message["id"], "kitchen")
+    original_io = archive.run_io
+
+    async def unavailable(function, *args):
+        if function.__name__ == "remove":
+            raise PermissionError("Media directory unavailable")
+        return await original_io(function, *args)
+
+    archive.run_io = unavailable
+    data = {"device_id": "mailbox-device", "enabled": False}
+    try:
+        with pytest.raises(ServiceValidationError, match="could not be deleted"):
+            await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", data, blocking=True)
+        assert mailbox_settings(lab.hass, "kitchen")["enabled"]
+        assert path.exists()
+        assert archive.counts("kitchen") == (1, 0)
+    finally:
+        archive.run_io = original_io
+    await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", data, blocking=True)
+    assert not path.exists()
+    assert mailbox_settings(lab.hass, "kitchen") == {}
+    assert archive.counts("kitchen") == (0, 0)
