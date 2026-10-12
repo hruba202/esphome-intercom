@@ -777,7 +777,8 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
 
 
 @pytest.mark.parametrize("conflict", [None, "*97", "mailbox.other", "*60101"])
-async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch, conflict):
+@pytest.mark.parametrize("provider_default", ["en", "ar_JO"])
+async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch, conflict, provider_default):
     from types import SimpleNamespace
     from custom_components.voip_stack import voicemail_config as config_module
 
@@ -801,10 +802,11 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.missing"})
     assert form["errors"] == {"tts_entity_id": "voicemail_tts_unavailable"}
     monkeypatch.setattr(config_module, "voice_engine", lambda _hass, identity:
-                        SimpleNamespace(available=True, supported_languages=["en", "it"], default_language="en")
+                        SimpleNamespace(available=True, supported_languages=["ar_JO", "en", "it"], default_language=provider_default)
                         if identity == "tts.test" else None)
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.test"})
     assert form["step_id"] == "voicemail_language"
+    assert form["data_schema"]({})["language"] in {"en", "it"}
     from homeassistant.data_entry_flow import InvalidData
     with pytest.raises(InvalidData):
         await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "xx"})

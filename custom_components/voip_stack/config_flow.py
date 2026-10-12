@@ -741,6 +741,8 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
         _entry, existing = self._current_entry_data()
         previous = existing.get("voicemail", {}).get("language")
         default = previous if previous in languages else entity.default_language
+        if default not in languages:
+            default = next(iter(languages), "")
         errors = {}
         if user_input is not None:
             language = str(user_input.get("language") or "")

@@ -6,6 +6,8 @@ Development preview with changes since stable 2026.10.1.
 
 ### 🔧 Storage and configuration corrections
 
+- Keep the voicemail language default inside the supported menu languages,
+  including providers whose own default language is outside that set.
 - Release completed recording resources even when the final disk-usage scan
   fails. Keep saved messages accessible and reconcile the storage quota before
   accepting a new recording.
