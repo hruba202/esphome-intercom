@@ -10,7 +10,7 @@ import pytest
 from custom_components.voip_stack.core import audio_format, sdp, rtp
 from custom_components.voip_stack import sip_rtp_bridge
 from custom_components.voip_stack.local_media_bridge import LocalMediaBridge, adopt_relay_for_application
-from .test_automation_call import application
+from .test_automation_call import application as application
 
 pytestmark = pytest.mark.ha
 
@@ -194,3 +194,40 @@ class AudioSpliceTest(unittest.IsolatedAsyncioTestCase):
         await second.stop()
         await combined.stop()
         self.assertEqual(len(released), 2)
+
+    async def test_reservation_merge_failure_preserves_original_owners_for_retry(self):
+        released = []
+        first, second = self.relay(0, released), self.relay(1, released)
+        left, right = first.left_transport, second.right_transport
+        protocols = left.protocol, right.protocol
+
+        def failed_merge(previous, retained):
+            raise RuntimeError("reservation unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "reservation unavailable"):
+            sip_rtp_bridge.SipRtpRelay.splice_audio(
+                first, "left", second, "right", merge_reservations=failed_merge,
+            )
+        self.assertEqual((left.protocol, right.protocol), protocols)
+        self.assertIs(first.left_transport, left)
+        self.assertIs(second.right_transport, right)
+        self.assertFalse(first._stop_requested or second._stop_requested)
+        self.assertFalse(released)
+        merged_releases = []
+
+        def merge(previous, retained):
+            self.assertEqual(previous, ((20000, 20002), (20010, 20012)))
+            self.assertEqual(retained, (20000, 20012))
+            return merged_releases.append
+
+        combined = sip_rtp_bridge.SipRtpRelay.splice_audio(
+            first, "left", second, "right", merge_reservations=merge,
+        )
+        await first.stop()
+        await second.stop()
+        self.assertFalse(released or merged_releases)
+        await combined.stop()
+        await combined.stop()
+        self.assertEqual(merged_releases, [(20000, 20012)])
+        self.assertFalse(released)
+        self.assertEqual((left.closed, right.closed), (1, 1))

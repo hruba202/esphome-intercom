@@ -56,7 +56,14 @@ async def try_local_audio_transfer(hass, runtime, grant, referrer):
         or runtime.endpoints.require(grant.endpoint_id).active_call_id != original.call_id
     ):
         return SipTransferResult(False, 486, "busy")
-    relay = SipRtpRelay.splice_audio(source_relay, "left" if from_callee else "right", destination_relay, "right")
+    def merge_reservations(previous, retained):
+        reservation = RtpPortReservation.merge(hass, previous, retained)
+        return lambda _ports: reservation.release()
+
+    relay = SipRtpRelay.splice_audio(
+        source_relay, "left" if from_callee else "right", destination_relay, "right",
+        merge_reservations=merge_reservations,
+    )
     # No awaits during ownership cutover. The referring phone's dialog stays
     # with its old owner until the final NOTIFY transaction completes.
     goal = original if from_callee else calls.upsert(
@@ -76,14 +83,6 @@ async def try_local_audio_transfer(hass, runtime, grant, referrer):
         goal.add_resource(f"retired_relay:{session.call_id}", retired,
                           lambda _reason, value=retired: value.stop(), stage=CleanupStage.MEDIA)
     calls.attach_relay(goal.call_id, relay)
-    reservation = RtpPortReservation.merge(
-        hass, ((source_relay.left_port, source_relay.right_port),
-               (destination_relay.left_port, destination_relay.right_port)),
-        (relay.left_port, relay.right_port),
-    )
-    # Old relay release callbacks have already been detached by splice_audio.
-    # Replace their composite callback so later calls can reuse retired ports.
-    relay._on_release = lambda _ports: reservation.release()
 
     def watch_client(value):
         return asyncio.create_task(async_watch_sip_bridge_destination(
