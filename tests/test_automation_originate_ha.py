@@ -785,3 +785,59 @@ async def test_multiple_calls_in_same_execution_require_explicit_selection(lab):
             "call_id":result["call_id"], "expected_generation":result["generation"],
         }, blocking=True, context=context)
     assert not lab.calls.sessions
+
+
+async def test_outgoing_announcement_owns_rtp_port_before_invite_and_reuses_it(lab, monkeypatch):
+    """An independent peer cannot take the advertised port during signaling."""
+    phone = lab.phones[0]
+    answer = phone.answer
+    advertised = []
+    exposed = []
+
+    def observe_answer():
+        port = int(re.search(rb"m=audio (\d+)", phone.last_request.body)[1])
+        advertised.append(port)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as contender:
+            try:
+                contender.bind(("0.0.0.0", port))
+            except OSError:
+                pass
+            else:
+                exposed.append(port)
+        answer()
+
+    monkeypatch.setattr(phone, "answer", observe_answer)
+    for _ in range(2):
+        result = await dial(lab, Context())
+        assert not exposed, "The INVITE advertised an RTP port not yet bound by its owner"
+        media = lab.calls.resource_for(result["call_id"], "relay")
+        assert media.transport.get_extra_info("sockname")[1] == advertised[-1]
+        await lab.calls.terminate_call_wait(result["call_id"], reason="test_done")
+        assert not lab.calls.sessions
+        assert not lab.runtime.rtp_port_pool["used"]
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as released:
+            released.bind(("0.0.0.0", advertised[-1]))
+
+
+async def test_outgoing_rtp_bind_failure_releases_call_and_allows_retry(lab, monkeypatch):
+    from custom_components.voip_stack import automation_originate
+
+    def unavailable(_port):
+        raise OSError("RTP socket unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(automation_originate, "bind_sip_rtp_socket", unavailable)
+        with pytest.raises(ServiceValidationError):
+            await dial(lab, Context())
+    assert not lab.phones[0].invites
+    assert not lab.calls.sessions
+    assert not lab.runtime.rtp_port_pool["used"]
+    assert all(not phone.active_call_id for phone in lab.runtime.endpoints.endpoints)
+    result = await dial(lab, Context())
+    media = lab.calls.resource_for(result["call_id"], "relay")
+    port = media.local_rtp_port
+    await lab.calls.terminate_call_wait(result["call_id"], reason="test_done")
+    assert not lab.calls.sessions
+    assert not lab.runtime.rtp_port_pool["used"]
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as released:
+        released.bind(("0.0.0.0", port))

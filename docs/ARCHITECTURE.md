@@ -237,6 +237,12 @@ Automation and voicemail use
 from an announcement to voicemail transfers that application's control within
 the same call; it does not originate a second call to record the first one.
 
+Outgoing Automation calls bind their advertised RTP socket before sending the
+INVITE. The SIP client owns that socket until the answered call transfers it to
+`LocalCallMedia`, which adopts it without rebinding. Failed and cancelled
+attempts release the socket through the existing call cleanup. This follows
+the media-readiness requirement in [RFC 3264 section 5.1](https://www.rfc-editor.org/rfc/rfc3264.html#section-5.1).
+
 ```mermaid
 flowchart TD
     caller[Calling phone] --> call[Existing SIP call and media session]

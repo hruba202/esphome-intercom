@@ -14,6 +14,9 @@ Development preview with changes since stable 2026.10.1.
   it again creates an empty mailbox. Other mailboxes and call recordings remain.
 - Transfer RTP port-release ownership inside the existing relay splice and
   restore the original relays if reservation preparation fails.
+- Bind outgoing Automation RTP before sending INVITE and hand the same socket
+  to the media application after answer. This prevents another socket from
+  taking the advertised port while the call is being established.
 - Correct outdated single-trunk, PCM-only and REGISTER requirements in current
   guides. Add Python lint checks to CI and clarify fixture imports.
 
