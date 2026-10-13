@@ -19,28 +19,28 @@
 # An external front-end may provide processed audio; this YAML adds no AEC REF.
 #
 # PLAYBACK: speaker_media_player owns the media + announcement pipelines.
-#      [HTTP / Sendspin]          [VA TTS / HTTP / files]              [VoIP RX]
-#              │                             │                             │
-#              ▼                             ▼                             │
-#       [media_pipeline]          [announcement_pipeline]                  │
-#              │                             │                             │
-#              ▼                             ▼                             ▼
-#    [media_speaker_input]          [tts_speaker_input]           [voip_speaker_input]
-#          resampler                     resampler                     resampler
-#              │                             │                             │
-#              ▼                             ▼                             ▼
-#     [media_mixer_input]            [tts_mixer_input]             [voip_mixer_input]
-#              │                             │                             │
-#              └─────────────────────────────┼─────────────────────────────┘
-#                                            ▼
-#                             ┌─────────────────────────────┐
-#                             │   audio_mixer: 48 kHz mono  │
-#                             └──────────────┬──────────────┘
-#                                            ▼
+#       [HTTP / Sendspin]          [VA TTS / HTTP / files]              [VoIP RX]
+#               │                             │                             │
+#               ▼                             ▼                             │
+#       [media_pipeline]           [announcement_pipeline]                  │
+#               │                             │                             │
+#               ▼                             ▼                             ▼
+#     [media_speaker_input]          [tts_speaker_input]          [voip_speaker_input]
+#           resampler                     resampler                     resampler
+#               │                             │                             │
+#               ▼                             ▼                             ▼
+#      [media_mixer_input]            [tts_mixer_input]            [voip_mixer_input]
+#               │                             │                             │
+#               └─────────────────────────────┼─────────────────────────────┘
+#                                             ▼
+#                              ┌─────────────────────────────┐
+#                              │   audio_mixer: 48 kHz mono  │
+#                              └──────────────┬──────────────┘
+#                                             ▼
 #                                       [hw_speaker]
-#                                            │
-#                                            ▼
-#                       [native i2s_audio TX → MAX98357A → speaker]
+#                                             │
+#                                             ▼
+#                        [native i2s_audio TX → MAX98357A → speaker]
 #
 # The three *_speaker_input nodes are resamplers; *_mixer_input are mixer ports.
 # TTS, ringtone and timer files share the announcement pipeline, not VoIP RX.

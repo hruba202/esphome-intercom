@@ -9,17 +9,17 @@
 # Two microphones + the analog ES8311 playback reference enter the ES7210.
 # ES7210 serial slots are ordered MIC1, MIC3, MIC2, MIC4 by the codec backend.
 #
-# [Mic 1: slot 0] ──┐
-# [Mic 2: slot 2] ──┼──> [Audio Stack: 48 -> 16 kHz] ──> [Dual-mic AFE]
-# [DAC ref: slot 1] ┘                                      │
-#                           ┌───────────────────────────────┤
-#                           v                               v
-#                     [MWW / Assist]                  [VoIP microphone]
+# [Mic 1: slot 0] ───┐
+# [Mic 2: slot 2] ───┼──> [Audio Stack: 48 -> 16 kHz] ──> [Dual-mic AFE]
+# [DAC ref: slot 1] ─┘                                          │
+#                            ┌──────────────────────────────────┤
+#                            v                                  v
+#                     [MWW / Assist]                    [VoIP microphone]
 #
 # [Sendspin / HTTP] ─┐
-# [TTS / ringtone] ─┼──> [48 kHz mono mixer] ──> [ES8311] ──> [NS4150B / speaker]
-# [VoIP receive] ───┘                               │
-#                                                  └──> [ES7210 reference]
+# [TTS / ringtone] ──┼──> [48 kHz mono mixer] ──> [ES8311] ──> [NS4150B / speaker]
+# [VoIP receive] ────┘                               │
+#                                                    └──> [ES7210 reference]
 #
 # ST77916: 360x360 QSPI. CST816 touch and LCD reset use TCA9554 P0/P1.
 # All avatar images are native 360x360 RGB565, without runtime scaling.
