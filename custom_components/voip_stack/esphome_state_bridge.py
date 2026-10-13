@@ -189,7 +189,33 @@ def register_state_event_bridge(hass: HomeAssistant) -> None:
             ),
         )
 
-    runtime.esp_state_event_bridge_unsub = hass.bus.async_listen(
-        EVENT_STATE_CHANGED,
-        _on_state_changed,
+    @callback
+    def _on_entity_registry_changed(event: Event) -> None:
+        old_id = event.data.get("old_entity_id")
+        new_id = event.data.get("entity_id")
+        if event.data.get("action") != "update" or not old_id or not new_id:
+            return
+        endpoint = runtime.endpoints.by_entity_id(old_id)
+        entity = er.async_get(hass).async_get(new_id)
+        if (
+            endpoint is None or str(endpoint.kind) != "esphome"
+            or entity is None or entity.platform != "esphome"
+            or entity.device_id != endpoint.device_id
+        ):
+            return
+        from .endpoint_device import async_link_endpoint_entity
+
+        runtime.esp_state_event_generations.pop(old_id, None)
+        async_link_endpoint_entity(runtime.endpoints, endpoint.endpoint_id, new_id, old_id)
+
+    unsubscribe_state = hass.bus.async_listen(EVENT_STATE_CHANGED, _on_state_changed)
+    unsubscribe_registry = hass.bus.async_listen(
+        er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity_registry_changed
     )
+
+    @callback
+    def unsubscribe() -> None:
+        unsubscribe_state()
+        unsubscribe_registry()
+
+    runtime.esp_state_event_bridge_unsub = unsubscribe

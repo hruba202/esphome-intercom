@@ -151,14 +151,14 @@ def async_link_endpoint_entity(
     registry: EndpointRegistry | None,
     endpoint_id: str,
     entity_id: str | None,
+    old_entity_id: str | None = None,
 ) -> None:
     """Index an entity under its endpoint without mutating HA device ownership."""
     if registry is None or not entity_id:
         return
     endpoint = registry.get(endpoint_id)
-    if endpoint is None or entity_id in endpoint.entity_ids:
+    if endpoint is None:
         return
-    registry.update(
-        endpoint_id,
-        entity_ids=frozenset((*endpoint.entity_ids, entity_id)),
-    )
+    entity_ids = (endpoint.entity_ids - {old_entity_id}) | {entity_id}
+    if entity_ids != endpoint.entity_ids:
+        registry.update(endpoint_id, entity_ids=frozenset(entity_ids))
