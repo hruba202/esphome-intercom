@@ -22,7 +22,7 @@
           "sip_port": "Naslouchací port pro SIP koncový bod HA. HA na tomto portu automaticky přijímá SIP signalizaci přes UDP i TCP.",
           "rtp_port": "Základní RTP UDP port pro média a přenosy HA.",
           "advertise_host": "Volitelné přepsání adresy zveřejňované v telefonních seznamech ESP. Použijte v případě, že se HA nachází za směrovačem, NAT, LXC, VPN nebo ve více podsítích a automaticky oznámená adresa není pro zařízení ESP dostupná.",
-          "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. „Hey Jarvis, zavolej do kuchyně“). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
+          "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. \"Hey Jarvis, zavolej do kuchyně\"). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
           "assist_endpoint_enabled": "Přidat SIP klapku propojenou přímo s konverzačním asistentem Home Assistant Assist. Není vyžadována žádná samostatná VoIP integrace ani SIP posluchač.",
           "debug_mode": "Povolí podrobnou diagnostiku a logování SIP/RTP/médií bez zaznamenávání samotného zvuku hovorů.",
           "media_capture": "Explicitně zaznamenává zvuk soukromých hovorů: až 15 sekund pro každý směr HA-softphonu a 8 sekund pro každou větev přenosu. Data se ukládají jako WAV/JSON do ~/.cache/voip_stack_debug (režim 0700) a promazávají se na limit 24 souborů / 64 MiB. Ponechte zakázané, pokud zrovna neshromažďujete diagnostický vzorek.",
@@ -458,7 +458,7 @@
     },
     "default_trunk_missing": {
       "title": "Vyberte výchozí odchozí SIP trunk",
-      "description": "Žádný existující trunk není vybrán jako výchozí. Otevřete VoIP Stack, upravte požadovaný trunk a zapněte „Použít jako výchozí odchozí trunk“. Trunk můžete také vybrat v možnostech telefonu nebo v akci volání. Odstranění trunku nikdy bez upozornění nevybere jiného poskytovatele."
+      "description": "Žádný existující trunk není vybrán jako výchozí. Otevřete VoIP Stack, upravte požadovaný trunk a zapněte \"Použít jako výchozí odchozí trunk\". Trunk můžete také vybrat v možnostech telefonu nebo v akci volání. Odstranění trunku nikdy bez upozornění nevybere jiného poskytovatele."
     },
     "duplicate_extensions": {
       "title": "Duplicitní telefonní klapky",
