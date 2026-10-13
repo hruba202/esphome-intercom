@@ -117,7 +117,7 @@ module_app mwi.so
             samples = struct.unpack(f"<{audio.getnframes() * audio.getnchannels()}h", audio.readframes(audio.getnframes()))
             assert any(2000 <= abs(sample) <= 2400 for sample in samples)
         evidence = Path(__file__).parents[1] / "test_captures/ha-pbx/baresip-voicemail"
-        evidence.mkdir(exist_ok=True)
+        evidence.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(wav, evidence / "received.wav")
         (evidence / "baresip.log").write_text(peer.output)
     finally:
