@@ -1576,7 +1576,7 @@ def websocket_subscribe_call_events(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     msg_id = msg["id"]
     requested_endpoint = str(msg.get("endpoint_id") or "").strip()
     if not requested_endpoint and msg.get("device_id"):
@@ -1629,7 +1629,7 @@ def websocket_subscribe_ha_softphone_state(
     msg: Dict[str, Any],
 ) -> None:
     """Stream authoritative HA softphone snapshots."""
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     msg_id = msg["id"]
     try:
         requested_endpoint = _endpoint_id_from_selector(
@@ -1692,7 +1692,7 @@ async def websocket_ha_softphone_state(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     try:
         endpoint_id = _endpoint_id_from_selector(
             hass,
@@ -1733,10 +1733,15 @@ async def websocket_list_devices(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    from .entity_identity import shared_entity_ids
+
+    require_websocket_read(hass, connection)
     connection.send_result(
         msg["id"],
-        {"devices": [*_ha_softphone_devices(hass), *(await _get_voip_devices(hass))]},
+        {
+            "devices": [*_ha_softphone_devices(hass), *(await _get_voip_devices(hass))],
+            "entity_ids": shared_entity_ids(hass),
+        },
     )
 
 
@@ -1749,7 +1754,7 @@ async def websocket_resolve_device(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     device_id = str(msg.get("device_id") or "")
     registry = _endpoint_registry(hass)
     endpoint = registry.by_device_id(device_id) if registry is not None else None

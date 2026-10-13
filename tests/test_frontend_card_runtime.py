@@ -36,9 +36,11 @@ import assert from "assert/strict";
 import {{ pathToFileURL }} from "url";
 
 const cardModel = await import(pathToFileURL({json.dumps(str(CARD_MODEL))}));
+const entityIds = await import(pathToFileURL({json.dumps(str(CARD.with_name("voip-stack-entity-ids.js")))}));
 
 let source = fs.readFileSync({json.dumps(str(CARD))}, "utf8");
 source = source
+  .replace(/const \{{ VoipEntityIds \}} = await import\(`\.\/voip-stack-entity-ids\.js[^;]+;/, "const {{ VoipEntityIds }} = globalThis.__entityIds;")
   .replace(
     /const \{{ voipStackTranslate \}} = await import\(`\.\/voip-stack-i18n\.js[^;]+;/,
     "const {{ voipStackTranslate }} = globalThis.__i18n;",
@@ -206,6 +208,7 @@ const context = vm.createContext({{
   __engine: {{ voipStackEngine: engine }},
   __i18n: {{ voipStackTranslate: (_hass, value) => String(value ?? "") }},
   __cardModel: cardModel,
+  __entityIds: entityIds,
   __cardView: {{
     buildMainCardSkeleton() {{}},
     buildUnconfiguredCardSkeleton() {{}},
@@ -1557,3 +1560,46 @@ assert.equal(JSON.stringify(suggest(hass, "sensor.casa_call_state")).includes("e
         text=True,
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
+def test_shared_entity_identity_refreshes_without_polling() -> None:
+    script = f'''
+import assert from "node:assert/strict";
+import {{ pathToFileURL }} from "node:url";
+const {{ VoipEntityIds }} = await import(pathToFileURL({json.dumps(str(CARD.with_name("voip-stack-entity-ids.js")))}));
+const resolver = new VoipEntityIds();
+let requests = 0, updates = 0, selected = "sensor.original";
+const connection = {{ sendMessagePromise: async () => {{
+  requests++; return {{ entity_ids: {{ phonebook: selected }} }};
+}} }};
+let hass = {{ connection, entities: {{}}, states: {{ "sensor.original": {{}} }} }};
+const changed = () => updates++;
+resolver.update(hass, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.original");
+for (let i = 0; i < 100; i++) resolver.update(hass, changed);
+assert.equal(requests, 1);
+selected = "sensor.renamed";
+hass = {{ ...hass, entities: {{}}, states: {{ "sensor.renamed": {{}}, "sensor.original": {{}} }} }};
+resolver.update(hass, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.renamed");
+assert.equal(requests, 2);
+selected = null;
+resolver.update({{ ...hass, entities: {{}} }}, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, null);
+assert.equal(updates, 3);
+// An obsolete connection response cannot overwrite the new connection's identity.
+let finish;
+const old = {{ sendMessagePromise: () => new Promise(resolve => {{ finish = resolve; }}) }};
+resolver.update({{ connection: old, entities: {{}}, states: {{}} }}, changed);
+selected = "sensor.new_server";
+resolver.update(hass, changed);
+finish({{ entity_ids: {{ phonebook: "sensor.wrong_server" }} }});
+await resolver._pending;
+if (resolver._pending) await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.new_server");
+'''
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, capture_output=True, text=True)

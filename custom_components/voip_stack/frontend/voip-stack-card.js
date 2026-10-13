@@ -20,6 +20,7 @@ const VOIP_STACK_MODULE_VERSION = (() => {
     return "dev";
   }
 })();
+const { VoipEntityIds } = await import(`./voip-stack-entity-ids.js?v=${encodeURIComponent(VOIP_STACK_MODULE_VERSION)}`);
 const VOIP_STACK_CARD_VERSION = VOIP_STACK_MODULE_VERSION.replace(/-\d+$/, "") || "dev";
 const { voipStackTranslate } = await import(`./voip-stack-i18n.js?v=${encodeURIComponent(VOIP_STACK_MODULE_VERSION)}`);
 await import(`./voip-phonebook-card.js?v=${encodeURIComponent(VOIP_STACK_MODULE_VERSION)}`);
@@ -82,6 +83,7 @@ const _voip_log = {
 class VoipStackCard extends HTMLElement {
   constructor() {
     super();
+    this._sharedEntityIds = new VoipEntityIds();
     this.attachShadow({ mode: "open" });
 
     // UI transition states only
@@ -754,6 +756,10 @@ class VoipStackCard extends HTMLElement {
     const oldHass = this._hass;
     const languageChanged = String(oldHass?.language || "") !== String(hass?.language || "");
     this._hass = hass;
+    this._sharedEntityIds.update(hass, () => {
+      this._loadSharedRoster();
+      this._render();
+    });
     if (languageChanged) {
       this._els = null;
       this._skeletonMode = null;
@@ -818,8 +824,8 @@ class VoipStackCard extends HTMLElement {
           needsRender = true;
         }
       }
-      const rosterState = hass.states["sensor.voip_phonebook"];
-      const oldRosterState = oldHass?.states?.["sensor.voip_phonebook"];
+      const rosterState = hass.states[this._sharedEntityIds.phonebook];
+      const oldRosterState = oldHass?.states?.[this._sharedEntityIds.phonebook];
       if (
         rosterState?.attributes?.roster_json !== oldRosterState?.attributes?.roster_json ||
         rosterState?.attributes?.phonebook !== oldRosterState?.attributes?.phonebook
@@ -1369,7 +1375,7 @@ class VoipStackCard extends HTMLElement {
   }
 
   _loadSharedRoster() {
-    const attr = this._hass?.states?.["sensor.voip_phonebook"]?.attributes || {};
+    const attr = this._hass?.states?.[this._sharedEntityIds.phonebook]?.attributes || {};
     const raw = attr.roster_json || "";
     const phonebook = attr.phonebook || "";
     const sourceKey = `${raw}\u0000${phonebook}`;
@@ -2091,7 +2097,7 @@ class VoipStackCard extends HTMLElement {
       this._skeletonMode = "phonebook";
     }
     const phonebookConfig = {
-      entity: this.config?.entity || "sensor.voip_phonebook",
+      ...(this.config?.entity ? { entity: this.config.entity } : {}),
       title: String(this.config?.title || this.config?.name || "").trim(),
       empty_text: this.config?.empty_text || "No contacts available.",
       show_disabled: !!this.config?.show_disabled,

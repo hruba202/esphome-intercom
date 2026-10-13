@@ -399,6 +399,18 @@ registration/call legs. UDP signaling still sends datagrams directly.
 
 ## Frontend contract
 
+Shared entity IDs are resolved from the HA entity registry using their stable
+`unique_id`, rather than their initial object IDs. `voip_stack/list_devices`
+retains its `devices` array and also returns `entity_ids`, with `call_event` and
+`phonebook` keys (each an entity ID or `null`). Cards refresh this metadata when
+the HA entity registry changes or their connection changes. Explicit card entity
+selections remain user configuration.
+
+Phone entity rename callbacks re-key the existing endpoint index. Older HA
+versions use the same operation when re-adding the entity. Neither path changes
+endpoint identity or call ownership. Authorization resolves the current global
+event entity and never falls back to an unrelated entity using its old name.
+
 Cards do not own call control state.
 
 - The HA softphone card mirrors the HA softphone state pushed by

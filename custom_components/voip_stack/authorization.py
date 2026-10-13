@@ -8,26 +8,28 @@ from typing import Any
 
 from homeassistant.exceptions import Unauthorized, UnknownUser
 
+from .entity_identity import shared_entity_ids
+
 
 POLICY_READ = "read"
 POLICY_CONTROL = "control"
-VOIP_CONTROL_ENTITY_ID = "event.voip_stack_call"
 _MEDIA_CLIENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{15,127}\Z", re.ASCII)
 _DOMAIN = "voip_stack"
 
 
-def _require_entity_permission(user: Any, policy: str, *, context: Any = None) -> str:
+def _require_entity_permission(hass: Any, user: Any, policy: str, *, context: Any = None) -> str:
     """Require one HA entity policy and return the authenticated user id."""
 
     user_id = str(getattr(user, "id", "") or "")
     permissions = getattr(user, "permissions", None)
     check_entity = getattr(permissions, "check_entity", None)
-    if not user_id or not callable(check_entity) or not check_entity(
-        VOIP_CONTROL_ENTITY_ID, policy
+    entity_id = shared_entity_ids(hass)["call_event"]
+    if not user_id or not entity_id or not callable(check_entity) or not check_entity(
+        entity_id, policy
     ):
         raise Unauthorized(
             context=context,
-            entity_id=VOIP_CONTROL_ENTITY_ID,
+            entity_id=entity_id,
             permission=policy,
             user_id=user_id or None,
         )
@@ -62,7 +64,8 @@ def _endpoint_permission_entity_ids(hass: Any, endpoint: Any) -> tuple[str, ...]
     if endpoint_id == "default":
         # Preserve the original singleton permission contract for the master
         # phone while still accepting its newer per-device entities.
-        entity_ids.add(VOIP_CONTROL_ENTITY_ID)
+        if entity_id := shared_entity_ids(hass)["call_event"]:
+            entity_ids.add(entity_id)
     return tuple(sorted(entity_ids))
 
 
@@ -148,7 +151,7 @@ async def async_require_service_control(hass: Any, call: Any) -> None:
     user = await _service_user(hass, call)
     if user is not None:
         _require_entity_permission(
-            user,
+            hass, user,
             POLICY_CONTROL,
             context=getattr(call, "context", None),
         )
@@ -198,17 +201,17 @@ async def async_require_service_entity_control(
         )
 
 
-def require_websocket_read(connection: Any) -> str:
+def require_websocket_read(hass: Any, connection: Any) -> str:
     """Require read access before exposing call/device topology."""
 
-    return _require_entity_permission(getattr(connection, "user", None), POLICY_READ)
+    return _require_entity_permission(hass, getattr(connection, "user", None), POLICY_READ)
 
 
-def require_websocket_control(connection: Any) -> str:
+def require_websocket_control(hass: Any, connection: Any) -> str:
     """Require control access before starting or mutating a call."""
 
     return _require_entity_permission(
-        getattr(connection, "user", None), POLICY_CONTROL
+        hass, getattr(connection, "user", None), POLICY_CONTROL
     )
 
 
@@ -253,7 +256,7 @@ def websocket_can_control_endpoint(
     boundary.
     """
     try:
-        require_websocket_control(connection)
+        require_websocket_control(hass, connection)
         if endpoint is not None:
             require_websocket_endpoint_control(hass, connection, endpoint)
     except Unauthorized:
@@ -266,7 +269,7 @@ def require_http_control(request: Any) -> str:
 
     getter = getattr(request, "get", None)
     user = getter("hass_user") if callable(getter) else None
-    return _require_entity_permission(user, POLICY_CONTROL)
+    return _require_entity_permission(request.app["hass"], user, POLICY_CONTROL)
 
 
 def require_media_client_id(request: Any) -> str:

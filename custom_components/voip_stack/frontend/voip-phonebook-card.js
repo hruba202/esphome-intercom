@@ -1,9 +1,10 @@
-const DEFAULT_ENTITY = "sensor.voip_phonebook";
 const PHONEBOOK_MODULE_VERSION = (() => {
   try { return new URL(import.meta.url).searchParams.get("v") || "dev"; }
   catch (_) { return "dev"; }
 })();
 const { voipStackTranslate } = await import(`./voip-stack-i18n.js?v=${encodeURIComponent(PHONEBOOK_MODULE_VERSION)}`);
+
+const { VoipEntityIds } = await import(`./voip-stack-entity-ids.js?v=${encodeURIComponent(PHONEBOOK_MODULE_VERSION)}`);
 
 function installWheelScrollHandoff(scroller) {
   scroller.addEventListener("wheel", (event) => {
@@ -32,6 +33,7 @@ class VoipPhonebookView extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._config = {};
+    this._sharedEntityIds = new VoipEntityIds();
     this._hass = null;
     this._lastRoster = null;
     this._resizeObserver = new ResizeObserver(() => this._measure());
@@ -58,7 +60,8 @@ class VoipPhonebookView extends HTMLElement {
   }
 
   static _assertConfig(config) {
-    const entity = config?.entity || DEFAULT_ENTITY;
+    const entity = config?.entity;
+    if (!entity) return;
     if (typeof entity !== "string" || !entity.startsWith("sensor.")) {
       throw new Error("VoIP Phonebook requires a sensor entity");
     }
@@ -66,14 +69,17 @@ class VoipPhonebookView extends HTMLElement {
 
   setConfig(config) {
     VoipPhonebookView._assertConfig(config);
-    this._config = { entity: DEFAULT_ENTITY, ...config };
+    this._config = { ...config };
     this._lastRoster = null;
     this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    const entity = this._config.entity || DEFAULT_ENTITY;
+    if (!this._config.entity) {
+      this._sharedEntityIds.update(hass, () => { this._lastRoster = null; this._render(); });
+    }
+    const entity = this._config.entity || this._sharedEntityIds.phonebook;
     const roster = hass?.states?.[entity]?.attributes?.roster_json || "";
     if (roster === this._lastRoster) return;
     this._lastRoster = roster;
@@ -82,7 +88,7 @@ class VoipPhonebookView extends HTMLElement {
 
   _contacts() {
     if (!this._hass) return [];
-    const entity = this._config.entity || DEFAULT_ENTITY;
+    const entity = this._config.entity || this._sharedEntityIds.phonebook;
     const raw = this._hass.states?.[entity]?.attributes?.roster_json;
     if (!raw) return [];
     try {

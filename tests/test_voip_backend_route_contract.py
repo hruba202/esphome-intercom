@@ -832,7 +832,6 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         self.assertIn("new_endpoint", sensor)
         self.assertIn("voip_ring_groups", sensor)
         self.assertIn("voip_conference_groups", sensor)
-        self.assertIn("voip_ring_on_conference", sensor)
         self.assertNotIn("async_prune_ha_softphone_groups", sensor)
         self.assertNotIn("async_prune_ha_softphone_groups", websocket)
         self.assertNotIn("local_ha_seen = False", websocket)

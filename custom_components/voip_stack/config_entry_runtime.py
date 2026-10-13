@@ -9,6 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_SERVICE_REGISTERED
 from homeassistant.core import Event, HomeAssistant, callback
 
+from .entity_identity import phonebook_state
+
 from .const import CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS, DOMAIN
 from .endpoint_lifecycle import create_runtime_task
 from .phone_config import (
@@ -41,7 +43,7 @@ async def async_current_roster_json(hass: HomeAssistant) -> str:
     sensor = runtime.phonebook_sensor if runtime is not None else None
     if sensor is not None:
         return str(sensor.extra_state_attributes.get("roster_json", "") or "")
-    state = hass.states.get("sensor.voip_phonebook")
+    state = phonebook_state(hass)
     if state is None:
         return ""
     return str(state.attributes.get("roster_json") or "")

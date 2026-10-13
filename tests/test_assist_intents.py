@@ -99,6 +99,7 @@ def _load_assist_intents(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, name, module)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "phonebook_state", lambda hass: hass.states.get("sensor.voip_phonebook"))
     return module
 
 

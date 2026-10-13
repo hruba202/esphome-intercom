@@ -35,6 +35,26 @@ The editor saves your selection automatically. Incoming calls for that phone
 move every connected card bound to the same Device to `ringing`. The browser
 that answers becomes the media owner.
 
+## Rename Home Assistant entities
+
+You can change a VoIP Stack entity ID in **Settings > Devices & services >
+Entities**, for example from `sensor.casa_call_state` to `sensor.living_room_call`.
+The entity stays linked to the same phone. Its extension, settings and active
+call do not change. Access checks use the current entity identity, not its old
+name.
+
+The shared phonebook and call-event entities can also be renamed. VoIP Stack
+finds them through Home Assistant's entity registry, and cards using automatic
+phonebook selection follow the new ID. You do not need to recreate the phone.
+
+If you explicitly entered an entity ID in a card's YAML, a template or an
+external automation, check that reference after renaming. VoIP Stack does not
+rewrite user-authored YAML or retain the old ID as an alias.
+
+This works with the existing remove-and-add lifecycle and Home Assistant's
+in-place entity renaming introduced in Core 2026.11. The minimum supported
+Home Assistant version remains 2026.7.0.
+
 ## Choose the calling phone in the editor
 
 In Home Assistant's automation editor or **Developer tools > Actions**, the

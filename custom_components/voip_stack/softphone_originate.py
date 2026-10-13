@@ -8,6 +8,8 @@ import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall
 
+from .entity_identity import phonebook_state
+
 from .trunk_policy import external_call_denied, is_any_trunk_uri, trunk_available
 from .peer_media_profile import resolve_peer_media_profile
 from .call_projection import publish_phone_projection
@@ -217,7 +219,7 @@ async def async_originate_browser_call(
     trunk_ready = _trunk_enabled(trunk_cfg) and bool(
         trunk_available(trunk)
     )
-    sensor = hass.states.get("sensor.voip_phonebook")
+    sensor = phonebook_state(hass)
     roster_json = (
         str(sensor.attributes.get("roster_json") or "") if sensor is not None else ""
     )

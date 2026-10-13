@@ -36,7 +36,14 @@ def authorization(monkeypatch):
     monkeypatch.setitem(sys.modules, "homeassistant", homeassistant)
     monkeypatch.setitem(sys.modules, "homeassistant.exceptions", exceptions)
 
-    spec = importlib.util.spec_from_file_location("voip_stack_authorization_test", MODULE)
+    package_name = "voip_stack_authorization_test"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(MODULE.parent)]
+    monkeypatch.setitem(sys.modules, package_name, package)
+    identity = types.ModuleType(f"{package_name}.entity_identity")
+    identity.shared_entity_ids = lambda hass: {"call_event": "event.voip_stack_call"}
+    monkeypatch.setitem(sys.modules, identity.__name__, identity)
+    spec = importlib.util.spec_from_file_location(f"{package_name}.authorization", MODULE)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -91,7 +98,7 @@ def test_service_control_uses_entity_policy_and_preserves_internal_automation(
         authorization.async_require_service_control(hass, _service_call("allowed"))
     )
     assert allowed.permissions.checks == [
-        (authorization.VOIP_CONTROL_ENTITY_ID, "control")
+        ("event.voip_stack_call", "control")
     ]
     with pytest.raises(_Unauthorized):
         asyncio.run(
@@ -132,19 +139,19 @@ def test_websocket_and_http_media_require_explicit_entity_permission(
     controller = _User("controller", allowed={"read", "control"})
 
     assert authorization.require_websocket_read(
-        types.SimpleNamespace(user=reader)
+        None, types.SimpleNamespace(user=reader)
     ) == "reader"
     with pytest.raises(_Unauthorized):
-        authorization.require_websocket_control(types.SimpleNamespace(user=reader))
+        authorization.require_websocket_control(None, types.SimpleNamespace(user=reader))
     assert authorization.require_websocket_control(
-        types.SimpleNamespace(user=controller)
+        None, types.SimpleNamespace(user=controller)
     ) == "controller"
 
     with pytest.raises(_Unauthorized):
-        authorization.require_http_control({"hass_user": reader})
-    assert authorization.require_http_control({"hass_user": controller}) == "controller"
+        authorization.require_http_control(_Request(reader))
+    assert authorization.require_http_control(_Request(controller)) == "controller"
     with pytest.raises(_Unauthorized):
-        authorization.require_http_control({})
+        authorization.require_http_control(_Request(None))
 
 
 def test_logical_phone_permissions_are_scoped_per_endpoint(authorization) -> None:
@@ -153,7 +160,7 @@ def test_logical_phone_permissions_are_scoped_per_endpoint(authorization) -> Non
         is_admin=False,
         permissions=_EntityPermissions(
             {
-                (authorization.VOIP_CONTROL_ENTITY_ID, "control"),
+                ("event.voip_stack_call", "control"),
                 ("sensor.kitchen_phone_call_state", "read"),
                 ("sensor.kitchen_phone_call_state", "control"),
             }
@@ -216,7 +223,7 @@ def test_action_authorization_requires_the_exact_control_entity(
         is_admin=False,
         permissions=_EntityPermissions(
             {
-                (authorization.VOIP_CONTROL_ENTITY_ID, "control"),
+                ("event.voip_stack_call", "control"),
                 ("sensor.kitchen_phone_call_state", "control"),
             }
         ),
@@ -583,8 +590,8 @@ def test_all_external_surfaces_apply_authorization_and_ws_context() -> None:
         ROOT / "custom_components" / "voip_stack" / "media_ws_session.py"
     ).read_text()
 
-    assert websocket.count("require_websocket_read(connection)") >= 5
-    assert "require_websocket_control(connection)" not in websocket
+    assert websocket.count("require_websocket_read(hass, connection)") >= 5
+    assert "require_websocket_control(hass, connection)" not in websocket
     assert "hass.services.async_call(" not in websocket
     assert "async_require_service_control" in services
     assert "async_require_service_admin" in services
@@ -605,3 +612,9 @@ def test_all_external_surfaces_apply_authorization_and_ws_context() -> None:
                 "def handler_for(name: str):"
             )
         ]
+
+
+class _Request(dict):
+    def __init__(self, user):
+        super().__init__(hass_user=user)
+        self.app = {"hass": None}

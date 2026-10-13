@@ -149,6 +149,15 @@ async def lab(hass, monkeypatch, socket_enabled):
         base_rtp_port = probe.getsockname()[1]
     entry = MockConfigEntry(domain="voip_stack", data={})
     entry.add_to_hass(hass)
+    from homeassistant.helpers import entity_registry as er
+    er.async_get(hass).async_get_or_create(
+        "sensor", "voip_stack", "voip_stack_phonebook", config_entry=entry,
+        suggested_object_id="voip_phonebook",
+    )
+    er.async_get(hass).async_get_or_create(
+        "event", "voip_stack", "voip_stack_call_event", config_entry=entry,
+        suggested_object_id="voip_stack_call",
+    )
     calls = SipEndpointRuntime(allow_dark_sessions=True)
     calls.activate()
     runtime = VoipStackRuntime(

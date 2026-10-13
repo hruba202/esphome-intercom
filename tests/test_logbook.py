@@ -47,7 +47,8 @@ DOMAIN = const.DOMAIN
 SIP_CALL_ENDED_EVENT = const.SIP_CALL_ENDED_EVENT
 
 
-def test_registers_only_terminal_call_events() -> None:
+def test_registers_only_terminal_call_events(monkeypatch) -> None:
+    monkeypatch.setattr(logbook, "shared_entity_ids", lambda hass: {"call_event": "event.renamed_calls"})
     registrations = []
 
     logbook.async_describe_events(
@@ -73,7 +74,7 @@ def test_registers_only_terminal_call_events() -> None:
     ) == {
         "name": "VoIP Stack",
         "message": "Cucina called Portone · 45 s",
-        "entity_id": "event.voip_stack_call",
+        "entity_id": "event.renamed_calls",
         "icon": "mdi:phone-log",
     }
 

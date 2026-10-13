@@ -9,6 +9,8 @@ from typing import Any
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
+from .entity_identity import phonebook_state
+
 from .config import assist_config
 from .config_validation import route_namespace_conflicts
 from .const import (
@@ -268,7 +270,7 @@ def build_phonebook_service_handlers(
             await sensor.async_update()
             roster_json = sensor.extra_state_attributes.get("roster_json", "")
         else:
-            state = hass.states.get("sensor.voip_phonebook")
+            state = phonebook_state(hass)
             roster_json = str(state.attributes.get("roster_json") or "") if state is not None else ""
         await push_roster_json_to_esps(hass, roster_json)
         _LOGGER.info("Phonebook push requested (%d bytes)", len(roster_json))

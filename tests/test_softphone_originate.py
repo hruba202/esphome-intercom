@@ -84,6 +84,7 @@ def softphone_originate(monkeypatch):
     monkeypatch.setitem(sys.modules, "homeassistant.exceptions", exceptions)
 
     dependencies = {
+        "entity_identity": {"phonebook_state": lambda hass: hass.states.get("sensor.voip_phonebook")},
         "trunk_selection": {
             "select_call_trunk": lambda hass, **_kwargs: SimpleNamespace(
                 identity="", config=sys.modules[f"{module.__package__}.config"].trunk_config(hass), client=sys.modules[f"{module.__package__}.runtime_data"].sip_trunk(hass),

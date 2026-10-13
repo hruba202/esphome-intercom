@@ -4,6 +4,17 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Home Assistant entity renaming
+
+- Keep phone lookups and permission checks correct after an entity ID changes,
+  using the Core 2026.11 rename callback while retaining compatibility with
+  earlier supported versions. Remove the old ID from the endpoint index.
+- Resolve the shared phonebook and call-event entities by registry identity,
+  so renaming them does not break routing, automatic card discovery or access
+  checks. ESPHome entities retain their existing device ownership.
+- Addresses [#145](https://github.com/n-IA-hane/esphome-intercom/issues/145),
+  reported with a detailed lifecycle analysis by Erik Montnemery.
+
 ### 🔧 Storage and configuration corrections
 
 - Keep edited ringing-timeout fields visible until the updated phonebook state
