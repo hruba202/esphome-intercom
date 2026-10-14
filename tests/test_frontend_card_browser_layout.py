@@ -15,8 +15,9 @@ pytestmark = pytest.mark.js_runtime
 @pytest.mark.parametrize("width", [280, 360, 600])
 @pytest.mark.parametrize("park_enabled", [False, True])
 @pytest.mark.parametrize("keypad_open", [False, True])
+@pytest.mark.parametrize("height", [280, 360])
 def test_video_controls_do_not_overlap_timer_or_each_other(
-    width, park_enabled, keypad_open, tmp_path
+    width, park_enabled, keypad_open, height, tmp_path
 ):
     """All actions share the bottom call bar without covering the timer or video."""
     playwright = pytest.importorskip("playwright.sync_api")
@@ -25,7 +26,9 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             executable_path=shutil.which("chromium"), headless=True
         )
         try:
-            page = browser.new_page(viewport={"width": width + 40, "height": 500})
+            page = browser.new_page(
+                viewport={"width": width + 40, "height": 500}, has_touch=True
+            )
 
             def serve(route):
                 name = route.request.url.split("/")[-1].split("?")[0]
@@ -40,10 +43,10 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             page.route("http://card.test/**", serve)
             page.goto("http://card.test/")
             page.evaluate(
-                """async ({width, park, keypad}) => {
+                """async ({width, park, keypad, height}) => {
                 document.body.style.cssText='margin:10px;font-family:Arial';
                 const host=document.createElement('div');
-                host.style.cssText=`width:${width}px;height:360px`;
+                host.style.cssText=`width:${width}px;height:${height}px`;
                 document.body.append(host);
                 const owner={shadowRoot:host.attachShadow({mode:'open'}),
                     _attachEventHandlers(){}, _observeLayout(){}};
@@ -66,7 +69,12 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 await import('/voip-stack-card.js');
                 customElements.get('voip-stack-card').prototype._measureLayout.call(owner);
             }""",
-                {"width": width, "park": park_enabled, "keypad": keypad_open},
+                {
+                    "width": width,
+                    "park": park_enabled,
+                    "keypad": keypad_open,
+                    "height": height,
+                },
             )
             boxes = page.evaluate("""() => {
                 const e=elements;
@@ -75,6 +83,52 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                     .filter(key=>!e[key].hidden)
                     .map(key=>[key,e[key].getBoundingClientRect().toJSON()]));
             }""")
+            if keypad_open and height == 280:
+                panel = page.evaluate("""() => ({
+                    ...elements.keypadPanel.getBoundingClientRect().toJSON(),
+                    scrollHeight: elements.keypadPanel.scrollHeight,
+                    clientHeight: elements.keypadPanel.clientHeight,
+                })""")
+                assert panel["bottom"] <= boxes["hangupBtn"]["top"] + 1
+                assert panel["scrollHeight"] > panel["clientHeight"]
+                await_scroll = "elements.keypadPanel.scrollTop > 0"
+                page.mouse.move(
+                    panel["left"] + panel["width"] / 2,
+                    panel["top"] + panel["height"] / 2,
+                )
+                page.mouse.wheel(0, 150)
+                page.wait_for_function(await_scroll)
+                assert page.evaluate("elements.card.scrollTop") == 0
+                after = page.evaluate(
+                    "elements.hangupBtn.getBoundingClientRect().toJSON()"
+                )
+                assert abs(after["top"] - boxes["hangupBtn"]["top"]) <= 1
+                assert abs(after["bottom"] - boxes["hangupBtn"]["bottom"]) <= 1
+                if width == 360 and park_enabled:
+                    page.evaluate("elements.keypadPanel.scrollTop = 0")
+                    cdp = page.context.new_cdp_session(page)
+                    x = panel["left"] + panel["width"] / 2
+                    y = panel["bottom"] - 10
+                    cdp.send(
+                        "Input.dispatchTouchEvent",
+                        {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]},
+                    )
+                    for offset in (20, 40, 60, 80):
+                        cdp.send(
+                            "Input.dispatchTouchEvent",
+                            {
+                                "type": "touchMove",
+                                "touchPoints": [{"x": x, "y": y - offset}],
+                            },
+                        )
+                        page.wait_for_timeout(16)
+                    cdp.send(
+                        "Input.dispatchTouchEvent",
+                        {"type": "touchEnd", "touchPoints": []},
+                    )
+                    page.wait_for_function(await_scroll)
+                    cdp.detach()
+
             page.screenshot(path=str(tmp_path / "call-controls.png"))
             card = boxes.pop("card")
             hangup = boxes.pop("hangupBtn")

@@ -406,13 +406,18 @@ async def async_forward_existing_call(
             )
         session = registry.sessions.get(registry.resolve_session_id(call_id))
         application = registry.resource_for(call_id, "parking") or registry.resource_for(call_id, "automation")
-        session_endpoint = None if native_caller and local_source is None else browser_phone(
-            hass,
+        owner_endpoint_id = (
             (local_source.call.caller_endpoint_id if local_source.outgoing or local_source.committed else local_source.call.callee_endpoint_id)
             if local_source is not None else str(
                 (session.metadata if session is not None else {}).get("endpoint_id")
                 or ""
-            ),
+            )
+        )
+        # Session ownership must not fall back to the user's preferred phone.
+        session_endpoint = (
+            browser_phone(hass, owner_endpoint_id)
+            if owner_endpoint_id and not (native_caller and local_source is None)
+            else None
         )
         if session_endpoint is None and native_caller and session is not None:
             session_endpoint = endpoint_directory(hass).get(str(session.metadata.get("dest_endpoint_id")

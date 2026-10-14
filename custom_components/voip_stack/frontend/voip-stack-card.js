@@ -2076,6 +2076,11 @@ class VoipStackCard extends HTMLElement {
       const right = card.getBoundingClientRect().right - bounds.left;
       const gap = parseFloat(getComputedStyle(this._els.hangupBtn).columnGap) || 0;
       card.style.setProperty("--voip-video-actions-space", `${Math.ceil(right + gap)}px`);
+      const keypad = this._els.keypadPanel;
+      if (keypad && !keypad.hidden) {
+        const available = this._els.hangupBtn.parentElement.offsetTop - keypad.offsetTop;
+        card.style.setProperty("--voip-video-keypad-height", `${Math.max(0, available)}px`);
+      }
     }
     const buttonSize = Math.max(58, Math.min(136, Math.round((height - 100) * 0.36), Math.round(width * 0.32)));
     const spacing = Math.max(4, Math.min(16, Math.round(Math.min(width / 24, height / 28))));

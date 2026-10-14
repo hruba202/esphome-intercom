@@ -53,8 +53,14 @@ package (RFC 4235) for a busy-lamp indication.
 
 During an established audio call, **Park call** appears when parking is enabled
 in the backend. It invokes the same action described below and displays the
-assigned slot. The card does not choose a slot or move media itself. Dial the
-slot from another phone to retrieve its caller.
+assigned slot. The card does not choose a slot or move media itself. Dial that
+slot from the same card or another phone to retrieve its caller. For example,
+after **Park** reports **701**, open the keypad, enter **701** and press **Call**.
+Do not call 700 to retrieve it: 700 is the parking access number.
+
+These slots belong to VoIP Stack in Home Assistant. A telephone registered to
+another PBX, such as FusionPBX, needs a dial-plan route from that PBX to HA's
+parking slots. Its own PBX's extension 701 is not automatically HA's slot 701.
 
 Browser-to-browser calls return to the existing local audio bridge after
 pickup. SIP participants retain their established SIP dialog and negotiated

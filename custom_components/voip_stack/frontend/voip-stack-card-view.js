@@ -8,6 +8,12 @@
 function installWheelScrollHandoff(scroller) {
   scroller.addEventListener("wheel", (event) => {
     if (event.ctrlKey || !event.deltaY) return;
+    // Let nested scroll panels consume the wheel before handing it to HA.
+    for (const node of event.composedPath()) {
+      if (node === scroller) break;
+      if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight &&
+          ["auto", "scroll"].includes(getComputedStyle(node).overflowY)) return;
+    }
     const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
       ? 16
       : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
@@ -223,6 +229,12 @@ export function buildMainCardSkeleton(cardVersion) {
         gap: 10px;
       }
       .keypad-panel[hidden] { display: none; }
+      .video-active:not(.settings-open) .keypad-panel {
+        min-height: 0;
+        max-height: var(--voip-video-keypad-height, 100%);
+        overflow-y: auto;
+        margin-bottom: 0;
+      }
       .keypad-input {
         width: 100%;
         box-sizing: border-box;

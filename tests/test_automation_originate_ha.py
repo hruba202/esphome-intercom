@@ -173,6 +173,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     from custom_components.voip_stack.call_recording import async_start_recording, async_stop_recording, async_get_recording, async_delete_recording
     await services.async_register_services(hass, {
         "call": voip_stack._handle_sip_call_target_service,
+        "answer": voip_stack._handle_sip_answer_service,
         "forward": voip_stack._handle_sip_forward_service,
         "park": async_park_call,
         "start_recording": async_start_recording,

@@ -11,6 +11,12 @@ Development preview with changes since stable 2026.10.1.
   measured width so they do not overlap the call duration.
 - Close the dialing keypad when starting or answering a call without clearing
   the entered number. Opening it explicitly during a call still enables DTMF.
+- Let the video-call keypad scroll within the available space above the bar,
+  including mouse-wheel and touch scrolling, while the bar remains fixed.
+- Resolve the owner of an existing call explicitly when forwarding. A parked
+  external caller no longer inherits the preferred browser phone as its owner,
+  allowing that same phone to retrieve its parked call without a false
+  self-forward error. The self-forward guard remains enabled.
 - Tie video visibility to a frame rendered by the current receiver on the
   current canvas and to the current call identity. Previous-call frames and
   cumulative counters cannot expose an empty canvas after renegotiation or

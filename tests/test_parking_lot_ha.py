@@ -697,3 +697,142 @@ async def test_local_browser_parking_keeps_other_phone_for_sip_pickup(registered
             worker.cancel()
         await asyncio.gather(worker, return_exceptions=True)
         async_shutdown_local_softphone_bridge(runtime.hass)
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+async def test_inbound_trunk_parking_can_return_to_same_browser(trunks, monkeypatch):
+    """An external caller remains parked while its original browser rejoins."""
+    import socket
+    import struct
+    from unittest.mock import AsyncMock
+    from aiohttp import WSMsgType
+    from custom_components.voip_stack import audio_ws, audio_ws_view, softphone_originate
+    from custom_components.voip_stack.config import normalized_trunk_config
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.core import rtp
+    from custom_components.voip_stack.parking import get_parking_lot
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
+    from custom_components.voip_stack.roster import RosterEntry, dump_roster_json
+    from custom_components.voip_stack.sip_client import SipCallClient
+    from custom_components.voip_stack.store import config_entry
+
+    lab = trunks
+    entry = config_entry(lab.hass)
+    lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "parking": {"enabled": True}})
+    phone = PhoneEndpoint(endpoint_id="desk", name="Desk", device_id="desk-device",
+                          kind=EndpointKind.BROWSER, availability="available", capabilities=frozenset({"audio", "dtmf"}))
+    lab.runtime.endpoints.register(phone)
+    lab.runtime.preferred_phone_device_id = phone.device_id
+    lab.roster.append(RosterEntry("Desk", metadata={"local_ha": True, "endpoint_id": phone.endpoint_id}))
+    lab.hass.states.async_set("sensor.voip_phonebook", "ready", {"roster_json": dump_roster_json(lab.roster)})
+    lab.runtime.trunk_configs["home"] = normalized_trunk_config({
+        "trunk_enabled": True, "trunk_register": False, "trunk_server": "127.0.0.3",
+        "trunk_allowed_ips": ["127.0.0.3"], "trunk_inbound_default_target": "Desk",
+    })
+    from custom_components.voip_stack.trunk_runtime import async_start_sip_trunk, async_stop_sip_trunk
+    await async_stop_sip_trunk(lab.hass)
+    lab.runtime.trunk_configs = {"home": lab.runtime.trunk_configs["home"]}
+    lab.runtime.trunk_config = lab.runtime.trunk_configs["home"]
+    await async_start_sip_trunk(lab.hass, local_ip="127.0.0.1")
+    monkeypatch.setattr(softphone_originate, "_ha_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    monkeypatch.setattr(softphone_originate, "_resolve_target_device", AsyncMock(return_value=None))
+    async def wait_for(predicate):
+        async with asyncio.timeout(5):
+            while not predicate():
+                await asyncio.sleep(.01)
+
+    class Browser:
+        def __init__(self):
+            self.audio = asyncio.Queue()
+            self.messages = asyncio.Queue()
+            self.ready = asyncio.Event()
+        def force_close(self):
+            pass
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            return await self.messages.get()
+        async def send_json(self, value):
+            self.ready.set()
+        async def send_bytes(self, value):
+            await self.audio.put(value)
+
+    audio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    audio.bind(("127.0.0.3", 0))
+    audio.setblocking(False)
+    client = SipCallClient(local_ip="127.0.0.3", local_name="External", local_sip_port=0,
+                           local_rtp_port=audio.getsockname()[1], supported_formats=[AudioFormat(16000, "s16le", 1, 20)])
+    from custom_components.voip_stack.sip_udp_io import SipDatagramQueueProtocol
+    client.transport, client.protocol = await lab.hass.loop.create_datagram_endpoint(
+        lambda: SipDatagramQueueProtocol(client.queue), local_addr=("127.0.0.3", 0))
+    client.local_sip_port = client.transport.get_extra_info("sockname")[1]
+    workers = []
+    signaling = None
+    try:
+        port = lab.runtime.transport_config["sip_port"]
+        assert await client.invite(target="Desk", remote_host="127.0.0.1", remote_sip_port=port,
+                                   request_uri=f"sip:Desk@127.0.0.1:{port}", timeout=2) == "ringing"
+        call_id = client.dialog_ids.call_id
+        await lab.hass.services.async_call("voip_stack", "answer", {"device_id": phone.device_id, "call_id": call_id}, blocking=True)
+        await wait_for(lambda: client.dialog is not None and lab.runtime.endpoints.get(phone.endpoint_id).active_call_id == call_id)
+        signaling = asyncio.create_task(client.wait_for_dialog_termination(timeout=15))
+        owner = lab.calls.get_session(call_id)
+        assert owner.metadata["inbound_trunk_id"] == "home"
+        lot = get_parking_lot(lab.hass)
+        for cycle in range(2):
+            media = audio_ws_view._active_softphone_media_session(lab.hass, phone.endpoint_id)
+            browser = Browser()
+            worker = asyncio.create_task(audio_ws_view._run_audio_session(lab.hass, browser, media, endpoint_id=phone.endpoint_id))
+            workers.append(worker)
+            await asyncio.wait_for(browser.ready.wait(), 2)
+            # Keep the call's real RTP path observable before each park.
+            frame = struct.pack("<h", 6000) * media.send_format.audio_format.nominal_frame_samples
+            await browser.messages.put(SimpleNamespace(type=WSMsgType.BINARY, data=audio_ws.encode_audio_frame(frame)))
+            async with asyncio.timeout(2):
+                while True:
+                    raw = await lab.hass.loop.sock_recv(audio, 4096)
+                    payload = rtp.parse_packet(raw).payload
+                    if any(payload):
+                        samples = struct.unpack(f"!{len(payload)//2}h", payload)
+                        assert 5940 <= max(samples) <= 6060
+                        break
+            assert client.dialog.send_format.encoding == "L16"
+            for index in range(10):
+                sequence = cycle * 10 + index
+                packet = rtp.build_packet(rtp.RtpPacket(
+                    client.dialog.send_format.payload_type, sequence, sequence * 320, 99,
+                    struct.pack("!h", 7000) * 320))
+                await lab.hass.loop.sock_sendto(audio, packet,
+                    (client.dialog.remote_rtp_host, client.dialog.remote_rtp_port))
+                await asyncio.sleep(.02)
+            async with asyncio.timeout(2):
+                while True:
+                    decoded = audio_ws.decode_audio_frame(await browser.audio.get())
+                    if any(decoded):
+                        assert max(struct.unpack(f"<{len(decoded)//2}h", decoded)) == 7000
+                        break
+            response = await lab.hass.services.async_call("voip_stack", "park", {"device_id": phone.device_id},
+                                                          blocking=True, return_response=True)
+            await asyncio.wait_for(worker, 2)
+            assert response["slot"] == "701"
+            assert not lab.runtime.endpoints.get(phone.endpoint_id).active_call_id
+            assert phone.endpoint_id not in owner.endpoint_claims
+            assert lot.calls["701"].session is owner
+            await lab.hass.services.async_call("voip_stack", "call", {"device_id": phone.device_id, "destination": "701"}, blocking=True)
+            assert not lot.calls
+            assert lab.calls.get_session(call_id) is owner
+            assert lab.runtime.endpoints.get(phone.endpoint_id).active_call_id == call_id
+        await lab.hass.services.async_call("voip_stack", "hangup", {"device_id": phone.device_id}, blocking=True)
+        await wait_for(lambda: not lab.calls.sessions)
+        assert not lot.calls
+        assert await asyncio.wait_for(signaling, 2) == "remote_hangup"
+        assert not lab.runtime.rtp_port_pool["used"]
+    finally:
+        await client.close()
+        if signaling is not None:
+            workers.append(signaling)
+        for worker in workers:
+            if not worker.done():
+                worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+        audio.close()
