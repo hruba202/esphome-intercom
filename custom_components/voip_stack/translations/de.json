@@ -77,7 +77,8 @@
           "trunk_dtmf_terminator": "DTMF-Terminator",
           "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
           "trunk_audio_codecs": "Zulässige Audiocodecs",
-          "trunk_video_codecs": "Zulässige Videocodecs"
+          "trunk_video_codecs": "Zulässige Videocodecs",
+          "trunk_outbound_media_address": "IPv4-Medienadresse für ausgehende Anrufe"
         },
         "data_description": {
           "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -96,7 +97,8 @@
           "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
           "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
           "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
-          "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
+          "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben.",
+          "trunk_outbound_media_address": "Optional. Adresse von Home Assistant, die diese Telefonanlage für Audio und Video ausgehender Anrufe erreichen kann. Hinter NAT die eigene öffentliche IPv4-Adresse verwenden und RTP/RTCP unter unveränderten Portnummern erreichbar halten. Nicht die Adresse des Anbieters eingeben. Ein leeres Feld verwendet die bisherige HA-Adresse. LAN-Anrufe und SIP-Registrierung bleiben unverändert."
         }
       },
       "trunk_mode": {
@@ -154,7 +156,8 @@
       "parking_configuration_invalid": "Wählen Sie eindeutige Parkcodes und Zeiten zwischen 1 und 3600 Sekunden.",
       "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet.",
       "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
-      "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
+      "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein.",
+      "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",
@@ -320,7 +323,8 @@
             "trunk_dtmf_terminator": "DTMF-Terminator",
             "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
             "trunk_audio_codecs": "Zulässige Audiocodecs",
-            "trunk_video_codecs": "Zulässige Videocodecs"
+            "trunk_video_codecs": "Zulässige Videocodecs",
+            "trunk_outbound_media_address": "IPv4-Medienadresse für ausgehende Anrufe"
           },
           "data_description": {
             "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -339,7 +343,8 @@
             "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
             "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
             "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
-            "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
+            "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben.",
+            "trunk_outbound_media_address": "Optional. Adresse von Home Assistant, die diese Telefonanlage für Audio und Video ausgehender Anrufe erreichen kann. Hinter NAT die eigene öffentliche IPv4-Adresse verwenden und RTP/RTCP unter unveränderten Portnummern erreichbar halten. Nicht die Adresse des Anbieters eingeben. Ein leeres Feld verwendet die bisherige HA-Adresse. LAN-Anrufe und SIP-Registrierung bleiben unverändert."
           }
         }
       },
@@ -355,7 +360,8 @@
         "trunk_registration_failed": "Registrierung fehlgeschlagen. Prüfe Server, Transport und Zugangsdaten. Die gespeicherte Konfiguration wurde nicht geändert.",
         "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben.",
         "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
-        "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
+        "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein.",
+        "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen."
       },
       "abort": {
         "reconfigure_successful": "Trunk-Konfiguration aktualisiert."

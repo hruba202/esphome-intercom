@@ -98,7 +98,7 @@
           "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
           "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
           "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali.",
-          "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l’indirizzo del provider. Vuoto: usa l’indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
+          "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l'indirizzo del provider. Vuoto: usa l'indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
         }
       },
       "trunk_mode": {
@@ -344,7 +344,7 @@
             "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
             "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
             "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali.",
-            "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l’indirizzo del provider. Vuoto: usa l’indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
+            "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l'indirizzo del provider. Vuoto: usa l'indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
           }
         }
       },

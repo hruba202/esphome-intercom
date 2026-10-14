@@ -77,7 +77,8 @@
           "trunk_dtmf_terminator": "Finalizador DTMF",
           "trunk_allowed_ips": "Endereços IP de entrada permitidos",
           "trunk_audio_codecs": "Codecs de áudio permitidos",
-          "trunk_video_codecs": "Codecs de vídeo permitidos"
+          "trunk_video_codecs": "Codecs de vídeo permitidos",
+          "trunk_outbound_media_address": "Endereço IPv4 de mídia para chamadas de saída"
         },
         "data_description": {
           "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -96,7 +97,8 @@
           "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
           "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
           "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
-          "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
+          "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões.",
+          "trunk_outbound_media_address": "Opcional. Endereço do Home Assistant acessível por este PABX para áudio e vídeo das chamadas de saída. Atrás de NAT, use seu IPv4 público e mantenha RTP/RTCP acessíveis sem alterar os números das portas. Não informe o endereço do provedor. Vazio usa o endereço atual do HA. Não altera chamadas na LAN nem o registro SIP."
         }
       },
       "trunk_mode": {
@@ -154,7 +156,8 @@
       "parking_configuration_invalid": "Escolha códigos distintos e tempos entre 1 e 3600 segundos.",
       "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo.",
       "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio.",
-      "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem."
+      "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem.",
+      "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
@@ -320,7 +323,8 @@
             "trunk_dtmf_terminator": "Finalizador DTMF",
             "trunk_allowed_ips": "Endereços IP de entrada permitidos",
             "trunk_audio_codecs": "Codecs de áudio permitidos",
-            "trunk_video_codecs": "Codecs de vídeo permitidos"
+            "trunk_video_codecs": "Codecs de vídeo permitidos",
+            "trunk_outbound_media_address": "Endereço IPv4 de mídia para chamadas de saída"
           },
           "data_description": {
             "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -339,7 +343,8 @@
             "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
             "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
             "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
-            "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
+            "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões.",
+            "trunk_outbound_media_address": "Opcional. Endereço do Home Assistant acessível por este PABX para áudio e vídeo das chamadas de saída. Atrás de NAT, use seu IPv4 público e mantenha RTP/RTCP acessíveis sem alterar os números das portas. Não informe o endereço do provedor. Vazio usa o endereço atual do HA. Não altera chamadas na LAN nem o registro SIP."
           }
         }
       },
@@ -355,7 +360,8 @@
         "trunk_registration_failed": "Falha no registro. Verifique servidor, transporte e credenciais. A configuração salva não foi alterada.",
         "trunk_validation_failed": "Verifique a conexão e as redes de origem permitidas. Troncos estáticos com o mesmo transporte não podem ter redes de origem sobrepostas.",
         "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio.",
-        "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem."
+        "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem.",
+        "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio."
       },
       "abort": {
         "reconfigure_successful": "Configuração do tronco atualizada."
