@@ -415,6 +415,33 @@ export function buildMainCardSkeleton(cardVersion) {
         margin-top: 10px;
       }
       .runtime-controls[hidden] { display: none; }
+      .card > .phone-activity {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: calc(50% - 2 * var(--voip-fluid-space, 16px));
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        pointer-events: none;
+        font-size: .85em;
+      }
+      .phone-activity[hidden] { display: none; }
+      .parking-activity { left: var(--voip-fluid-space, 16px); }
+      .dialog-activity { right: var(--voip-fluid-space, 16px); }
+      .phone-activity li {
+        position: absolute;
+        display: flex;
+        align-items: baseline;
+        gap: .4em;
+        width: max-content;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+      .phone-activity li::before { content: "\\2022"; flex: none; }
+      .dialog-activity li { right: 0; flex-direction: row-reverse; text-align: right; }
+      .phone-activity span { min-width: 0; }
+
       .runtime-controls .settings-btn {
         border: 0;
         background: transparent;
@@ -829,9 +856,18 @@ export function buildMainCardSkeleton(cardVersion) {
     recordBtn.textContent = translate("Record call");
     recordBtn.hidden = true;
     runtimeControls.appendChild(recordBtn);
-    const parkingNotice = document.createElement("span");
+    const parkingNotice = document.createElement("ul");
+    parkingNotice.className = "phone-activity parking-activity";
     parkingNotice.hidden = true;
-    runtimeControls.appendChild(parkingNotice);
+    parkingNotice.setAttribute("role", "list");
+    parkingNotice.setAttribute("aria-live", "polite");
+    card.appendChild(parkingNotice);
+    const phoneActivity = document.createElement("ul");
+    phoneActivity.className = "phone-activity dialog-activity";
+    phoneActivity.hidden = true;
+    phoneActivity.setAttribute("role", "list");
+    phoneActivity.setAttribute("aria-live", "polite");
+    card.appendChild(phoneActivity);
     const voicemailPanel = document.createElement("div");
     voicemailPanel.id = "voip-voicemail-panel";
     voicemailPanel.hidden = true;
@@ -1106,7 +1142,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, recordBtn,
+      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, phoneActivity, recordBtn,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,

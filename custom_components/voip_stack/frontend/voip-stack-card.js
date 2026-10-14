@@ -298,7 +298,6 @@ class VoipStackCard extends HTMLElement {
           this._softphoneSelector(),
         );
       }
-      return;
     }
     if (!this._unsubCallEvents) {
       this._unsubCallEvents = voipStackEngine.subscribeCallEvents((e) => this._onCallEvent(e));
@@ -344,6 +343,11 @@ class VoipStackCard extends HTMLElement {
   }
 
   _onCallEvent(event) {
+    if (event?.event_type === "voip_stack.activity") {
+      this._phoneActivity = event.data;
+      this._render();
+      return;
+    }
     const scope = (event?.data?.scope || "").toLowerCase();
     if (!this._isHaSoftphoneMode() && scope === "sip_bridge") {
       this._onMirroredBridgeStateEvent(event);
@@ -1962,8 +1966,6 @@ class VoipStackCard extends HTMLElement {
       const parkingVideoUnsupported = softphoneMode && !!this._softphoneSnapshot?.video_active;
       els.parkBtn.disabled = !!this._parkingBusy || parkingVideoUnsupported;
       els.parkBtn.title = this._t(parkingVideoUnsupported ? "Parking requires an audio-only call" : "Park call");
-      els.parkingNotice.hidden = !this._parkedSlot || established;
-      els.parkingNotice.textContent = this._parkedSlot ? `${this._t("Parked in slot")}: ${this._parkedSlot}` : "";
     }
     if (els.recordBtn) {
       const recording = this._softphoneSnapshot?.recording;
@@ -2047,8 +2049,70 @@ class VoipStackCard extends HTMLElement {
       els.stats.textContent = "";
     }
 
+    this._renderPhoneActivity(showSettingsPanel || keypadOpen || visualMediaVisible);
+
     // Error
     els.err.textContent = this._t(this._errorMsg);
+  }
+
+  _renderPhoneActivity(hidden) {
+    const ownId = this._getSoftphoneEndpointId() || this._activeDeviceInfo?.endpoint_id;
+    const deviceId = this._getConfigDeviceId();
+    const activity = this._phoneActivity || {};
+    const parked = (activity.parked || []).map(slot => `${this._t("Parked in slot")}: ${slot}`);
+    const phones = (activity.phones || [])
+      .filter(phone => phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId))
+      .map(phone => `${phone.name}: ${this._t({ringing: "Ringing", calling: "Calling", busy: "Busy"}[phone.state] || "Busy")}`);
+    for (const [list, rows] of [[this._els.parkingNotice, parked], [this._els.phoneActivity, phones]]) {
+      if (!list) continue;
+      list.hidden = hidden || rows.length === 0;
+      const key = JSON.stringify(rows);
+      if (list.dataset.rows === key) continue;
+      list.dataset.rows = key;
+      list.replaceChildren(...rows.map(text => {
+        const item = document.createElement("li");
+        const label = document.createElement("span");
+        label.textContent = text;
+        item.appendChild(label);
+        return item;
+      }));
+    }
+    this._layoutPhoneActivity();
+  }
+
+  _layoutPhoneActivity() {
+    const e = this._els;
+    if (!e?.parkingNotice || !e.callBtn ||
+        [e.parkingNotice, e.phoneActivity].every(list => !list || list.hidden)) return;
+    const gap = parseFloat(getComputedStyle(e.card).getPropertyValue("--voip-fluid-space")) || 0;
+    const container = e.callBtn.parentElement;
+    const obstacles = [...container.querySelectorAll("button"), e.runtimeControls,
+      e.header, e.destRow, e.statusIndicator?.parentElement, e.statusReason]
+      .filter(node => node && !node.hidden)
+      .map(node => node.getBoundingClientRect())
+      .filter(box => box.width && box.height);
+    for (const list of [e.parkingNotice, e.phoneActivity]) {
+      if (!list || list.hidden) continue;
+      const origin = list.getBoundingClientRect().top;
+      const buttons = [...container.querySelectorAll("button")]
+        .filter(button => !button.hidden).map(button => button.getBoundingClientRect());
+      let top = buttons.length ? Math.min(...buttons.map(box => box.top)) : container.getBoundingClientRect().top;
+      for (const row of list.children) {
+        const box = row.getBoundingClientRect();
+        let next;
+        do {
+          next = top;
+          for (const obstacle of obstacles) {
+            if (box.left < obstacle.right + gap && box.right > obstacle.left - gap &&
+                top < obstacle.bottom + gap && top + box.height > obstacle.top - gap) {
+              top = Math.max(top, obstacle.bottom + gap);
+            }
+          }
+        } while (top !== next);
+        row.style.top = `${Math.ceil(top - origin)}px`;
+        top += box.height + gap;
+      }
+    }
   }
 
   _renderUnconfigured(name) {
@@ -2097,6 +2161,7 @@ class VoipStackCard extends HTMLElement {
     card.classList.toggle("layout-narrow", width < 350);
     card.classList.toggle("layout-compact", height < 360);
     card.classList.toggle("layout-short", height < 285);
+    this._layoutPhoneActivity();
   }
 
   _buildSkeletonMain() {
@@ -2311,7 +2376,6 @@ class VoipStackCard extends HTMLElement {
 
   async _startCall(destination = "") {
     if (this._starting || this._stopping) return;
-    this._parkedSlot = "";
     const softphoneAction = this._isHaSoftphoneMode();
     const mediaIntentToken = softphoneAction ? {} : null;
     if (
@@ -3087,14 +3151,12 @@ class VoipStackCard extends HTMLElement {
     const deviceId = this._getConfigDeviceId() || this._softphoneSnapshot?.device_id;
     if (!deviceId) return;
     this._parkingBusy = true;
-    this._parkedSlot = "";
     this._render();
     try {
-      const result = await this._hass.callWS({
+      await this._hass.callWS({
         type: "call_service", domain: "voip_stack", service: "park",
         service_data: {device_id: deviceId}, return_response: true,
       });
-      this._parkedSlot = String(result?.response?.slot || "");
     } catch (err) {
       this._showError(err.message || String(err));
     } finally {

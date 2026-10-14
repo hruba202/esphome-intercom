@@ -165,6 +165,7 @@ class VoipStackEngine extends EventTarget {
     this._callSubscribers = new Set();
     this._softphoneSubscribers = new Set();
     this._lastEvents = new Map();
+    this._lastActivityEvent = null;
     this._lastSoftphoneState = null;
     this._softphoneSubscriberSelectors = new Map();
     this._lastSoftphoneStates = new Map();
@@ -266,7 +267,7 @@ class VoipStackEngine extends EventTarget {
     if (this._busConnection !== conn) return;
     if (!this._busUnsub && !this._busSubscribePending) {
       this._busSubscribePending = true;
-      conn.subscribeMessage((event) => this._onBusEvent(event), { type: WS_SUBSCRIBE_CALL_EVENTS })
+      conn.subscribeMessage((event) => this._onBusEvent(event), { type: WS_SUBSCRIBE_CALL_EVENTS, include_activity: true })
       .then((unsub) => {
         if (this._busConnection === conn) this._busUnsub = unsub;
         else unsub();
@@ -1120,6 +1121,13 @@ class VoipStackEngine extends EventTarget {
   }
 
   _onBusEvent(event) {
+    if (event?.event_type === "voip_stack.activity") {
+      this._lastActivityEvent = event;
+      for (const cb of this._callSubscribers) {
+        try { cb(event); } catch (err) { console.error("voip-stack-engine activity", err); }
+      }
+      return;
+    }
     const data = event?.data;
     if (!data) return;
     const eventType = String(data.type || "").toLowerCase();
@@ -1163,6 +1171,9 @@ class VoipStackEngine extends EventTarget {
 
   subscribeCallEvents(cb) {
     this._callSubscribers.add(cb);
+    if (this._lastActivityEvent) {
+      try { cb(this._lastActivityEvent); } catch (err) { console.error("voip-stack-engine replay", err); }
+    }
     for (const event of this._lastEvents.values()) {
       try { cb(event); } catch (err) { console.error("voip-stack-engine replay", err); }
     }

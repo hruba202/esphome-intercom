@@ -177,6 +177,7 @@ class FakeElement {{
     this.classList = new FakeClassList();
     this.style = {{ display: "", setProperty() {{}} }};
     this.attributes = new Map();
+    this.dataset = {{}};
   }}
   setAttribute(name, value) {{ this.attributes.set(name, String(value)); }}
   replaceChildren(...children) {{
@@ -503,7 +504,7 @@ await routingCard._setMailboxEnabled(true);
 assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_voicemail_settings", {{device_id: "device-kitchen", enabled: true}},
 ]);
-// Parking delegates to the public backend action and displays its actual slot.
+// Parking delegates to the public action; the list follows authoritative activity.
 const parkRequests = [];
 routingCard._hass.callWS = async (request) => {{
   parkRequests.push(request);
@@ -514,7 +515,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(parkRequests[0])), {{
   type: "call_service", domain: "voip_stack", service: "park",
   service_data: {{device_id: "device-kitchen"}}, return_response: true,
 }});
-assert.equal(routingCard._parkedSlot, "705");
+routingCard._onCallEvent({{event_type: "voip_stack.activity", data: {{parked: ["705"], phones: []}}}});
+assert.deepEqual(routingCard._phoneActivity.parked, ["705"]);
+routingCard._onCallEvent({{event_type: "voip_stack.activity", data: {{parked: [], phones: []}}}});
+assert.equal(routingCard._phoneActivity.parked.length, 0);
 assert.equal(routingCard._parkingBusy, false);
 routingCard._softphoneSnapshot = {{state: "in_call", call_id: "recording-call", recording: {{active: false}}}};
 await routingCard._toggleRecording();

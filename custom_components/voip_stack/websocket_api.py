@@ -1566,6 +1566,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): WS_TYPE_SUBSCRIBE_CALL_EVENTS,
+        vol.Optional("include_activity", default=False): bool,
         vol.Optional("endpoint_id", default=""): str,
         vol.Optional("device_id", default=""): str,
     }
@@ -1609,10 +1610,38 @@ def websocket_subscribe_call_events(
                 return
         connection.send_event(msg_id, {"event_type": CALL_EVENT, "data": event.data})
 
-    connection.subscriptions[msg_id] = hass.bus.async_listen(
-        CALL_EVENT, forward_call_event
-    )
+    from .dialog_info import activity_snapshot
+    from .parking import PARKING_CHANGED
+
+    last_activity = None
+
+    @callback
+    def forward_activity(_event=None):
+        nonlocal last_activity
+        current = activity_snapshot(runtime_data(hass))
+        if current != last_activity:
+            last_activity = current
+            connection.send_event(msg_id, {"event_type": f"{DOMAIN}.activity", "data": current})
+
+    listeners = [hass.bus.async_listen(CALL_EVENT, forward_call_event)]
+    if msg.get("include_activity", False):
+        listeners.extend((
+            hass.bus.async_listen(CALL_EVENT, forward_activity),
+            hass.bus.async_listen(PARKING_CHANGED, forward_activity),
+        ))
+        runtime = runtime_data(hass)
+        if runtime is not None:
+            listeners.append(runtime.endpoints.subscribe(forward_activity))
+
+    @callback
+    def unsubscribe():
+        for listener in listeners:
+            listener()
+
+    connection.subscriptions[msg_id] = unsubscribe
     connection.send_result(msg_id)
+    if msg.get("include_activity", False):
+        forward_activity()
 
 
 @websocket_api.websocket_command(

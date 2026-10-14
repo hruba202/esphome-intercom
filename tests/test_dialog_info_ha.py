@@ -219,3 +219,66 @@ async def test_parking_slot_blf_tracks_reservation_without_a_fake_phone(lab, blf
     assert result.status==200
     assert methods.parking_unsubscribe is None and methods.dialog_unsubscribe is None
     await lab.calls.terminate_call_wait(session.call_id,reason='test_complete')
+
+
+async def test_activity_projection_tracks_dialogs_and_occupied_slots(lab, blf):
+    from custom_components.voip_stack.dialog_info import activity_snapshot
+    from custom_components.voip_stack.parking_lot import ParkingLot
+
+    assert activity_snapshot(lab.runtime) == {"parked": [], "phones": []}
+    session = lab.calls.upsert("activity", state="ringing", owner="router", route_kind="sip",
+                               source_endpoint_id="other", dest_endpoint_id="sip:bedroom0")
+    lab.calls.claim_endpoint(session.call_id, "sip:bedroom0", role="destination")
+    assert activity_snapshot(lab.runtime)["phones"][0]["state"] == "ringing"
+    lab.calls.transition(session.call_id, state="in_call")
+    assert activity_snapshot(lab.runtime)["phones"][0]["state"] == "busy"
+    lot = ParkingLot(("701", "702"))
+    lab.calls.adopt_component("parking", lot, closer=lot.close)
+    parked = lot.reserve(session)
+    assert activity_snapshot(lab.runtime)["parked"] == ["701"]
+    lot.release(parked)
+    assert activity_snapshot(lab.runtime)["parked"] == []
+    await lab.calls.terminate_call_wait(session.call_id, reason="remote_hangup")
+    assert activity_snapshot(lab.runtime) == {"parked": [], "phones": []}
+
+
+async def test_activity_subscription_updates_and_unsubscribes(lab, blf, monkeypatch):
+    from types import SimpleNamespace
+    from custom_components.voip_stack import websocket_api
+    from custom_components.voip_stack.parking import PARKING_CHANGED
+    from custom_components.voip_stack.parking_lot import ParkingLot
+
+    events = []
+    connection = SimpleNamespace(subscriptions={}, send_result=lambda *args: None,
+                                 send_event=lambda identity, value: events.append(value))
+    monkeypatch.setattr(websocket_api, "require_websocket_read", lambda *args: None)
+    monkeypatch.setattr(websocket_api, "require_websocket_endpoint_read", lambda *args: None)
+    websocket_api.websocket_subscribe_call_events(lab.hass, connection, {"id": 77, "include_activity": True})
+    assert events[-1] == {"event_type": "voip_stack.activity", "data": {"parked": [], "phones": []}}
+    lot = ParkingLot(("701",), lambda: lab.hass.bus.async_fire(PARKING_CHANGED))
+    lab.calls.adopt_component("parking", lot, closer=lot.close)
+    session = lab.calls.upsert("activity-stream", state="in_call", owner="router", route_kind="sip")
+    lab.calls.claim_endpoint(session.call_id, "sip:bedroom0", role="destination")
+    parked = lot.reserve(session)
+    await lab.hass.async_block_till_done()
+    activity = [event["data"] for event in events if event["event_type"] == "voip_stack.activity"][-1]
+    assert activity["parked"] == ["701"] and activity["phones"][0]["state"] == "busy"
+    lot.release(parked)
+    await lab.calls.terminate_call_wait(session.call_id, reason="remote_hangup")
+    await lab.hass.async_block_till_done()
+    assert events[-1]["data"] == {"parked": [], "phones": []}
+    connection.subscriptions[77]()
+    count = len(events)
+    lab.hass.bus.async_fire(PARKING_CHANGED)
+    await lab.hass.async_block_till_done()
+    assert len(events) == count
+
+    websocket_api.websocket_subscribe_call_events(lab.hass, connection, {"id": 78})
+    assert len(events) == count
+    lab.hass.bus.async_fire(PARKING_CHANGED)
+    await lab.hass.async_block_till_done()
+    assert len(events) == count
+    lab.hass.bus.async_fire(websocket_api.CALL_EVENT, {"type": "example"})
+    await lab.hass.async_block_till_done()
+    assert events[-1] == {"event_type": websocket_api.CALL_EVENT, "data": {"type": "example"}}
+    connection.subscriptions[78]()

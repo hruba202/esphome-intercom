@@ -359,6 +359,19 @@ staleClaim._onBusEvent({{
 }});
 assert.equal(staleClaim.softphoneCallIdFor("test"), "");
 
+// Activity replay is independent of call termination and does not revive old slots.
+const activityEngine = new Engine();
+activityEngine.claimSoftphoneSession("active-call", "test");
+activityEngine._onBusEvent({{event_type: "voip_stack.activity", data: {{parked: ["701"], phones: []}}}});
+const activityEvents = [];
+const stopActivity = activityEngine.subscribeCallEvents(event => activityEvents.push(event));
+assert.equal(activityEvents.at(-1).data.parked[0], "701");
+activityEngine._onBusEvent({{event_type: "voip_stack.activity", data: {{parked: [], phones: []}}}});
+assert.equal(activityEvents.at(-1).data.parked.length, 0);
+assert.equal(activityEngine.softphoneCallIdFor("test"), "active-call");
+stopActivity();
+activityEngine.releaseSoftphoneSession("active-call", "test");
+
 // The backend phone snapshot remains authoritative while a video call is
 // already attached: changing Send Video must reconcile the live camera
 // sender, not merely affect the next call.

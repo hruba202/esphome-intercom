@@ -101,3 +101,21 @@ def document(entity, version, states):
             target = ElementTree.SubElement(local, "target", {"uri": entity})
             ElementTree.SubElement(target, "param", {"pname": "+sip.rendering", "pvalue": "no"})
     return ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def activity_snapshot(runtime):
+    """Project occupied slots and active phone dialogs without caller details."""
+    if runtime is None or runtime.sip is None:
+        return {"parked": [], "phones": []}
+    lot = runtime.sip.component("parking")
+    parked = sorted(slot for slot, call in lot.calls.items() if call.session.live) if lot is not None else []
+    phones = []
+    for endpoint in runtime.endpoints.endpoints:
+        states = [item for item in snapshot(runtime, endpoint.endpoint_id) if item.state != "terminated"]
+        if not states:
+            continue
+        ringing = any(item.state == "early" and item.direction == "recipient" for item in states)
+        connected = any(item.state == "confirmed" for item in states)
+        phones.append({"endpoint_id": endpoint.endpoint_id, "device_id": endpoint.device_id,
+                       "name": endpoint.name, "state": "ringing" if ringing else "busy" if connected else "calling"})
+    return {"parked": parked, "phones": phones}

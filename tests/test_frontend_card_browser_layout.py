@@ -57,6 +57,7 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                         };
                     },
                     _measureLayout(){prototype._measureLayout.call(this);},
+                    _layoutPhoneActivity(){prototype._layoutPhoneActivity.call(this);},
                     _observeLayout(){prototype._observeLayout.call(this);}};
                 owner._resizeObserver=new ResizeObserver(()=>owner._measureLayout());
                 const {buildMainCardSkeleton}=await import('/voip-stack-card-view.js');
@@ -164,5 +165,66 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                         box["top"], other["top"]
                     )
                     assert overlap <= 0 or vertical <= 0, (name, other_name)
+        finally:
+            browser.close()
+
+
+@pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
+@pytest.mark.parametrize("width", [280, 500])
+@pytest.mark.parametrize("ringing", [False, True])
+def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as runner:
+        browser = runner.chromium.launch(executable_path=shutil.which("chromium"), headless=True)
+        try:
+            page = browser.new_page(viewport={"width": width + 40, "height": 650})
+            def serve(route):
+                name = route.request.url.split("/")[-1].split("?")[0]
+                path = FRONTEND / name
+                route.fulfill(content_type="text/javascript" if name.endswith(".js") else "text/html",
+                              body=path.read_text() if name.endswith(".js") and path.is_file() else "<html><body></body></html>")
+            page.route("http://card.test/**", serve)
+            page.goto("http://card.test/")
+            page.evaluate('''async ({width,ringing})=>{
+                const host=document.createElement('div');host.style.cssText=`width:${width}px;height:440px`;
+                document.body.append(host);await import('/voip-stack-card.js');
+                const p=customElements.get('voip-stack-card').prototype;
+                const owner={shadowRoot:host.attachShadow({mode:'open'}),_attachEventHandlers(){},
+                    _getSoftphoneEndpointId(){return 'mine'},_getConfigDeviceId(){return 'my-device'},_t:v=>v,
+                    _measureLayout(){p._measureLayout.call(this)},_observeLayout(){p._observeLayout.call(this)},
+                    _layoutPhoneActivity(){p._layoutPhoneActivity.call(this)}};
+                owner._resizeObserver=new ResizeObserver(()=>owner._measureLayout());
+                const {buildMainCardSkeleton}=await import('/voip-stack-card-view.js');
+                buildMainCardSkeleton.call(owner,'test');window.owner=owner;window.elements=owner._els;
+                const e=elements;e.callBtn.hidden=ringing;e.answerBtn.hidden=!ringing;e.declineBtn.hidden=!ringing;
+                e.hangupBtn.hidden=true;e.placeholderBtn.hidden=true;e.keypadPanel.hidden=true;e.keypadInput.hidden=true;
+                for(const button of owner.shadowRoot.querySelectorAll('button'))button.style.animation='none';
+                window.renderActivity=value=>{owner._phoneActivity=value;p._renderPhoneActivity.call(owner,false)};
+                window.controls=()=>Object.fromEntries(['callBtn','answerBtn','declineBtn','keypadBtn','settingsBtn']
+                    .filter(k=>!e[k].hidden).map(k=>[k,e[k].getBoundingClientRect().toJSON()]));
+                renderActivity({parked:[],phones:[]});
+            }''', {"width": width, "ringing": ringing})
+            page.wait_for_function("elements.card.style.getPropertyValue('--voip-button-size') !== ''")
+            page.evaluate("async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await Promise.all(elements.card.getAnimations({subtree:true}).map(a=>a.finished.catch(()=>{})));}")
+            before = page.evaluate("controls()")
+            page.evaluate('''renderActivity({parked:['701','702'],phones:[
+                {endpoint_id:'mine',device_id:'my-device',name:'This phone',state:'ringing'},
+                {endpoint_id:'kitchen',name:'Kitchen',state:'ringing'},
+                {endpoint_id:'office',name:'Office phone with a long name',state:'busy'}]})''')
+            after = page.evaluate("controls()")
+            for key, box in before.items():
+                for field in ("x", "y", "width", "height"):
+                    assert abs(box[field] - after[key][field]) < .5, (key, field)
+            rows = page.evaluate("[...owner.shadowRoot.querySelectorAll('.phone-activity li')].map(e=>e.getBoundingClientRect().toJSON())")
+            assert len(rows) == 4
+            for row in rows:
+                for button in after.values():
+                    assert min(row['right'], button['right']) <= max(row['left'], button['left']) or min(row['bottom'], button['bottom']) <= max(row['top'], button['top'])
+            assert page.evaluate("getComputedStyle(elements.phoneActivity.firstElementChild).flexDirection") == "row-reverse"
+            assert page.evaluate("getComputedStyle(elements.phoneActivity.firstElementChild.firstElementChild).direction") == "ltr"
+            page.screenshot(path=str(tmp_path / "activity.png"), full_page=True)
+            page.evaluate("renderActivity({parked:[],phones:[]})")
+            assert page.evaluate("elements.parkingNotice.hidden && elements.phoneActivity.hidden")
+            assert page.evaluate("controls()") == before
         finally:
             browser.close()
