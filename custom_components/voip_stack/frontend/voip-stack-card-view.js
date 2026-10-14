@@ -418,19 +418,20 @@ export function buildMainCardSkeleton(cardVersion) {
       .card > .phone-activity {
         position: absolute;
         top: 0;
-        bottom: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
+        pointer-events: auto;
         width: calc(50% - 2 * var(--voip-fluid-space, 16px));
         margin: 0;
         padding: 0;
         list-style: none;
-        pointer-events: none;
         font-size: .85em;
       }
       .phone-activity[hidden] { display: none; }
       .parking-activity { left: var(--voip-fluid-space, 16px); }
       .dialog-activity { right: var(--voip-fluid-space, 16px); }
       .phone-activity li {
-        position: absolute;
+        margin-bottom: var(--voip-fluid-space, 16px);
         display: flex;
         align-items: baseline;
         gap: .4em;
@@ -439,7 +440,7 @@ export function buildMainCardSkeleton(cardVersion) {
         overflow-wrap: anywhere;
       }
       .phone-activity li::before { content: "\\2022"; flex: none; }
-      .dialog-activity li { right: 0; flex-direction: row-reverse; text-align: right; }
+      .dialog-activity li { margin-left: auto; flex-direction: row-reverse; text-align: right; }
       .phone-activity span { min-width: 0; }
 
       .runtime-controls .settings-btn {

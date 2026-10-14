@@ -2059,9 +2059,13 @@ class VoipStackCard extends HTMLElement {
     const ownId = this._getSoftphoneEndpointId() || this._activeDeviceInfo?.endpoint_id;
     const deviceId = this._getConfigDeviceId();
     const activity = this._phoneActivity || {};
+    const peer = this._softphoneSnapshot?.state === "in_call"
+      ? this._activeSoftphonePeerDevice() : null;
     const parked = (activity.parked || []).map(slot => `${this._t("Parked in slot")}: ${slot}`);
     const phones = (activity.phones || [])
-      .filter(phone => phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId))
+      .filter(phone => phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId) &&
+        (!peer?.device_id || phone.device_id !== peer.device_id) &&
+        (!peer?.endpoint_id || phone.endpoint_id !== peer.endpoint_id))
       .map(phone => `${phone.name}: ${this._t({ringing: "Ringing", calling: "Calling", busy: "Busy"}[phone.state] || "Busy")}`);
     for (const [list, rows] of [[this._els.parkingNotice, parked], [this._els.phoneActivity, phones]]) {
       if (!list) continue;
@@ -2086,32 +2090,23 @@ class VoipStackCard extends HTMLElement {
         [e.parkingNotice, e.phoneActivity].every(list => !list || list.hidden)) return;
     const gap = parseFloat(getComputedStyle(e.card).getPropertyValue("--voip-fluid-space")) || 0;
     const container = e.callBtn.parentElement;
-    const obstacles = [...container.querySelectorAll("button"), e.runtimeControls,
-      e.header, e.destRow, e.statusIndicator?.parentElement, e.statusReason]
-      .filter(node => node && !node.hidden)
-      .map(node => node.getBoundingClientRect())
+    const buttons = [...container.querySelectorAll("button")]
+      .filter(button => !button.hidden).map(button => button.getBoundingClientRect())
       .filter(box => box.width && box.height);
-    for (const list of [e.parkingNotice, e.phoneActivity]) {
+    if (!buttons.length) return;
+    const card = e.card.getBoundingClientRect();
+    const top = Math.min(...buttons.map(box => box.top));
+    const bottom = Math.max(...buttons.map(box => box.bottom));
+    const left = Math.min(...buttons.map(box => box.left));
+    const right = Math.max(...buttons.map(box => box.right));
+    for (const [list, width] of [
+      [e.parkingNotice, left - card.left - 2 * gap],
+      [e.phoneActivity, card.right - right - 2 * gap],
+    ]) {
       if (!list || list.hidden) continue;
-      const origin = list.getBoundingClientRect().top;
-      const buttons = [...container.querySelectorAll("button")]
-        .filter(button => !button.hidden).map(button => button.getBoundingClientRect());
-      let top = buttons.length ? Math.min(...buttons.map(box => box.top)) : container.getBoundingClientRect().top;
-      for (const row of list.children) {
-        const box = row.getBoundingClientRect();
-        let next;
-        do {
-          next = top;
-          for (const obstacle of obstacles) {
-            if (box.left < obstacle.right + gap && box.right > obstacle.left - gap &&
-                top < obstacle.bottom + gap && top + box.height > obstacle.top - gap) {
-              top = Math.max(top, obstacle.bottom + gap);
-            }
-          }
-        } while (top !== next);
-        row.style.top = `${Math.ceil(top - origin)}px`;
-        top += box.height + gap;
-      }
+      list.style.top = `${top - card.top + e.card.scrollTop}px`;
+      list.style.height = `${bottom - top}px`;
+      list.style.width = `${Math.max(0, width)}px`;
     }
   }
 

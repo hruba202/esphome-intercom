@@ -59,9 +59,12 @@ Occupied parking slots appear as a left-aligned bullet list. Other phones that
 are calling, ringing or busy appear on the right, with the bullets at the right
 edge and the text in its normal reading order. These are backend call states,
 shared with SIP BLF; external PBX extensions are not automatically monitored.
+The phone you are currently speaking to is already shown in the call status
+and is omitted from the activity list.
 
 The lists do not move or resize Call, Answer, Decline or the toolbar icons.
-Rows avoid the controls, and empty lists occupy no space. They are hidden while
+Lists fit the space beside the call controls and scroll when necessary.
+Empty lists occupy no space. They are hidden while
 the keypad, options or video view needs that space. Voicemail stays in its own
 button and is not duplicated in these lists.
 

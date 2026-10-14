@@ -222,7 +222,21 @@ def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
                     assert min(row['right'], button['right']) <= max(row['left'], button['left']) or min(row['bottom'], button['bottom']) <= max(row['top'], button['top'])
             assert page.evaluate("getComputedStyle(elements.phoneActivity.firstElementChild).flexDirection") == "row-reverse"
             assert page.evaluate("getComputedStyle(elements.phoneActivity.firstElementChild.firstElementChild).direction") == "ltr"
+            # Lists are bounded by the call controls, never the diagnostics/footer.
+            assert page.evaluate("""()=>{const buttons=[elements.callBtn,elements.answerBtn,elements.declineBtn]
+                .filter(e=>!e.hidden).map(e=>e.getBoundingClientRect());
+                return [elements.parkingNotice,elements.phoneActivity].every(e=>{
+                    const r=e.getBoundingClientRect();return r.top>=Math.min(...buttons.map(b=>b.top))-.5 &&
+                    r.bottom<=Math.max(...buttons.map(b=>b.bottom))+.5;});}""")
             page.screenshot(path=str(tmp_path / "activity.png"), full_page=True)
+            page.evaluate("""()=>{owner._softphoneSnapshot={state:'in_call'};
+                owner._activeSoftphonePeerDevice=()=>({endpoint_id:'kitchen'});
+                renderActivity(owner._phoneActivity);}""")
+            assert 'Kitchen' not in page.evaluate("elements.phoneActivity.textContent")
+            assert 'Office phone' in page.evaluate("elements.phoneActivity.textContent")
+            page.evaluate("""()=>{owner._softphoneSnapshot={state:'idle'};
+                renderActivity(owner._phoneActivity);}""")
+            assert 'Kitchen' in page.evaluate("elements.phoneActivity.textContent")
             page.evaluate("renderActivity({parked:[],phones:[]})")
             assert page.evaluate("elements.parkingNotice.hidden && elements.phoneActivity.hidden")
             assert page.evaluate("controls()") == before
