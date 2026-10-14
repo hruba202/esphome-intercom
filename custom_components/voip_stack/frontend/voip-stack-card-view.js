@@ -423,7 +423,12 @@ export function buildMainCardSkeleton(cardVersion) {
         text-align: left;
       }
       .settings-panel[hidden] { display: none; }
-      .settings-label-icon { display: none; }
+      .runtime-controls .settings-label { display: none; }
+      .settings-label-icon {
+        display: inline-flex;
+        vertical-align: middle;
+        --mdc-icon-size: 23px;
+      }
       .video-active:not(.settings-open) .runtime-controls {
         position: absolute;
         z-index: 4;
@@ -434,7 +439,7 @@ export function buildMainCardSkeleton(cardVersion) {
         margin: 0;
       }
       .video-active:not(.settings-open) .runtime-controls .settings-btn {
-        width: 36px;
+        width: var(--voip-video-control-size, 36px);
         height: 100%;
         margin: 0;
         padding: 0;
@@ -788,7 +793,15 @@ export function buildMainCardSkeleton(cardVersion) {
     const voicemailBtn = document.createElement("button");
     voicemailBtn.type = "button";
     voicemailBtn.className = "settings-btn";
-    voicemailBtn.textContent = translate("Voicemail");
+    const voicemailLabel = document.createElement("span");
+    voicemailLabel.className = "settings-label";
+    voicemailLabel.textContent = translate("Voicemail");
+    const voicemailIcon = document.createElement("ha-icon");
+    voicemailIcon.className = "settings-label-icon";
+    voicemailIcon.setAttribute("icon", "mdi:voicemail");
+    voicemailBtn.append(voicemailLabel, voicemailIcon);
+    voicemailBtn.setAttribute("aria-label", translate("Voicemail"));
+    voicemailBtn.title = translate("Voicemail");
     voicemailBtn.hidden = true;
     voicemailBtn.setAttribute("aria-controls", "voip-voicemail-panel");
     runtimeControls.appendChild(voicemailBtn);
@@ -832,6 +845,8 @@ export function buildMainCardSkeleton(cardVersion) {
     settingsLabelIcon.setAttribute("icon", "mdi:tune-variant");
     settingsBtn.appendChild(settingsLabel);
     settingsBtn.appendChild(settingsLabelIcon);
+    settingsBtn.setAttribute("aria-label", translate("Options"));
+    settingsBtn.title = translate("Options");
     settingsBtn.setAttribute("aria-controls", "voip-settings-panel");
     settingsBtn.setAttribute("aria-expanded", "false");
     runtimeControls.appendChild(settingsBtn);
@@ -1087,7 +1102,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, recordBtn,
+      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, recordBtn,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,

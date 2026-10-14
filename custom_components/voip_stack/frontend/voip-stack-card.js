@@ -1935,6 +1935,7 @@ class VoipStackCard extends HTMLElement {
     );
     const keypadLabel = this._t(keypadOpen ? "Contacts" : "Keypad");
     els.keypadLabel.textContent = keypadLabel;
+    els.keypadIcon?.setAttribute("icon", keypadOpen ? "mdi:contacts" : "mdi:dialpad");
     els.keypadBtn.setAttribute("aria-label", keypadLabel);
     els.keypadBtn.title = keypadLabel;
     els.card.classList.toggle("keypad-available", !els.keypadBtn.hidden);
@@ -2074,6 +2075,7 @@ class VoipStackCard extends HTMLElement {
     if (!card) return;
     const width = card.clientWidth;
     const height = card.clientHeight;
+    card.style.setProperty("--voip-video-control-size", `${Math.max(24, Math.min(36, width / 12))}px`);
     const controls = this._els?.runtimeControls;
     if (controls && card.classList.contains("video-active") && !this._settingsOpen) {
       const bounds = controls.getBoundingClientRect();

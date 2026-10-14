@@ -70,7 +70,7 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 e.parkBtn.hidden=!park;
                 e.parkBtn.querySelector('.settings-label').textContent='Anruf parken';
                 e.recordBtn.hidden=true;
-                e.voicemailBtn.hidden=true;
+                e.voicemailBtn.hidden=false;
                 e.keypadPanel.hidden=true;e.keypadInput.hidden=true;
                 // HA supplies these icon boxes; the fixture preserves their sizes.
                 for(const icon of owner.shadowRoot.querySelectorAll('ha-icon'))
@@ -88,6 +88,7 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             if keypad_open:
                 page.get_by_role("button", name="Keypad", exact=True).click()
                 page.wait_for_function("elements.card.style.getPropertyValue('--voip-video-keypad-height') !== ''")
+            assert page.evaluate("elements.voicemailBtn.scrollWidth <= elements.voicemailBtn.clientWidth")
             boxes = page.evaluate("""() => {
                 const e=elements;
                 return Object.fromEntries(['card','hangupBtn','hangupDuration','keypadBtn',
