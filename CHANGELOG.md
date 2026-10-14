@@ -4,6 +4,25 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Waveshare 1.85C-BOX V2 FULL AEC candidate
+
+- Add a separate experimental FULL AEC profile after reports of poor wake-word
+  recognition during playback on the FULL AFE profile. Standalone AEC processes
+  one microphone and the hardware reference; MWW runs on core 0 and Audio Stack
+  on core 1. Dual-microphone AFE speech enhancement is not part of this candidate.
+- Retain the eight native-resolution animation poses and the existing UI,
+  Assist, VoIP, HTTP playback and Sendspin configuration. ESPHome 2026.9.1 with
+  ESP-IDF 5.5.5 compiled successfully: OTA image 7,527,328 bytes, 599,136 bytes
+  of slot headroom, static DIRAM 170,383 bytes. Runtime responsiveness and
+  barge-in remain untested; the maintained AFE profile is unchanged.
+
+### ESP camera interoperability coverage
+
+- Document the difference between a Home Assistant camera preview and SIP/RTP
+  video. Extend JPEG receive-only offer tests with a UDP peer, hangup and redial.
+  Community S3-originated video is confirmed; the reverse hardware direction
+  still needs a retest with the HA integration version recorded.
+
 ### Home Assistant entity renaming
 
 - Keep phone lookups and permission checks correct after an entity ID changes,
