@@ -193,6 +193,7 @@ def _disabled_trunk_data(data: dict, existing: Mapping[str, Any]) -> dict:
     codecs = CodecPolicy.from_config(existing)
     data.update(
         {
+            "trunk_outbound_media_address": existing.get("trunk_outbound_media_address", ""),
             "trunk_audio_codecs": list(codecs.audio),
             "trunk_video_codecs": list(codecs.video),
             CONF_TRUNK_ENABLED: False,
@@ -283,6 +284,10 @@ class TrunkFormMixin:
         }
         schema = vol.Schema(
             {
+                vol.Optional(
+                    "trunk_outbound_media_address",
+                    default=existing.get("trunk_outbound_media_address", ""),
+                ): TextSelector(),
                 vol.Required("trunk_audio_codecs", default=existing.get("trunk_audio_codecs", list(AUDIO_CODECS))):
                     SelectSelector(SelectSelectorConfig(options=list(AUDIO_CODECS), multiple=True,
                                                         translation_key="trunk_audio_codecs")),
@@ -417,6 +422,20 @@ class TrunkFormMixin:
                 errors["base"] = "trunk_password_required"
             if not user_input[CONF_TRUNK_INBOUND_DEFAULT_TARGET]:
                 errors[CONF_TRUNK_INBOUND_DEFAULT_TARGET] = "trunk_target_required"
+            from ipaddress import IPv4Address
+            media_address = str(user_input.get(
+                "trunk_outbound_media_address",
+                existing.get("trunk_outbound_media_address", ""),
+            ) or "").strip()
+            if media_address:
+                try:
+                    address = IPv4Address(media_address)
+                    if address.is_unspecified or address.is_multicast or address.is_loopback:
+                        raise ValueError("not a unicast media address")
+                    media_address = str(address)
+                except ValueError:
+                    errors["trunk_outbound_media_address"] = "trunk_media_address_invalid"
+            user_input["trunk_outbound_media_address"] = media_address
             for key, allowed, empty in (("trunk_audio_codecs", AUDIO_CODECS, False),
                                         ("trunk_video_codecs", VIDEO_CODECS, True)):
                 try:

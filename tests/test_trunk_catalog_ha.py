@@ -551,13 +551,15 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
     assert 'trunk_video_codecs' in form['data_schema'].schema
     result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
         'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_inbound_default_target':'Kitchen','trunk_password':'test-only',
-        'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[]})
+        'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[],
+        'trunk_outbound_media_address':'198.51.100.22'})
     assert result['type']=='create_entry'
     identity=result['data']['trunk_id']
     try:
         await hass.async_block_till_done()
         assert sip_trunk(hass,identity).config.audio_codecs==('PCMU',)
         assert sip_trunk(hass,identity).config.video_codecs==()
+        assert sip_trunk(hass,identity).config.outbound_media_address=='198.51.100.22'
         record=next(s for s in catalog.subentries.values() if s.data['trunk_id']==identity)
         form=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'reconfigure','subentry_id':record.subentry_id})
         result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
@@ -566,6 +568,7 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
         await hass.async_block_till_done()
         assert catalog.subentries[record.subentry_id].data['trunk_audio_codecs']==['PCMU']
         assert catalog.subentries[record.subentry_id].data['trunk_video_codecs']==[]
+        assert catalog.subentries[record.subentry_id].data['trunk_outbound_media_address']=='198.51.100.22'
     finally:
         await async_stop_sip_trunk(hass)
 
@@ -617,3 +620,21 @@ async def test_home_assistant_stop_unregisters_owned_trunk_binding(hass, catalog
         assert len(peer.requests) == count
     finally:
         await client.stop()
+
+
+@pytest.mark.parametrize("address", ["0.0.0.0", "127.0.0.1", "224.0.0.1", "::1", "https://example.org", "192.0.2.1\r\na=sendrecv"])
+async def test_trunk_rejects_invalid_outbound_media_address(hass, catalog, address):
+    hass.config.components.update({'assist_pipeline', 'ffmpeg', 'http', 'lovelace', 'media_source', 'network'})
+    form = await hass.config_entries.subentries.async_init((catalog.entry_id, 'trunk'), context={'source': 'user'})
+    form = await hass.config_entries.subentries.async_configure(form['flow_id'], {
+        'name': 'Media address validation', 'trunk_enabled': True, 'trunk_register': True, 'make_default': False,
+    })
+    try:
+        result = await hass.config_entries.subentries.async_configure(form['flow_id'], {
+            'trunk_server': '127.0.0.1', 'trunk_username': 'ha', 'trunk_password': 'test-only',
+            'trunk_inbound_default_target': 'Kitchen', 'trunk_outbound_media_address': address,
+        })
+        assert result['type'] == 'form'
+        assert result['errors']['trunk_outbound_media_address'] == 'trunk_media_address_invalid'
+    finally:
+        hass.config_entries.subentries.async_abort(form['flow_id'])

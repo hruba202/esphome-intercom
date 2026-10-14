@@ -370,3 +370,24 @@ The HA softphone snapshot exposes:
 
 INFO logs describe normal call progress. DEBUG logs should be used when tracing
 REGISTER, INVITE, DTMF routing and RTP relay behavior.
+
+### Outgoing media through NAT
+
+If Home Assistant calls a remote PBX through NAT, **Outbound media IPv4 address**
+in that trunk's configuration lets HA advertise its reachable address for audio
+and video. Leave it empty for the existing behavior, including trunks on your
+LAN or VPN. Enter HA's public IPv4 address, not the provider's address.
+
+This setting applies to calls originated through the selected trunk, including
+subsequent media renegotiation. It does not change SIP registration, local socket
+binding, LAN calls or calls arriving from a trunk. RTP and RTCP must be reachable
+at the advertised ports, with no port translation. Configure the corresponding
+restricted port forwarding when the remote peer cannot establish symmetric RTP.
+An address override alone does not create firewall rules or discover NAT mappings.
+Update the setting if your public address changes.
+
+Why this matters for video: some cameras send their H.264 decoding parameters
+only at call startup. A PBX that first sends video to an unreachable private
+address and then learns the public address from RTP may lose those parameters.
+Audio can work while the video remains undecodable. Advertising the correct
+media destination avoids relying on that late address correction.

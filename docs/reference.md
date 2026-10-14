@@ -301,6 +301,7 @@ through **Add SIP trunk** on its integration page:
 | `sip_port` | HA SIP listener port. HA accepts SIP signaling over both UDP and TCP on this port. |
 | `rtp_port` | Base HA RTP UDP port used by HA softphone media and relays. |
 | `advertise_host` | Optional Contact/SDP host override for routed, VPN, LXC, Docker or multihomed installs. |
+| `trunk_outbound_media_address` | Optional per-trunk IPv4 address announced for audio/video in calls originated through that trunk. Leave empty to retain the HA address. Requires reachable, unchanged RTP/RTCP ports; does not change incoming calls or LAN destinations. |
 | `assist_intents` | Optional Assist intents for call, answer, decline and hangup. See [voice commands and customizable responses](ASSIST_INTENTS.md). |
 | `assist_endpoint_enabled` | Publish a native HA Assist pipeline as a callable phonebook destination. Disabled by default. |
 | `assist_extension` | Explicit 1-8 digit extension for the Assist destination. No extension is assumed or reserved. |

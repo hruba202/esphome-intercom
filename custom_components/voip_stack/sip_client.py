@@ -459,6 +459,7 @@ class SipCallClient:
         tls_context: ssl.SSLContext | None = None,
     ) -> None:
         self.local_ip = local_ip
+        self.media_ip = local_ip
         self.local_name = local_name
         self.local_uri_user = str(local_uri_user or username or local_name).strip()
         self.local_identity_uri = str(local_identity_uri or "").strip()
@@ -1414,7 +1415,7 @@ class SipCallClient:
             )
             answer = local_offer_sdp or sdp.build_answer_directional(
                 self.local_ip,
-                self.local_ip,
+                self.media_ip,
                 self.local_rtp_port,
                 selected.send,
                 selected.recv,
@@ -1997,7 +1998,7 @@ class SipCallClient:
         if not delayed_offer:
             offer = sdp.build_offer_directional(
                 self.local_ip,
-                self.local_ip,
+                self.media_ip,
                 self.local_rtp_port,
                 self.supported_send_formats,
                 self.supported_recv_formats,
@@ -2582,7 +2583,7 @@ class SipCallClient:
                                 else:
                                     answer = sdp.build_answer_directional(
                                         self.local_ip,
-                                        self.local_ip,
+                                        self.media_ip,
                                         updated.local_rtp_port,
                                         updated.send_format,
                                         updated.recv_format,
@@ -2612,7 +2613,7 @@ class SipCallClient:
                             elif prepared_update.answer_video_rtp_port is not None:
                                 answer = sdp.build_answer_directional(
                                     self.local_ip,
-                                    self.local_ip,
+                                    self.media_ip,
                                     updated.local_rtp_port,
                                     updated.send_format,
                                     updated.recv_format,

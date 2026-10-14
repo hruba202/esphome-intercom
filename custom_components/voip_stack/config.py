@@ -96,6 +96,7 @@ def normalized_trunk_config(data) -> dict:
         "trunk_audio_codecs": list(codecs.audio),
         "trunk_video_codecs": list(codecs.video),
         "trunk_registration_id": int(data.get("trunk_registration_id") or 1),
+        "trunk_outbound_media_address": str(data.get("trunk_outbound_media_address") or "").strip(),
         CONF_TRUNK_REGISTER: bool(data.get(CONF_TRUNK_REGISTER, True)),
         CONF_TRUNK_ALLOWED_IPS: data.get(CONF_TRUNK_ALLOWED_IPS, []),
         CONF_TRUNK_TRANSPORT: str(data.get(CONF_TRUNK_TRANSPORT) or "udp")

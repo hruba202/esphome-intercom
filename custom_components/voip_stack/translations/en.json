@@ -77,7 +77,8 @@
           "trunk_dtmf_terminator": "DTMF terminator",
           "trunk_allowed_ips": "Allowed incoming IP addresses",
           "trunk_audio_codecs": "Allowed audio codecs",
-          "trunk_video_codecs": "Allowed video codecs"
+          "trunk_video_codecs": "Allowed video codecs",
+          "trunk_outbound_media_address": "Outbound media IPv4 address"
         },
         "data_description": {
           "trunk_transport": "SIP transport used from HA to the provider.",
@@ -96,7 +97,8 @@
           "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
           "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
           "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
-          "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
+          "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure.",
+          "trunk_outbound_media_address": "Optional. Home Assistant address reachable by this PBX for audio and video on outgoing calls. Behind NAT, use your public IPv4 address and keep RTP/RTCP reachable with unchanged port numbers. Do not enter the provider address. Empty uses the existing HA address. Does not change LAN calls or SIP registration."
         }
       },
       "trunk_mode": {
@@ -154,7 +156,8 @@
       "parking_configuration_invalid": "Choose distinct parking codes and timeouts between 1 and 3600 seconds.",
       "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group.",
       "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec.",
-      "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination."
+      "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination.",
+      "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",
@@ -320,7 +323,8 @@
             "trunk_dtmf_terminator": "DTMF terminator",
             "trunk_allowed_ips": "Allowed incoming IP addresses",
             "trunk_audio_codecs": "Allowed audio codecs",
-            "trunk_video_codecs": "Allowed video codecs"
+            "trunk_video_codecs": "Allowed video codecs",
+            "trunk_outbound_media_address": "Outbound media IPv4 address"
           },
           "data_description": {
             "trunk_transport": "SIP transport used from HA to the provider.",
@@ -339,7 +343,8 @@
             "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
             "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
             "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
-            "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
+            "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure.",
+            "trunk_outbound_media_address": "Optional. Home Assistant address reachable by this PBX for audio and video on outgoing calls. Behind NAT, use your public IPv4 address and keep RTP/RTCP reachable with unchanged port numbers. Do not enter the provider address. Empty uses the existing HA address. Does not change LAN calls or SIP registration."
           }
         }
       },
@@ -355,7 +360,8 @@
         "trunk_registration_failed": "Registration failed. Check the server, transport and credentials. The saved configuration has not changed.",
         "trunk_validation_failed": "Check the connection settings and incoming networks. Static trunks on the same transport cannot have overlapping source networks.",
         "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec.",
-        "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination."
+        "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination.",
+        "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty."
       },
       "abort": {
         "reconfigure_successful": "Trunk configuration updated."

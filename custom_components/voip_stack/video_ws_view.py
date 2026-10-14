@@ -61,6 +61,7 @@ from .core.video_rtp import (
     packetize_annex_b,
     packetize_jpeg,
     packetize_vp8,
+    split_annex_b,
     unknown_dynamic_payload_type,
 )
 from .websocket_api import (
@@ -1645,6 +1646,11 @@ async def _run_video_session(
                     session.call_id,
                     parameter_sets,
                 )
+            # WebCodecs chunks require a coded picture. Preserve standalone
+            # SPS/PPS in the depacketizer cache for the next IDR, but do not
+            # submit them (or SEI/AUD-only units) as empty browser frames.
+            if not any(1 <= (nal[0] & 0x1F) <= 5 for nal in split_annex_b(result.data)):
+                return
         if needs_key_frame and not access_unit.key_frame:
             counters["video_drop_error"] += 1
             request_key_frame(now)

@@ -16,6 +16,7 @@ def reuse_registered_trunk_flow(
     if trunk is not None and getattr(trunk, "config", None) is not None:
         from .core.codec_policy import CodecPolicy
         client.set_codec_policy(CodecPolicy(trunk.config.audio_codecs, trunk.config.video_codecs))
+        client.media_ip = trunk.config.outbound_media_address or client.local_ip
         # Standard From/To and Request-URI already carry these identities.
         # External PBXs do not need duplicate VoIP Stack routing headers.
         client.include_route_metadata = False
