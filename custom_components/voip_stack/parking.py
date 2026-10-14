@@ -255,10 +255,12 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
         raise ParkingError("Select an established call owned by this phone")
     active = runtime.media.sessions_for("audio").get((session.call_id, endpoint_id))
     descriptor = registry.resource_for(session.call_id, "softphone_media")
+    video = runtime.media.sessions_for("video").get((session.call_id, endpoint_id))
+    if video is not None or (descriptor is not None and
+            descriptor.get("video_direction", "inactive") != "inactive" and descriptor.get("video_format")):
+        raise ParkingError("Parking requires an audio-only call")
     if active is None or active.handoff_transport is None or descriptor is None:
         raise ParkingError("The phone audio connection is not ready")
-    if descriptor.get("video_direction", "inactive") != "inactive" and descriptor.get("video_format"):
-        raise ParkingError("Parking requires an audio-only call")
     client = registry.source_sip_client_for(session.call_id) or registry.sip_client_for(session.call_id)
     server, _ = _inbound_server(runtime, session.call_id)
     source = server.invite_for_call(session.call_id) if server is not None else None

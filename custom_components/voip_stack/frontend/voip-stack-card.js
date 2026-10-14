@@ -1957,7 +1957,9 @@ class VoipStackCard extends HTMLElement {
     if (els.parkBtn) {
       const established = softphoneMode ? this._softphoneSnapshot?.state === "in_call" : espState === "in_call";
       els.parkBtn.hidden = !parking?.enabled || !established;
-      els.parkBtn.disabled = !!this._parkingBusy;
+      const parkingVideoUnsupported = softphoneMode && !!this._softphoneSnapshot?.video_active;
+      els.parkBtn.disabled = !!this._parkingBusy || parkingVideoUnsupported;
+      els.parkBtn.title = this._t(parkingVideoUnsupported ? "Parking requires an audio-only call" : "Park call");
       els.parkingNotice.hidden = !this._parkedSlot || established;
       els.parkingNotice.textContent = this._parkedSlot ? `${this._t("Parked in slot")}: ${this._parkedSlot}` : "";
     }
@@ -2062,6 +2064,8 @@ class VoipStackCard extends HTMLElement {
     if (!card) return;
     this._resizeObserver.disconnect();
     this._resizeObserver.observe(card);
+    if (this._els?.keypadPanel) this._resizeObserver.observe(this._els.keypadPanel);
+    if (this._els?.runtimeControls) this._resizeObserver.observe(this._els.runtimeControls);
     this._measureLayout();
   }
 

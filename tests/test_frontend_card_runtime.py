@@ -1035,6 +1035,18 @@ assert.equal(acknowledged._softphoneKeypadOpen, true);
 
 assert.deepEqual(acknowledged._softphoneSnapshot.capabilities,["audio","video"]);
 
+// Video parking is unsupported and must not expose an actionable Park button.
+const videoParking = makeCard();
+videoParking._els.parkBtn = new FakeElement();
+videoParking._els.parkingNotice = new FakeElement();
+videoParking._softphoneSnapshot = {{...base,state:"in_call",parking:{{enabled:true}},video_active:true}};
+videoParking._render();
+assert.equal(videoParking._els.parkBtn.disabled, true);
+assert.equal(videoParking._els.parkBtn.title, "Parking requires an audio-only call");
+videoParking._softphoneSnapshot.video_active = false;
+videoParking._render();
+assert.equal(videoParking._els.parkBtn.disabled, false);
+
 // Provisional SIP responses never render as an answered call. Only the
 // authoritative final state can switch the card to "In Call".
 assert.equal(card._applySoftphoneSnapshot({{ ...base, state: "calling", sequence: 1 }}), true);

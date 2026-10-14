@@ -13,6 +13,11 @@ Development preview with changes since stable 2026.10.1.
   the entered number. Opening it explicitly during a call still enables DTMF.
 - Let the video-call keypad scroll within the available space above the bar,
   including mouse-wheel and touch scrolling, while the bar remains fixed.
+  Observe keypad/control size changes as well as the card itself so opening
+  the keypad recalculates its available height even when the card size is fixed.
+- Disable Park during an active browser video call and report the audio-only
+  parking limitation before checking audio handoff readiness. Audio-call parking
+  remains available.
 - Resolve the owner of an existing call explicitly when forwarding. A parked
   external caller no longer inherits the preferred browser phone as its owner,
   allowing that same phone to retrieve its parked call without a false

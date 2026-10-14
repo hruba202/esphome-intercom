@@ -48,8 +48,17 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 const host=document.createElement('div');
                 host.style.cssText=`width:${width}px;height:${height}px`;
                 document.body.append(host);
+                await import('/voip-stack-card.js');
+                const prototype=customElements.get('voip-stack-card').prototype;
                 const owner={shadowRoot:host.attachShadow({mode:'open'}),
-                    _attachEventHandlers(){}, _observeLayout(){}};
+                    _attachEventHandlers(){
+                        this._els.keypadBtn.onclick=()=>{
+                            this._els.keypadPanel.hidden=!this._els.keypadPanel.hidden;
+                        };
+                    },
+                    _measureLayout(){prototype._measureLayout.call(this);},
+                    _observeLayout(){prototype._observeLayout.call(this);}};
+                owner._resizeObserver=new ResizeObserver(()=>owner._measureLayout());
                 const {buildMainCardSkeleton}=await import('/voip-stack-card-view.js');
                 buildMainCardSkeleton.call(owner,'layout-test');
                 const e=owner._els; window.elements=e;
@@ -62,12 +71,11 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 e.parkBtn.querySelector('.settings-label').textContent='Anruf parken';
                 e.recordBtn.hidden=true;
                 e.voicemailBtn.hidden=true;
-                e.keypadPanel.hidden=!keypad;e.keypadInput.hidden=true;
+                e.keypadPanel.hidden=true;e.keypadInput.hidden=true;
                 // HA supplies these icon boxes; the fixture preserves their sizes.
                 for(const icon of owner.shadowRoot.querySelectorAll('ha-icon'))
                     icon.style.cssText='display:inline-block;width:24px;height:24px';
-                await import('/voip-stack-card.js');
-                customElements.get('voip-stack-card').prototype._measureLayout.call(owner);
+
             }""",
                 {
                     "width": width,
@@ -76,6 +84,10 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                     "height": height,
                 },
             )
+            page.wait_for_function("elements.card.style.getPropertyValue('--voip-video-actions-space') !== ''")
+            if keypad_open:
+                page.get_by_role("button", name="Keypad", exact=True).click()
+                page.wait_for_function("elements.card.style.getPropertyValue('--voip-video-keypad-height') !== ''")
             boxes = page.evaluate("""() => {
                 const e=elements;
                 return Object.fromEntries(['card','hangupBtn','hangupDuration','keypadBtn',

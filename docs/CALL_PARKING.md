@@ -52,7 +52,8 @@ package (RFC 4235) for a busy-lamp indication.
 ## From the dashboard card
 
 During an established audio call, **Park call** appears when parking is enabled
-in the backend. It invokes the same action described below and displays the
+in the backend. During a browser video call it is disabled: parking currently
+supports audio-only calls, even if the local webcam is switched off. It invokes the same action described below and displays the
 assigned slot. The card does not choose a slot or move media itself. Dial that
 slot from the same card or another phone to retrieve its caller. For example,
 after **Park** reports **701**, open the keypad, enter **701** and press **Call**.

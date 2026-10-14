@@ -836,3 +836,21 @@ async def test_inbound_trunk_parking_can_return_to_same_browser(trunks, monkeypa
                 worker.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
         audio.close()
+
+
+@pytest.mark.parametrize("active_video", [False, True])
+async def test_browser_video_parking_reports_media_limit_before_audio_readiness(monkeypatch, active_video):
+    from unittest.mock import Mock
+    from custom_components.voip_stack import parking
+    owner = SimpleNamespace(call_id="video-call", live=True, state="in_call", endpoint_claims={"browser"})
+    registry = Mock()
+    registry.resolve_session_id.return_value = "video-call"
+    registry.get_session.return_value = owner
+    registry.resource_for.return_value = None if active_video else {"video_direction": "sendrecv", "video_format": object()}
+    runtime = SimpleNamespace(sip=registry, media=SimpleNamespace(sessions_for=lambda kind:
+        {("video-call", "browser"): object()} if active_video and kind == "video" else {}))
+    monkeypatch.setattr(parking, "require_runtime_data", lambda _: runtime)
+    with pytest.raises(ParkingError, match="audio-only"):
+        await parking.park_browser_sip_call(object(), "video-call", "browser")
+    registry.take_media.assert_not_called()
+    registry.request_termination.assert_not_called()
