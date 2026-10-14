@@ -56,6 +56,47 @@ one bounded FFmpeg worker before RTP packetization.
 | H.265 / HEVC | Optional | No | To VP8 for the browser, or H.264/JPEG for a SIP leg |
 | Audio-only or unsupported video | Audio continues | No | No |
 
+## ESP32-S3 camera preview and SIP video
+
+Adding `esp32_camera` exposes a Home Assistant camera entity. Seeing that
+entity in the call card does not mean the SIP call contains video. RTP/JPEG
+requires a camera source configured on the ESP's VoIP component as well:
+
+```yaml
+voip_stack:
+  # Keep the existing audio configuration.
+  video:
+    codec: jpeg
+    camera_id: esp32_cam
+    width: 640
+    height: 480
+    framerate: 10
+```
+
+The board's existing `esp32_camera` configuration must declare `id: esp32_cam`
+and produce JPEG at the configured dimensions. Keep its board-specific pins.
+The device's VoIP endpoint sensor should advertise `video=jpeg`; a camera
+entity alone is not an advertised SIP video capability.
+
+For a direct call from the HA phone to the S3, enable SIP video in HA and use
+an HA integration version that negotiates reception independently from
+**Send Camera**. Stable `2026.10.1` still ties the outgoing video offer to that
+switch; the development preview removes that dependency. Updating only the
+ESP external component does not update the HA integration.
+
+With the browser camera off, HA offers JPEG as `recvonly`. A camera-only S3
+can answer `sendonly`, keeping audio bidirectional. No server video transcoding
+is needed for this matching JPEG path. Conference rooms remain audio-only;
+calling a conference is not equivalent to calling one HA phone directly.
+
+[Community testing](https://github.com/n-IA-hane/esphome-voip-stack/pull/6#issuecomment-6122628313)
+confirms five minutes of S3-originated video, immediate redial and preservation
+of a simultaneous camera web stream. The reverse direction still needs a
+hardware retest with the HA integration version recorded. If it remains
+without video, collect one HA-to-S3 SIP capture and the ESP diagnostic log:
+check the INVITE's `m=video` and direction, the answer's video port and direction,
+then RTP delivery. See [Testing and debugging](TESTING_AND_DEBUG.md).
+
 ## ESP32-P4 video endpoints
 
 P4 video is compile-gated. A firmware includes exactly one SIP video codec:
@@ -318,8 +359,8 @@ informational, not legal advice.
 
 This profile does not claim support for:
 
-- video on ESPHome endpoints other than the explicitly qualified ESP32-P4
-  profiles;
+- general hardware qualification of ESP32-S3 camera boards; the community
+  results and remaining reverse-direction check are described above;
 - video through Assist, conference rooms or ring-group legs that traverse
   standard SIP/RTP endpoints (a local HA browser caller can retain direct
   browser video when another local browser phone wins the ring group);

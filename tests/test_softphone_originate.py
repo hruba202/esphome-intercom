@@ -409,9 +409,10 @@ def test_offline_browser_phone_remains_a_local_ringing_destination(
         ('', True, True, True, '', True, False, 'recvonly_mode1'),
     ],
 )
-def test_outgoing_dahua_receive_only_offer_is_scoped(
+@pytest.mark.parametrize("video_codec", ["h264", "jpeg"])
+def test_outgoing_peer_video_offer_respects_camera_and_capabilities(
     softphone_originate, profile, camera, global_video, source_video,
-    kind, peer_video, camera_allowed, expected,
+    kind, peer_video, camera_allowed, expected, video_codec,
 ):
     module = softphone_originate
     endpoint = SimpleNamespace(
@@ -419,7 +420,7 @@ def test_outgoing_dahua_receive_only_offer_is_scoped(
         availability=_Availability.AVAILABLE,
         supports=lambda capability: source_video if capability == 'video' else True,
     )
-    metadata = {'sip_profile': profile, 'sip_video_codec': 'h264', 'registered': True}
+    metadata = {'sip_profile': profile, 'sip_video_codec': video_codec, 'registered': True}
     if kind:
         metadata['endpoint_kind'] = kind
         metadata['endpoint_id'] = 'destination'
@@ -459,8 +460,11 @@ def test_outgoing_dahua_receive_only_offer_is_scoped(
     else:
         fmt, = captured['video_formats']
         assert captured['local_video_rtp_port'] == 40002
-        assert fmt.encoding == 'H264'
-        if expected == 'recvonly_mode0':
+        assert fmt.encoding == video_codec.upper()
+        assert captured['video_direction'] == ('sendrecv' if expected == 'sendrecv_mode1' else 'recvonly')
+        if video_codec == 'jpeg':
+            assert fmt.payload_type == 26
+        elif expected == 'recvonly_mode0':
             assert captured['video_direction'] == 'recvonly'
             assert fmt.packetization_mode == 0
             assert fmt.profile_level_id == '42001f'

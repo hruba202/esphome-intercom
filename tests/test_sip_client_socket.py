@@ -3441,6 +3441,70 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent_branches), 2)
         self.assertNotEqual(sent_branches[0], sent_branches[1])
 
+    async def test_jpeg_camera_answers_browser_call_without_browser_camera(self) -> None:
+        """A camera-only peer sends JPEG after a receive-only browser offer."""
+        received = []
+
+        class CameraPeer(asyncio.DatagramProtocol):
+            def connection_made(self, transport):
+                self.transport = transport
+
+            def datagram_received(self, data, addr):
+                request = sip.parse_message(data)
+                received.append(request)
+                if request.method not in {"INVITE", "BYE"}:
+                    return
+                headers = [(key, request.header(key)) for key in ("Via", "From", "Call-ID", "CSeq")]
+                to = request.header("To")
+                headers.append(("To", to if ";tag=" in to else to + ";tag=camera"))
+                body = b""
+                if request.method == "INVITE":
+                    host, port = self.transport.get_extra_info("sockname")[:2]
+                    headers.extend((("Contact", f"<sip:camera@{host}:{port}>"),
+                                    ("Content-Type", "application/sdp")))
+                    fmt = sdp.RtpPcmFormat(8, "PCMA", 8000, 1, 20)
+                    body = sdp.build_answer_directional(
+                        "127.0.0.1", "127.0.0.1", 45000, fmt, fmt,
+                        remote_sdp=request.body, video_port=45002,
+                        video_format=sdp.RtpVideoFormat(payload_type=26, encoding="JPEG"),
+                        video_direction="sendonly",
+                    ).encode()
+                self.transport.sendto(sip.build_response(200, "OK", headers, body), addr)
+
+        transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+            CameraPeer, local_addr=("127.0.0.1", 0)
+        )
+        port = transport.get_extra_info("sockname")[1]
+        try:
+            for _ in range(2):
+                client = sip_client.SipCallClient(
+                    local_ip="127.0.0.1", local_name="Browser", local_sip_port=0,
+                    local_rtp_port=41000, signaling_transport="UDP",
+                    include_common_codecs=True, local_video_rtp_port=41002,
+                    video_formats=sdp.video_offer_formats_for_target_codec("jpeg"),
+                    video_direction="recvonly",
+                )
+                try:
+                    self.assertEqual(await client.invite(
+                        target="camera", remote_host="127.0.0.1", remote_sip_port=port,
+                        request_uri=f"sip:camera@127.0.0.1:{port}", timeout=2,
+                    ), "in_call")
+                    offer = next(item for item in reversed(received) if item.method == "INVITE")
+                    self.assertEqual(sdp.parse_video_sdp(offer.body)["direction"], "recvonly")
+                    self.assertEqual([fmt.encoding for fmt in sdp.offered_video_formats(offer.body)], ["JPEG"])
+                    self.assertEqual(client.dialog.local_video_direction, "recvonly")
+                    self.assertEqual(client.dialog.recv_video_format.encoding, "JPEG")
+                    self.assertEqual(client.dialog.recv_video_format.payload_type, 26)
+                    self.assertEqual(client.dialog.local_audio_direction, "sendrecv")
+                    await client.terminate()
+                finally:
+                    await client.close()
+                self.assertIsNone(client.transport)
+                self.assertIsNone(client.writer)
+            self.assertEqual(sum(item.method == "BYE" for item in received), 2)
+        finally:
+            transport.close()
+
     async def test_video_invite_recovers_on_real_udp_only_peer_and_redials(
         self,
     ) -> None:
