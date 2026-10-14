@@ -24,6 +24,13 @@ phones, then add the features you need. The ESP firmware also works with
 
 ![VoIP Stack dashboard and central phonebook](docs/images/voip-dashboard-phonebook.png)
 
+![Real Mobotix video call in the Home Assistant phone card](docs/images/pbx-mobotix-video-green.png)
+
+_A real door-station call through a FreeSWITCH-based PBX, with the local webcam
+off. [Learn the phone controls](docs/USER_GUIDE.md#read-the-phone-card) and
+[how to park and retrieve audio calls](docs/CALL_PARKING.md).
+[FreeSWITCH/FusionPBX setup](docs/FREESWITCH.md)._
+
 Stable release: [2026.10.1](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.1).
 Requires Home Assistant **2026.7.0 or newer**. Firmware builds require ESPHome
 **2026.9.0 or newer**.

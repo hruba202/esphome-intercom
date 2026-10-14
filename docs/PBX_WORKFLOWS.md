@@ -70,6 +70,12 @@ Open that phone's card, then **Options > Call routing**. The same settings are
 available through **VoIP Stack: Configure phone routing**, using HA's device
 picker. This includes ESP mirror cards: the policy is stored in HA.
 
+![Phone options and expanded call-routing settings](images/pbx-phone-routing-green.png)
+
+The example screenshot has a 10-second timeout, then sends the caller to
+Casa's mailbox. The outgoing-line selector follows the integration default.
+The disabled Save button means there are no pending edits.
+
 For example, to let Kitchen ring for 20 seconds and then take a message:
 
 1. Enable Kitchen's mailbox as described below.

@@ -408,3 +408,9 @@ The protocol work follows
 Browser media uses the
 [W3C WebCodecs API](https://www.w3.org/TR/webcodecs/) and the
 [AVC Annex B registration](https://www.w3.org/TR/webcodecs-avc-codec-registration/).
+
+## Calls through FreeSWITCH or FusionPBX
+
+See the [FreeSWITCH interoperability guide](FREESWITCH.md) for the tested media
+policy, mid-call re-INVITE propagation and the distinction between PBX
+configuration, RTP reachability and browser decoding.

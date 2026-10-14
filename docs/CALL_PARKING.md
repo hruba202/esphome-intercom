@@ -36,6 +36,20 @@ is **701**, put Kitchen down and dial **701** from Office. You do not transfer t
 
 ![Park on one phone and retrieve from another](images/park-and-retrieve.svg)
 
+## Follow the slot shown by the card
+
+![The card reports that the call is parked in slot 701](images/pbx-phone-parked-green.png)
+
+In this real example, pressing **P** released Casa and left Test connected to
+VoIP Stack in slot **701**. The phonebook selection visible after parking is
+for the next call; it is not the parked participant.
+
+![Dial the reported slot to retrieve the parked call](images/pbx-phone-pickup-green.png)
+
+Open the keypad on the phone where you want to continue, enter **701** and
+press **Call**. The same card can also retrieve it. These screenshots were
+captured during a successful park/retrieve cycle, not from a mockup.
+
 ## From a SIP phone
 
 While speaking to someone, transfer the call to `700`. The PBX retains the

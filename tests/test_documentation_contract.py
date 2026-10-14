@@ -208,6 +208,8 @@ def test_public_markdown_headings_use_sentence_case_without_emoji() -> None:
         "Enhancement",
         "ESPHome",
         "Espressif",
+        "FreeSWITCH",
+        "FusionPBX",
         "GitHub",
         "HACS",
         "Home",

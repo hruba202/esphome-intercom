@@ -391,3 +391,6 @@ only at call startup. A PBX that first sends video to an unreachable private
 address and then learns the public address from RTP may lose those parameters.
 Audio can work while the video remains undecodable. Advertising the correct
 media destination avoids relying on that late address correction.
+
+For audio/video negotiation and re-INVITE propagation through a FreeSWITCH-based
+PBX, see [FreeSWITCH and FusionPBX interoperability](FREESWITCH.md).

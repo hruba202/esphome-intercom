@@ -35,6 +35,45 @@ The editor saves your selection automatically. Incoming calls for that phone
 move every connected card bound to the same Device to `ringing`. The browser
 that answers becomes the media owner.
 
+## Read the phone card
+
+The same icons are used in audio and video mode. The screenshots below were
+captured from a real Home Assistant dashboard using its green theme.
+
+![Idle phone with keypad, voicemail and options icons](images/pbx-phone-idle-green.png)
+
+| Control | What it does |
+| --- | --- |
+| Keypad (nine dots) | Enter a number, contact name or SIP URI. During a call, send DTMF digits. The icon changes to Contacts when it can return you to the phonebook. |
+| Voicemail (two linked circles) | Open this phone's messages. It appears when messages are available and the phone is idle, not during dialing, ringing or an active call. |
+| P | Park the established audio call. Enable parking in the integration first. The returned slot is the number to dial to retrieve it. |
+| Options (sliders) | Open this phone's answer, DND, mailbox, audio/video and routing settings. |
+| Call / Hang up | Start the selected call or end the current conversation. In video mode, the hangup control is the translucent bottom bar. |
+
+![Phone options on the same green-themed dashboard](images/pbx-phone-options-green.png)
+
+Options includes auto-answer, DND, mailbox, ringtone and media-device settings.
+**Send Camera** controls your outgoing camera; it does not prevent receiving
+video. Disabling **Enable this phone's mailbox** deletes its messages and settings.
+
+![An established audio call, with Parking available](images/pbx-phone-audio-call-green.png)
+
+The keypad closes when you start or answer a call. Open it again if an IVR or
+door station needs DTMF. On short video cards it scrolls above the call bar.
+
+![Live video received from a Mobotix door station](images/pbx-mobotix-video-green.png)
+
+This is a real call through a FreeSWITCH-based PBX with the local webcam off.
+The image arrives from the door station. **P is disabled during video calls**:
+parking currently supports audio calls. Switching off Send Camera alone does
+not make a call audio-only when the peer is sending video.
+
+![DTMF keypad open during the same video call](images/pbx-mobotix-keypad-green.png)
+
+For parking and retrieval, follow the [parking walkthrough](CALL_PARKING.md).
+For forwarding, ringing timeouts, mailbox setup and line selection, see
+[PBX workflows](PBX_WORKFLOWS.md).
+
 ## Rename Home Assistant entities
 
 You can change a VoIP Stack entity ID in **Settings > Devices & services >
