@@ -882,7 +882,6 @@ class FrontendCardContractTest(unittest.TestCase):
             self.source,
         )
         self.assertIn("ha-card.card.video-active > .button-container", self.source)
-        self.assertIn("bottom: 0;", self.source)
         self.assertIn("width: 100%;", self.source)
         self.assertIn(".video-active .voip-button.hangup {", self.source)
         self.assertIn("box-sizing: border-box;", self.source)

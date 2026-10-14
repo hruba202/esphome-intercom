@@ -6,9 +6,10 @@ Development preview with changes since stable 2026.10.1.
 
 ### Call card presentation corrections
 
-- Give video-call controls their own wrapping row above the peer, duration and
-  hangup bar. Optional parking, voicemail and recording controls no longer
-  overlap the duration or each other on narrow cards.
+- Keep video-call actions inside one bottom bar with the peer, duration and
+  hangup control. A shared grid assigns separate space to the call information
+  and action icons, including parking, voicemail and recording. Controls do
+  not occupy an additional row over the video.
 - Tie video visibility to a frame rendered by the current receiver on the
   current canvas and to the current call identity. Previous-call frames and
   cumulative counters cannot expose an empty canvas after renegotiation or

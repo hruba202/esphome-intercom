@@ -17,7 +17,7 @@ pytestmark = pytest.mark.js_runtime
 def test_video_controls_do_not_overlap_timer_or_each_other(
     width, extra_controls, tmp_path
 ):
-    """Optional PBX actions get layout space without covering the call bar."""
+    """All actions share the bottom call bar without covering the timer or video."""
     playwright = pytest.importorskip("playwright.sync_api")
     with playwright.sync_playwright() as runner:
         browser = runner.chromium.launch(
@@ -55,9 +55,9 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 e.hangupPeer.textContent='Office phone with a long display name';
                 e.hangupDuration.textContent='01:23:45';
                 e.parkBtn.hidden=false;
-                e.parkBtn.textContent='Anruf parken';
-                e.recordBtn.hidden=!extra;e.recordBtn.textContent='Aufnahme beenden';
-                e.voicemailBtn.hidden=!extra;e.voicemailBtn.textContent='Sprachnachrichten';
+                e.parkBtn.querySelector('.settings-label').textContent='Anruf parken';
+                e.recordBtn.hidden=!extra;e.recordLabel.textContent='Aufnahme beenden';
+                e.voicemailBtn.hidden=!extra;e.voicemailBtn.querySelector('.settings-label').textContent='Sprachnachrichten';
                 // HA supplies these icon boxes; the fixture preserves their sizes.
                 for(const icon of owner.shadowRoot.querySelectorAll('ha-icon'))
                     icon.style.cssText='display:inline-block;width:24px;height:24px';
@@ -74,13 +74,15 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             page.screenshot(path=str(tmp_path / "call-controls.png"))
             card = boxes.pop("card")
             hangup = boxes.pop("hangupBtn")
+            assert abs(hangup["bottom"] - card["bottom"]) <= 1
             for name, box in boxes.items():
                 assert box["width"] > 0 and box["height"] > 0, name
                 assert (
                     card["left"] <= box["left"] < box["right"] <= card["right"] + 1
                 ), name
                 if name != "hangupDuration":
-                    assert box["bottom"] <= hangup["top"] + 1, name
+                    assert box["top"] >= hangup["top"] - 1, name
+                    assert box["bottom"] <= hangup["bottom"] + 1, name
             items = list(boxes.items())
             for index, (name, box) in enumerate(items):
                 for other_name, other in items[index + 1 :]:

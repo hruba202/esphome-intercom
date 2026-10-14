@@ -1965,7 +1965,10 @@ class VoipStackCard extends HTMLElement {
       const recording = this._softphoneSnapshot?.recording;
       els.recordBtn.hidden = !softphoneMode || !this.config?.show_recording_controls || this._softphoneSnapshot?.state !== "in_call";
       els.recordBtn.disabled = !!this._recordingBusy || !!recording?.finishing || (!!recording?.active && !recording?.owned);
-      els.recordBtn.textContent = this._t(recording?.finishing ? "Finishing recording" : recording?.active ? "Stop recording" : "Record call");
+      const recordLabel = this._t(recording?.finishing ? "Finishing recording" : recording?.active ? "Stop recording" : "Record call");
+      els.recordLabel.textContent = recordLabel;
+      els.recordBtn.setAttribute("aria-label", recordLabel);
+      els.recordBtn.title = recordLabel;
       els.recordBtn.setAttribute("aria-pressed", String(!!recording?.active));
     }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
