@@ -1965,10 +1965,7 @@ class VoipStackCard extends HTMLElement {
       const recording = this._softphoneSnapshot?.recording;
       els.recordBtn.hidden = !softphoneMode || !this.config?.show_recording_controls || this._softphoneSnapshot?.state !== "in_call";
       els.recordBtn.disabled = !!this._recordingBusy || !!recording?.finishing || (!!recording?.active && !recording?.owned);
-      const recordLabel = this._t(recording?.finishing ? "Finishing recording" : recording?.active ? "Stop recording" : "Record call");
-      els.recordLabel.textContent = recordLabel;
-      els.recordBtn.setAttribute("aria-label", recordLabel);
-      els.recordBtn.title = recordLabel;
+      els.recordBtn.textContent = this._t(recording?.finishing ? "Finishing recording" : recording?.active ? "Stop recording" : "Record call");
       els.recordBtn.setAttribute("aria-pressed", String(!!recording?.active));
     }
     const autoAnswerAvailable = softphoneMode || !!this._autoAnswerSwitchEntityId;
@@ -2073,6 +2070,13 @@ class VoipStackCard extends HTMLElement {
     if (!card) return;
     const width = card.clientWidth;
     const height = card.clientHeight;
+    const controls = this._els?.runtimeControls;
+    if (controls && card.classList.contains("video-active") && !this._settingsOpen) {
+      const bounds = controls.getBoundingClientRect();
+      const right = card.getBoundingClientRect().right - bounds.left;
+      const gap = parseFloat(getComputedStyle(this._els.hangupBtn).columnGap) || 0;
+      card.style.setProperty("--voip-video-actions-space", `${Math.ceil(right + gap)}px`);
+    }
     const buttonSize = Math.max(58, Math.min(136, Math.round((height - 100) * 0.36), Math.round(width * 0.32)));
     const spacing = Math.max(4, Math.min(16, Math.round(Math.min(width / 24, height / 28))));
     card.style.setProperty("--voip-button-size", `${buttonSize}px`);
@@ -2336,6 +2340,7 @@ class VoipStackCard extends HTMLElement {
         const [domain, service] = this._startCallService.split(".", 2);
         if (!domain || !service) throw new Error("Invalid ESP start_call service");
         await this._hass.callService(domain, service, { dest: manualTarget });
+        this._mirrorKeypadOpen = false;
       } else {
         await this._pressEspButton(this._callButtonEntityId, "Call");
       }
@@ -2372,6 +2377,8 @@ class VoipStackCard extends HTMLElement {
       throw new Error("No endpoint available");
     }
     const callee = manualTarget || target.name || this._getDestination();
+    this._softphoneKeypadOpen = false;
+    this._render();
 
     const scope = this._softphoneRequestScope();
     const sessionInfo = {
@@ -2557,6 +2564,8 @@ class VoipStackCard extends HTMLElement {
     }
     const operationId = ++this._callOperationId;
     this._starting = true;
+    this._softphoneKeypadOpen = false;
+    this._mirrorKeypadOpen = false;
     this._errorMsg = "";
     this._render();
     let claimedSoftphoneMedia = false;

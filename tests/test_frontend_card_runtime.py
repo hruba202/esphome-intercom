@@ -1011,12 +1011,28 @@ acknowledged._hass.connection={{sendMessagePromise:async request=>{{
  return {{...base, state:"remote_ringing", callee:"426", peer_name:"426", send_video:true,
   capabilities:["audio","video"], sequence:10}};
 }}}};
-engine.startHaSoftphone=async()=>({{schema_version:2,success:true,call_id:base.call_id,
- state:"remote_ringing",destination:"426",device_id:"device-office"}});
-await acknowledged._startCall("426");
+acknowledged._softphoneKeypadOpen = true;
+acknowledged._softphoneManualTarget = "426";
+engine.startHaSoftphone=async(target, session, options)=>{{
+ assert.equal(target.name, "426");
+ assert.equal(options.callee, "426");
+ assert.equal(acknowledged._softphoneKeypadOpen, false);
+ return {{schema_version:2,success:true,call_id:base.call_id,
+  state:"remote_ringing",destination:"426",device_id:"device-office"}};
+}};
+await acknowledged._startCall();
+assert.equal(acknowledged._softphoneKeypadOpen, false);
+assert.equal(acknowledged._softphoneManualTarget, "426");
 assert.equal(stateReads,1);
 assert.equal(acknowledged._getDestination(),"426");
 assert.equal(acknowledged._softphoneSnapshot.send_video,true);
+acknowledged._applySoftphoneSnapshot({{...acknowledged._softphoneSnapshot,state:"in_call",sequence:11}});
+context.requestAnimationFrame = callback => callback();
+acknowledged._toggleKeypad();
+assert.equal(acknowledged._softphoneKeypadOpen, true);
+acknowledged._applySoftphoneSnapshot({{...acknowledged._softphoneSnapshot,state:"in_call",sequence:12}});
+assert.equal(acknowledged._softphoneKeypadOpen, true);
+
 assert.deepEqual(acknowledged._softphoneSnapshot.capabilities,["audio","video"]);
 
 // Provisional SIP responses never render as an answered call. Only the
@@ -1063,7 +1079,9 @@ incoming._applySoftphoneSnapshot({{
   peer_name: "Door",
   sequence: 1,
 }});
+incoming._softphoneKeypadOpen = true;
 await incoming._answer();
+assert.equal(incoming._softphoneKeypadOpen, false);
 assert.equal(incoming._softphoneSnapshot.state, "ringing");
 assert.equal(audioPermissionChecks > 0, true);
 assert.equal(cameraPermissionChecks, 0);

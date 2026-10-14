@@ -13,9 +13,10 @@ pytestmark = pytest.mark.js_runtime
 
 @pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
 @pytest.mark.parametrize("width", [280, 360, 600])
-@pytest.mark.parametrize("extra_controls", [False, True])
+@pytest.mark.parametrize("park_enabled", [False, True])
+@pytest.mark.parametrize("keypad_open", [False, True])
 def test_video_controls_do_not_overlap_timer_or_each_other(
-    width, extra_controls, tmp_path
+    width, park_enabled, keypad_open, tmp_path
 ):
     """All actions share the bottom call bar without covering the timer or video."""
     playwright = pytest.importorskip("playwright.sync_api")
@@ -39,7 +40,7 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             page.route("http://card.test/**", serve)
             page.goto("http://card.test/")
             page.evaluate(
-                """async ({width, extra}) => {
+                """async ({width, park, keypad}) => {
                 document.body.style.cssText='margin:10px;font-family:Arial';
                 const host=document.createElement('div');
                 host.style.cssText=`width:${width}px;height:360px`;
@@ -54,15 +55,18 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 e.hangupBtn.hidden=false;
                 e.hangupPeer.textContent='Office phone with a long display name';
                 e.hangupDuration.textContent='01:23:45';
-                e.parkBtn.hidden=false;
+                e.parkBtn.hidden=!park;
                 e.parkBtn.querySelector('.settings-label').textContent='Anruf parken';
-                e.recordBtn.hidden=!extra;e.recordLabel.textContent='Aufnahme beenden';
-                e.voicemailBtn.hidden=!extra;e.voicemailBtn.querySelector('.settings-label').textContent='Sprachnachrichten';
+                e.recordBtn.hidden=true;
+                e.voicemailBtn.hidden=true;
+                e.keypadPanel.hidden=!keypad;e.keypadInput.hidden=true;
                 // HA supplies these icon boxes; the fixture preserves their sizes.
                 for(const icon of owner.shadowRoot.querySelectorAll('ha-icon'))
                     icon.style.cssText='display:inline-block;width:24px;height:24px';
+                await import('/voip-stack-card.js');
+                customElements.get('voip-stack-card').prototype._measureLayout.call(owner);
             }""",
-                {"width": width, "extra": extra_controls},
+                {"width": width, "park": park_enabled, "keypad": keypad_open},
             )
             boxes = page.evaluate("""() => {
                 const e=elements;

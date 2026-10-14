@@ -6,10 +6,11 @@ Development preview with changes since stable 2026.10.1.
 
 ### Call card presentation corrections
 
-- Keep video-call actions inside one bottom bar with the peer, duration and
-  hangup control. A shared grid assigns separate space to the call information
-  and action icons, including parking, voicemail and recording. Controls do
-  not occupy an additional row over the video.
+- Preserve the existing translucent bottom call bar and keypad layout. Show
+  Park call as an icon alongside the existing controls, and reserve their
+  measured width so they do not overlap the call duration.
+- Close the dialing keypad when starting or answering a call without clearing
+  the entered number. Opening it explicitly during a call still enables DTMF.
 - Tie video visibility to a frame rendered by the current receiver on the
   current canvas and to the current call identity. Previous-call frames and
   cumulative counters cannot expose an empty canvas after renegotiation or
