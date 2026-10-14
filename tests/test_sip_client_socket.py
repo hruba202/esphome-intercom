@@ -3441,6 +3441,80 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent_branches), 2)
         self.assertNotEqual(sent_branches[0], sent_branches[1])
 
+    async def test_video_offer_obeys_remote_rejection_without_losing_audio(self) -> None:
+        """Video-capable callers negotiate audio-only without a contact override."""
+        received = []
+
+        class Peer(asyncio.DatagramProtocol):
+            mode = "rejected"
+
+            def connection_made(self, transport):
+                self.transport = transport
+
+            def datagram_received(self, raw, addr):
+                message = sip.parse_message(raw)
+                received.append(message)
+                if message.method not in {"INVITE", "BYE"}:
+                    return
+                headers = [(name, message.header(name)) for name in ("Via", "From", "Call-ID", "CSeq")]
+                to = message.header("To")
+                headers.append(("To", to if ";tag=" in to else to + ";tag=peer"))
+                body = b""
+                if message.method == "INVITE":
+                    port = self.transport.get_extra_info("sockname")[1]
+                    headers.extend((("Contact", f"<sip:peer@127.0.0.1:{port}>"),
+                                    ("Content-Type", "application/sdp")))
+                    offered = sdp.offered_video_formats(message.body)[0]
+                    pt = offered.payload_type
+                    video_port = 0 if self.mode == "rejected" else 45002
+                    direction = "inactive" if self.mode == "inactive" else "sendonly"
+                    body = (
+                        "v=0\r\no=peer 1 1 IN IP4 127.0.0.1\r\ns=peer\r\n"
+                        "c=IN IP4 127.0.0.1\r\nt=0 0\r\n"
+                        "m=audio 45000 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n"
+                        "a=ptime:20\r\na=sendrecv\r\n"
+                        f"m=video {video_port} RTP/AVP {pt}\r\n"
+                        f"a=rtpmap:{pt} H264/90000\r\n"
+                        f"a=fmtp:{pt} profile-level-id={offered.profile_level_id};packetization-mode=1;level-asymmetry-allowed=1\r\n"
+                        f"a={direction}\r\n"
+                    ).encode()
+                self.transport.sendto(sip.build_response(200, "OK", headers, body), addr)
+
+        transport, peer = await asyncio.get_running_loop().create_datagram_endpoint(
+            Peer, local_addr=("127.0.0.1", 0)
+        )
+        port = transport.get_extra_info("sockname")[1]
+        try:
+            for offer_direction in ("recvonly", "sendrecv"):
+                for mode in ("rejected", "inactive", "accepted"):
+                    with self.subTest(offer_direction=offer_direction, mode=mode):
+                        peer.mode = mode
+                        client = sip_client.SipCallClient(
+                            local_ip="127.0.0.1", local_name="Browser", local_sip_port=0,
+                            local_rtp_port=41000, signaling_transport="UDP",
+                            include_common_codecs=True, local_video_rtp_port=41002,
+                            video_formats=(sdp.DEFAULT_H264_FORMAT,), video_direction=offer_direction,
+                        )
+                        try:
+                            self.assertEqual(await client.invite(
+                                target="peer", remote_host="127.0.0.1", remote_sip_port=port,
+                                request_uri=f"sip:peer@127.0.0.1:{port}", timeout=2,
+                            ), "in_call")
+                            self.assertEqual(client.dialog.local_audio_direction, "sendrecv")
+                            self.assertEqual(client.dialog.send_format.encoding, "PCMA")
+                            self.assertEqual(client.dialog.local_video_direction,
+                                             "recvonly" if mode == "accepted" else "inactive")
+                            if mode == "rejected":
+                                self.assertIsNone(client.dialog.video_format)
+                                self.assertEqual(client.dialog.remote_video_rtp_port, 0)
+                            await client.terminate()
+                        finally:
+                            await client.close()
+                        self.assertIsNone(client.transport)
+            self.assertEqual(sum(m.method == "BYE" for m in received), 6)
+        finally:
+            transport.close()
+
     async def test_jpeg_camera_answers_browser_call_without_browser_camera(self) -> None:
         """A camera-only peer sends JPEG after a receive-only browser offer."""
         received = []
