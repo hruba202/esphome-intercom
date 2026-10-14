@@ -66,7 +66,7 @@ See the [FusionPBX Dialplan Manager documentation](https://docs.fusionpbx.com/en
 
 ## What was verified
 
-The office agent's deployment report records these real-call outcomes:
+The tested configuration produced these results:
 
 - A video offer to an audio phone resulted in an audio-only call.
 - A video destination retained H.264.

@@ -72,9 +72,10 @@ picker. This includes ESP mirror cards: the policy is stored in HA.
 
 ![Phone options and expanded call-routing settings](images/pbx-phone-routing-green.png)
 
-The example screenshot has a 10-second timeout, then sends the caller to
-Casa's mailbox. The outgoing-line selector follows the integration default.
-The disabled Save button means there are no pending edits.
+The screenshot shows a 20-second voicemail rule being prepared before saving.
+Enable **Ringing timeout** to choose how long this phone rings and what happens
+afterwards. The outgoing-line selector chooses a specific trunk or follows the
+integration default. The Save button becomes available when you edit the rule.
 
 For example, to let Kitchen ring for 20 seconds and then take a message:
 

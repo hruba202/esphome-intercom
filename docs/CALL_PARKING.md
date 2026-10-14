@@ -40,15 +40,14 @@ is **701**, put Kitchen down and dial **701** from Office. You do not transfer t
 
 ![The card reports that the call is parked in slot 701](images/pbx-phone-parked-green.png)
 
-In this real example, pressing **P** released Casa and left Test connected to
+In this example, pressing **P** released Test and left Spotpear connected to
 VoIP Stack in slot **701**. The phonebook selection visible after parking is
 for the next call; it is not the parked participant.
 
 ![Dial the reported slot to retrieve the parked call](images/pbx-phone-pickup-green.png)
 
 Open the keypad on the phone where you want to continue, enter **701** and
-press **Call**. The same card can also retrieve it. These screenshots were
-captured during a successful park/retrieve cycle, not from a mockup.
+press **Call**. The same card can also retrieve it.
 
 ## From a SIP phone
 
@@ -66,7 +65,9 @@ package (RFC 4235) for a busy-lamp indication.
 ## From the dashboard card
 
 During an established audio call, **Park call** appears when parking is enabled
-in the backend. During a browser video call it is disabled: parking currently
+in the backend. Occupied slots appear in the list on the left of the card,
+including calls parked by another phone. The list updates when a call is
+retrieved, returned or ended. The Park control is disabled during a browser video call: parking currently
 supports audio-only calls, even if the local webcam is switched off. It invokes the same action described below and displays the
 assigned slot. The card does not choose a slot or move media itself. Dial that
 slot from the same card or another phone to retrieve its caller. For example,

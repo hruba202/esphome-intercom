@@ -37,10 +37,9 @@ that answers becomes the media owner.
 
 ## Read the phone card
 
-The same icons are used in audio and video mode. The screenshots below were
-captured from a real Home Assistant dashboard using its green theme.
+The same icons are used in audio and video mode.
 
-![Idle phone with keypad, voicemail and options icons](images/pbx-phone-idle-green.png)
+![Idle phone with keypad and options icons](images/pbx-phone-idle-green.png)
 
 | Control | What it does |
 | --- | --- |
@@ -55,6 +54,16 @@ captured from a real Home Assistant dashboard using its green theme.
 Options includes auto-answer, DND, mailbox, ringtone and media-device settings.
 **Send Camera** controls your outgoing camera; it does not prevent receiving
 video. Disabling **Enable this phone's mailbox** deletes its messages and settings.
+
+Occupied parking slots appear as a left-aligned bullet list. Other phones that
+are calling, ringing or busy appear on the right, with the bullets at the right
+edge and the text in its normal reading order. These are backend call states,
+shared with SIP BLF; external PBX extensions are not automatically monitored.
+
+The lists do not move or resize Call, Answer, Decline or the toolbar icons.
+Rows avoid the controls, and empty lists occupy no space. They are hidden while
+the keypad, options or video view needs that space. Voicemail stays in its own
+button and is not duplicated in these lists.
 
 ![An established audio call, with Parking available](images/pbx-phone-audio-call-green.png)
 
