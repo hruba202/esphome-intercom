@@ -415,6 +415,10 @@ export function buildMainCardSkeleton(cardVersion) {
         margin-top: 10px;
       }
       .runtime-controls[hidden] { display: none; }
+      .runtime-controls .settings-btn {
+        border: 0;
+        background: transparent;
+      }
       .settings-panel {
         margin-top: 10px;
         padding: 8px 10px;
