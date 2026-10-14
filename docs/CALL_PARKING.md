@@ -47,7 +47,11 @@ for the next call; it is not the parked participant.
 ![Dial the reported slot to retrieve the parked call](images/pbx-phone-pickup-green.png)
 
 Open the keypad on the phone where you want to continue, enter **701** and
-press **Call**. The same card can also retrieve it.
+press **Call**. The same card can also retrieve it. After pickup, the occupied
+slot disappears and the card shows the resumed call. The current peer is not
+repeated in the busy-phone list.
+
+![The call resumed after retrieving slot 701](images/pbx-phone-retrieved-green.png)
 
 ## From a SIP phone
 
