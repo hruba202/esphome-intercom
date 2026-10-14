@@ -254,14 +254,16 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
             or endpoint_id not in session.endpoint_claims):
         raise ParkingError("Select an established call owned by this phone")
     active = runtime.media.sessions_for("audio").get((session.call_id, endpoint_id))
-    descriptor = registry.resource_for(session.call_id, "softphone_media")
+    descriptor = registry.resource_for(session.call_id, "softphone_media") or {}
+    client = registry.source_sip_client_for(session.call_id) or registry.sip_client_for(session.call_id)
     video = runtime.media.sessions_for("video").get((session.call_id, endpoint_id))
-    if video is not None or (descriptor is not None and
+    if video is not None or (
             descriptor.get("video_direction", "inactive") != "inactive" and descriptor.get("video_format")):
         raise ParkingError("Parking requires an audio-only call")
-    if active is None or active.handoff_transport is None or descriptor is None:
+    if client is not None and client.dialog is not None and client.dialog.video_format is not None:
+        raise ParkingError("Parking requires an audio-only call")
+    if active is None or active.handoff_transport is None:
         raise ParkingError("The phone audio connection is not ready")
-    client = registry.source_sip_client_for(session.call_id) or registry.sip_client_for(session.call_id)
     server, _ = _inbound_server(runtime, session.call_id)
     source = server.invite_for_call(session.call_id) if server is not None else None
     retained = next((item for item in session.endpoint_claims if item != endpoint_id), "")
@@ -277,7 +279,11 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
     settings = parking_settings(hass)
     parked = lot.reserve(session, slot=slot, parker=endpoint_id,
         return_destination=str(settings.get("return_destination") or endpoint_id))
-    reservation = descriptor.get("rtp_reservation")
+    # Direct outgoing calls keep their reservation on the SIP client rather
+    # than an inbound media descriptor. Transfer that ownership with the RTP
+    # transport; unpooled audio sockets use the existing adoption primitive.
+    client_reservation = getattr(client, "media_reservation", None)
+    reservation = descriptor.get("rtp_reservation") or client_reservation
     acquired = reservation is None
     try:
         if acquired:
@@ -296,6 +302,13 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
         if acquired and reservation is not None:
             reservation.release()
         raise
+    if client_reservation is not None and reservation is client_reservation:
+        client.media_reservation = None
+        for name in ("video_rtp_socket", "video_rtcp_socket"):
+            sock = getattr(client, name, None)
+            setattr(client, name, None)
+            if sock is not None:
+                sock.close()
     registry.take_media(session.call_id)
     release_video_media_reservation(descriptor)
     media.release_reservation_on_stop = False

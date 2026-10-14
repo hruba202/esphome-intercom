@@ -854,3 +854,114 @@ async def test_browser_video_parking_reports_media_limit_before_audio_readiness(
         await parking.park_browser_sip_call(object(), "video-call", "browser")
     registry.take_media.assert_not_called()
     registry.request_termination.assert_not_called()
+
+
+@pytest.mark.parametrize('trunks', [True], indirect=True)
+@pytest.mark.parametrize('offer_video', [False, True])
+async def test_originated_browser_call_parks_without_inbound_media_descriptor(
+    registered_phones, trunks, monkeypatch, offer_video, tmp_path,
+):
+    import struct
+    import wave
+    from aiohttp import WSMsgType
+    from unittest.mock import AsyncMock
+    from custom_components.voip_stack import audio_ws_view, audio_ws, softphone_originate
+    from custom_components.voip_stack.const import CONF_SIP_VIDEO
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
+    from custom_components.voip_stack.parking import get_parking_lot
+    from custom_components.voip_stack.store import config_entry
+
+    runtime = trunks
+    entry = config_entry(runtime.hass)
+    runtime.hass.config_entries.async_update_entry(entry, data={**entry.data, 'parking': {'enabled': True}})
+    runtime.runtime.transport_config[CONF_SIP_VIDEO] = offer_video
+    if offer_video:
+        runtime.runtime.endpoints.update('transfer_a', capabilities=frozenset({'audio', 'dtmf', 'video'}))
+    endpoint = PhoneEndpoint(endpoint_id='direct-browser', name='Direct browser', device_id='direct-browser-device',
+        kind=EndpointKind.BROWSER, availability='available', capabilities=frozenset({'audio', 'dtmf', 'video'}))
+    runtime.runtime.endpoints.register(endpoint)
+    from custom_components.voip_stack.roster import RosterEntry, dump_roster_json
+    runtime.roster.append(RosterEntry(endpoint.name, metadata={'local_ha': True, 'endpoint_id': endpoint.endpoint_id}))
+    runtime.hass.states.async_set('sensor.voip_phonebook', 'ready', {'roster_json': dump_roster_json(runtime.roster)})
+    monkeypatch.setattr(softphone_originate, '_ha_advertise_host', AsyncMock(return_value='127.0.0.1'))
+    monkeypatch.setattr(softphone_originate, '_resolve_target_device', AsyncMock(return_value=None))
+
+    class Browser:
+        def __init__(self):
+            self.ready = asyncio.Event()
+            self.audio = asyncio.Queue()
+            self.messages = asyncio.Queue()
+            self.closed = False
+        def force_close(self): self.closed = True
+        def __aiter__(self): return self
+        async def __anext__(self): return await self.messages.get()
+        async def send_json(self, _): self.ready.set()
+        async def send_bytes(self, value): self.audio.put_nowait(value)
+
+    tasks = []
+    async def connect():
+        media = audio_ws_view._active_softphone_media_session(runtime.hass, endpoint.endpoint_id)
+        client = runtime.calls.sip_client_for(media.call_id)
+        if client is not None and client.audio_rtp_socket is media.rtp_socket:
+            client.audio_rtp_socket = None  # The HTTP handler transfers this socket before running media.
+        browser = Browser()
+        task = asyncio.create_task(audio_ws_view._run_audio_session(runtime.hass, browser, media, endpoint_id=endpoint.endpoint_id))
+        tasks.append(task)
+        await asyncio.wait_for(browser.ready.wait(), 2)
+        pcm = audio_ws.decode_audio_frame(await asyncio.wait_for(browser.audio.get(), 2))
+        samples = struct.unpack(f'<{len(pcm)//2}h', pcm)
+        assert max(abs(value) for value in samples) > 500
+        return browser, media
+
+    async def wait_for(predicate):
+        async with asyncio.timeout(5):
+            while not predicate():
+                await asyncio.sleep(.01)
+
+    try:
+        await runtime.hass.services.async_call('voip_stack', 'call', {
+            'device_id': endpoint.device_id, 'destination': 'transfer_a', 'media_client_id': 'direct-browser-media',
+        }, blocking=True)
+        call_id = runtime.runtime.endpoints.get(endpoint.endpoint_id).active_call_id
+        client = runtime.calls.sip_client_for(call_id)
+        assert client.dialog is not None and client.dialog.video_format is None
+        assert runtime.calls.resource_for(call_id, 'softphone_media') is None
+        if offer_video:
+            assert client.media_reservation is not None
+        browser, media = await connect()
+        source = media.rtp_source
+        response = await runtime.hass.services.async_call('voip_stack', 'park', {
+            'device_id': endpoint.device_id,
+        }, blocking=True, return_response=True)
+        assert response['slot'] == '701' and response['call_id'] == call_id
+        await asyncio.wait_for(tasks[0], 2)
+        assert browser.closed
+        application = runtime.calls.resource_for(call_id, 'parking')
+        assert application.media.rtp_source is source
+        assert runtime.calls.sip_client_for(call_id) is client
+        assert not client._closed
+        await runtime.hass.services.async_call('voip_stack', 'call', {
+            'device_id': endpoint.device_id, 'destination': '701', 'media_client_id': 'direct-browser-media',
+        }, blocking=True)
+        assert not get_parking_lot(runtime.hass).calls
+        recovered_browser, recovered_media = await connect()
+        fmt = recovered_media.send_format.audio_format
+        pcm = struct.pack(f'<{fmt.nominal_frame_samples}h', *([1200] * fmt.nominal_frame_samples))
+        for _ in range(30):
+            recovered_browser.messages.put_nowait(SimpleNamespace(type=WSMsgType.BINARY, data=audio_ws.encode_audio_frame(pcm)))
+            await asyncio.sleep(fmt.frame_ms / 1000)
+        await runtime.hass.services.async_call('voip_stack', 'hangup', {'device_id': endpoint.device_id}, blocking=True)
+        await wait_for(lambda: not runtime.calls.sessions)
+        assert not runtime.runtime.rtp_port_pool['used']
+        await asyncio.to_thread(registered_phones[0].close)
+        heard = 0
+        for path in (tmp_path / 'transfer_a').glob('*-dec.wav'):
+            with wave.open(str(path), 'rb') as recording:
+                samples = struct.unpack(f'<{recording.getnframes()}h', recording.readframes(recording.getnframes()))
+                heard += sum(abs(value - 1200) < 80 for value in samples)
+        assert heard > 1000, 'The retained SIP peer did not receive browser audio after pickup'
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
