@@ -398,6 +398,7 @@ export function buildMainCardSkeleton(cardVersion) {
       .settings-btn[hidden] { display: none; }
       .runtime-controls {
         display: flex;
+        flex-wrap: wrap;
         justify-content: center;
         gap: 8px;
         margin-top: 10px;
@@ -415,17 +416,22 @@ export function buildMainCardSkeleton(cardVersion) {
       .video-active:not(.settings-open) .runtime-controls {
         position: absolute;
         z-index: 4;
-        right: 8px;
-        gap: 2px;
-        bottom: 0;
-        height: clamp(50px, 16%, 58px);
+        left: 0;
+        right: 0;
+        gap: 4px;
+        bottom: clamp(50px, 16%, 58px);
+        min-height: 44px;
+        padding: 4px;
+        box-sizing: border-box;
+        background: rgba(0,0,0,.65);
         margin: 0;
       }
       .video-active:not(.settings-open) .runtime-controls .settings-btn {
-        width: 36px;
-        height: 100%;
+        min-width: 44px;
+        min-height: 44px;
+        max-width: 100%;
         margin: 0;
-        padding: 0;
+        padding: 6px 8px;
         border: 0;
         border-radius: 0;
         color: white;
@@ -435,11 +441,6 @@ export function buildMainCardSkeleton(cardVersion) {
       .video-active:not(.settings-open) .runtime-controls .settings-label-icon {
         display: inline-flex;
         --mdc-icon-size: 23px;
-      }
-      .video-active:not(.settings-open) .voip-button.hangup { padding-right: 54px; }
-      .video-active.keypad-available:not(.settings-open) .voip-button.hangup {
-        /* Reserve both icon buttons and their gap so the timer cannot overlap. */
-        padding-right: 92px;
       }
       .card.settings-open {
         overflow: auto;

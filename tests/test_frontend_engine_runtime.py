@@ -759,6 +759,16 @@ canvas._endpointId = "kitchen";
 assert.equal(canvas.claimVideoCanvas(ownerA, canvasA, "kitchen"), false);
 assert.equal(canvas._videoCanvas, canvasB);
 
+// A renderer from the previous call cannot expose video on the next call.
+const visibility = new Engine();
+visibility._callId = "new-call";
+visibility._video = {{ visible: true, callId: "old-call" }};
+assert.equal(visibility.videoVisible, false);
+visibility._video.callId = "new-call";
+assert.equal(visibility.videoVisible, true);
+visibility._callId = "";
+assert.equal(visibility.videoVisible, false);
+
 // A same-call audio-only -> video-active state update must reconcile the
 // optional video channel even though the audio WebSocket is already open.
 const reconcile = new Engine();

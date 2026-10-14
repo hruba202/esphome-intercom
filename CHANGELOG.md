@@ -4,6 +4,18 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Call card presentation corrections
+
+- Give video-call controls their own wrapping row above the peer, duration and
+  hangup bar. Optional parking, voicemail and recording controls no longer
+  overlap the duration or each other on narrow cards.
+- Tie video visibility to a frame rendered by the current receiver on the
+  current canvas and to the current call identity. Previous-call frames and
+  cumulative counters cannot expose an empty canvas after renegotiation or
+  remounting the card. Negotiation alone does not display video.
+- Add Chromium layout checks and real H.264 WebSocket decoding tests to CI.
+  These validate browser presentation, not a particular remote PBX's media.
+
 ### Waveshare 1.85C-BOX V2 FULL AEC candidate
 
 - Add a separate experimental FULL AEC profile after reports of poor wake-word

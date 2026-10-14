@@ -685,7 +685,7 @@ class VoipStackEngine extends EventTarget {
   }
 
   get videoVisible() {
-    return Boolean(this._video?.visible);
+    return Boolean(this._callId && this._video?.callId === this._callId && this._video.visible);
   }
 
   setVideoCanvas(canvas) {
