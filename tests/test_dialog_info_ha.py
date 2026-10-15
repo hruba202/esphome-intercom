@@ -41,6 +41,7 @@ async def blf(lab):
     methods, notifications = SipApplicationMethods(lab.hass, registrar), asyncio.Queue()
     async def send(_request, _address, result):
         await notifications.put(result.follow_up)
+        return sip.SipMessage(status_code=200, reason="OK")
     yield methods, notifications, send
     await methods.stop()
     assert not methods.tasks and methods.dialog_unsubscribe is None and methods.endpoint_unsubscribe is None
@@ -50,7 +51,8 @@ async def test_blf_tracks_ringing_answer_multiple_calls_and_final_idle(lab, blf)
     methods, notifications, send = blf
     initial = await methods.handle(subscribe(), ("127.0.0.3", 5060), "UDP", send)
     assert initial.status == 200
-    root = ElementTree.fromstring(initial.follow_up.body)
+    initial.follow_up_scheduler()
+    root = ElementTree.fromstring((await asyncio.wait_for(notifications.get(), 1)).body)
     assert root.attrib == {"entity": "sip:101@127.0.0.1", "version": "0", "state": "full"}
     assert not root.findall("d:dialog", NS)
     first = lab.calls.upsert("first", state="ringing", owner="router", route_kind="sip",
@@ -84,10 +86,14 @@ async def test_blf_refresh_keeps_dialog_version_and_removal_terminates_subscript
     methods, notifications, send = blf
     first = await methods.handle(subscribe(expires=7200), ("127.0.0.3", 5060), "UDP", send)
     assert dict(first.headers)["Expires"] == "3600"
+    first.follow_up_scheduler()
+    await asyncio.wait_for(notifications.get(), 1)
     refreshed = await methods.handle(subscribe(tag=first.to_tag, event="DIALOG", cseq=2), ("127.0.0.3", 5060), "UDP", send)
     assert refreshed.status == 200 and refreshed.to_tag == first.to_tag
     assert len(methods.subscriptions) == 1
-    assert ElementTree.fromstring(refreshed.follow_up.body).attrib["version"] == "1"
+    refreshed.follow_up_scheduler()
+    refreshed_notify = await asyncio.wait_for(notifications.get(), 1)
+    assert ElementTree.fromstring(refreshed_notify.body).attrib["version"] == "1"
     lab.runtime.endpoints.remove("sip:bedroom0")
     final = await asyncio.wait_for(notifications.get(), 1)
     assert dict(final.headers)["Subscription-State"] == "terminated;reason=noresource"

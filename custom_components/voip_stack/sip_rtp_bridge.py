@@ -473,7 +473,7 @@ class SipRtpRelay:
         side: str,
         peer: RtpPeer,
     ) -> Callable[[], None]:
-        """Validate a negotiated peer update and return its infallible commit."""
+        """Prepare a negotiated peer update whose commit checks the current owner."""
 
         if side not in {"left", "right"}:
             raise ValueError(f"unknown RTP relay side: {side}")

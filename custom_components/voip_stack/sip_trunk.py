@@ -24,7 +24,7 @@ from .trunk_policy import trusted_networks
 from .sip_capture import send_sip_datagram
 
 from .core import sip
-from .core.sip_transport import default_tls_context
+from .core.sip_transport import bind_flow_usage, default_tls_context
 from .core.sip_auth import DigestChallengeTracker
 from .core.sip_resolution import SipServerResolver, SipServerTarget
 from .core.sip_transaction import SIP_T1, SIP_T2, SIP_TIMER_F, SipClientTransaction, transaction_key
@@ -151,6 +151,8 @@ class SipTrunkClient:
         self._registrar_candidate_index = -1
         instance_key = f"voip-stack:trunk:{self.trunk_id}" if self.trunk_id else f"{local_ip}:{self.domain}:{config.username}"
         self._instance_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, instance_key)}"
+        self.public_gruu = ""
+        self.temporary_gruu = ""
         self._flow_timer = 0.0
         self._keepalive_task: asyncio.Task[None] | None = None
         self._keepalive_call_id = f"keepalive-{self.call_id}"
@@ -171,6 +173,10 @@ class SipTrunkClient:
             send_sip_datagram(self.transport, raw, self.active_registrar_target)
             return True
         return send, responses
+
+    def bind_outbound_usage(self, call_id: str, usage_id: str) -> Callable[[], None]:
+        """Attach a subscription dialog without opening another transport reader."""
+        return bind_flow_usage(self._outbound_dialogs, call_id, usage_id)
 
     def close_outbound_dialog(self, call_id: str) -> None:
         """Release one outbound dialog without closing the trunk flow."""
@@ -834,6 +840,8 @@ class SipTrunkClient:
             on_info=getattr(manager, "on_info", None),
             on_refer=getattr(manager, "on_refer", None),
             on_request=getattr(manager, "on_request", None),
+            request_router=getattr(manager, "request_router", None),
+            flow_trunk_id=self.trunk_id,
             # Inbound requests received on the persistent trunk connection
             # use this endpoint rather than the UDP/TCP listening servers.
             # Keep its in-dialog media policy identical or an audio call can
@@ -1201,6 +1209,17 @@ class SipTrunkClient:
                 self.registered = expires_value > 0 and granted_expires > 0
                 self.expires_at = time.time() + granted_expires if self.registered else 0.0
                 if self.registered:
+                    for raw_contact in msg.header_values("Contact"):
+                        _uri, parameters = sip._split_semicolon_params(raw_contact)
+                        params = dict(parameters)
+                        if str(params.get("+sip.instance") or "").strip('"<>') != self._instance_id:
+                            continue
+                        for name, attribute in (("pub-gruu", "public_gruu"), ("temp-gruu", "temporary_gruu")):
+                            value = str(params.get(name) or "").strip('"')
+                            if value:
+                                parsed = sip.parse_sip_uri(value)
+                                if any(key.casefold() == "gr" for key, _ in parsed.params):
+                                    setattr(self, attribute, str(parsed))
                     if self.transport_name == "UDP":
                         via = sip.parse_via(msg.header("Via"))
                         behind_nat = bool(
@@ -1292,6 +1311,9 @@ class SipTrunkClient:
             else None,
         )
         headers.append(("Expires", str(int(expires))))
+        headers = [(key, f"{value}, gruu" if key.lower() == "supported" else
+                    f'{value};+sip.instance="<{self._instance_id}>"' if key.lower() == "contact" and self.transport_name == "UDP" else value)
+                   for key, value in headers]
         if self.transport_name in {"TCP", "TLS"}:
             headers = [
                 (

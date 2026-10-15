@@ -3,6 +3,7 @@
 import asyncio
 import re
 import socket
+import secrets
 import struct
 
 import pytest
@@ -29,9 +30,20 @@ async def trunks(lab, monkeypatch, request):
         from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
 
         lab.runtime.sip = lab.calls = SipEndpointRuntime(allow_dark_sessions=True)
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            lab.runtime.transport_config["sip_port"] = probe.getsockname()[1]
+        # The listener needs the same port on UDP and TCP. Keep it outside
+        # peer media and OS ephemeral ranges to avoid cross-transport collisions.
+        for _ in range(128):
+            selected_port = 10000 + secrets.randbelow(2000)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_probe, socket.socket() as tcp_probe:
+                    udp_probe.bind(("0.0.0.0", selected_port))
+                    tcp_probe.bind(("0.0.0.0", selected_port))
+            except OSError:
+                continue
+            lab.runtime.transport_config["sip_port"] = selected_port
+            break
+        else:
+            raise RuntimeError("No free UDP/TCP port in the SIP laboratory range")
         monkeypatch.setattr(peer_snapshot, "async_build_peer_snapshot", AsyncMock(return_value=[]))
         monkeypatch.setattr(endpoint_runtime, "_roster_from_peers", lambda *_args: lab.roster)
         monkeypatch.setattr(invite_router, "_roster_from_peers", lambda *_args: lab.roster)

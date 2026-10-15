@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, replace
 
 from .core.sip_transfer import SipReplaces
-from .endpoint_session import EndpointCallSession, SipTerminationDisposition, TerminationIntent
+from .endpoint_session import EndpointCallSession, SipTerminationDisposition, TerminationIntent, SessionHandoff
 from .sip_listener import SipInviteResult
 from .session_cleanup import async_wait_for_cleanup
 
@@ -79,6 +79,47 @@ def prepare_replacement_grant(runtime, call_id, target, source_client):
 
 async def prepare_replacement(hass, invite, local_ip):
     from .runtime_data import require_runtime_data
+    from .call_transfer import _inbound_server
+
+    runtime = require_runtime_data(hass)
+    server, _uri = _inbound_server(runtime, invite.replaces.call_id)
+    if server is None:
+        return SipInviteResult(481, "Call/Transaction Does Not Exist")
+    try:
+        acquired = await server.acquire_replacement_dialog(invite.replaces)
+    except TimeoutError:
+        return SipInviteResult(491, "Request Pending")
+    if acquired is None:
+        return SipInviteResult(481, "Call/Transaction Does Not Exist")
+    previous, release = acquired
+    try:
+        result = await _prepare_replacement_locked(hass, invite, local_ip, previous)
+    except BaseException:
+        release()
+        raise
+    if not 200 <= result.status < 300:
+        release()
+        return result
+
+    async def commit():
+        try:
+            if result.commit is not None:
+                await result.commit()
+        finally:
+            release()
+
+    async def rollback():
+        try:
+            if result.rollback is not None:
+                await result.rollback()
+        finally:
+            release()
+
+    return replace(result, commit=commit, rollback=rollback)
+
+
+async def _prepare_replacement_locked(hass, invite, local_ip, previous):
+    from .runtime_data import require_runtime_data
     from .media_renegotiation import async_prepare_media_update
     from .bridge_manager import async_watch_sip_bridge_destination
     from .bridge_media_updates import BridgeMediaUpdateBinder
@@ -89,9 +130,6 @@ async def prepare_replacement(hass, invite, local_ip):
 
     runtime = require_runtime_data(hass)
     calls = runtime.sip
-    previous = replacement_invite(runtime, invite.replaces)
-    if previous is None:
-        return SipInviteResult(481, "Call/Transaction Does Not Exist")
     if invite.replaces.early_only:
         return SipInviteResult(486, "Busy Here")
     if calls.resolve_session_id(invite.call_id) != invite.call_id or calls.get_session(invite.call_id) is not None:
@@ -116,8 +154,22 @@ async def prepare_replacement(hass, invite, local_ip):
         return SipInviteResult(488, "Not Acceptable Here")
     if grant.pending_call_id:
         return SipInviteResult(491, "Request Pending")
+    try:
+        ready = await client.async_wait_for_media_idle()
+    except BaseException:
+        grant.release()
+        raise
+    if (not old.live or not grant.original.live or not grant.current()
+            or calls.sip_client_for(destination_id) is not client
+            or calls.resource_for(old.call_id, "relay") is not relay):
+        grant.release()
+        return SipInviteResult(481, "Call/Transaction Does Not Exist")
+    if not ready:
+        grant.release()
+        return SipInviteResult(491, "Request Pending")
     grant.pending_call_id = invite.call_id
     destination_dialog = client.dialog
+    destination_key = (client.dialog_ids.call_id, client.dialog_ids.local_tag, client.dialog_ids.remote_tag)
     target_endpoint = str(old.metadata.get("dest_endpoint_id") or "")
     try:
         new = calls.upsert(
@@ -176,11 +228,17 @@ async def prepare_replacement(hass, invite, local_ip):
         await rollback()
         raise
 
-    def validate():
+    def validate(*, media_committed=False):
         if (rollback_task is not None or not new.live or not old.live or not grant.original.live
+                or calls.get_session(old.call_id) is not old or calls.get_session(new.call_id) is not new
+                or calls.sip_client_for(destination_id) is not client
+                or (client.dialog_ids.call_id, client.dialog_ids.local_tag, client.dialog_ids.remote_tag) != destination_key
                 or new.owner != "bridge" or new.answer_committed
                 or not grant.current()
-                or client.dialog is not destination_dialog
+                or (prepared.dialog_identity is not None and (
+                    prepared.dialog_identity.owner is not client
+                    or not prepared.dialog_identity.current(committed=media_committed)))
+                or (prepared.dialog_identity is None and client.dialog is not destination_dialog)
                 or calls.resource_for(old.call_id, "relay") is not relay):
             raise RuntimeError("replacement dialog ownership changed")
         if target_endpoint and target_endpoint not in old.endpoint_claims:
@@ -191,14 +249,7 @@ async def prepare_replacement(hass, invite, local_ip):
         validate()
         if prepared.commit is not None:
             await prepared.commit()
-        validate()
-        # No awaits during the ownership cutover. The same client and relay
-        # move together; old-session cleanup cannot close either afterwards.
-        retired = calls.cancel_task(old.call_id, f"client_watcher:{destination_id}")
-        calls.remove_leg(old.call_id, destination_id)
-        old.release_resource(f"relay:{old.call_id}", value=relay)
-        calls.forget_bridge_link(old.call_id)
-        client.on_refer = None
+        validate(media_committed=True)
         ready = asyncio.Event()
 
         async def watch():
@@ -209,29 +260,44 @@ async def prepare_replacement(hass, invite, local_ip):
             )
 
         watcher = asyncio.create_task(watch(), name=f"voip-bridge-destination-{destination_id}")
-        calls.register_bridge(
-            source_call_id=new.call_id, dest_call_id=destination_id,
-            client=client, lifecycle_task=watcher, state="in_call",
-            caller=invite.caller, callee=old.callee, route_kind=old.route_kind,
-            expected_generation=new.generation,
-        )
-        calls.attach_relay(new.call_id, relay)
-        if target_endpoint:
-            calls.transfer_endpoint_claim(old.call_id, new.call_id, target_endpoint)
-        BridgeMediaUpdateBinder(hass).attach(
-            client, relay, source_call_id=new.call_id,
-            source_video_send_format=invite.send_video_format,
-            source_video_receive_format=invite.recv_video_format,
-        )
-        attach_dtmf_event_bridge(hass, relay, call_id=new.call_id,
-                                 dest_call_id=destination_id, caller=invite.caller,
-                                 callee=old.callee, client=client)
-        if not new.claim_answer(new.token, lambda: True):
-            raise RuntimeError("replacement answer ownership changed")
+        try:
+            with SessionHandoff(calls, old, new) as handoff:
+                handoff.preserve(client, "on_refer", "on_media_update", "on_info_dtmf")
+                handoff.preserve(relay, "on_dtmf", "on_dtmf_fallback")
+                calls.remove_leg(old.call_id, destination_id)
+                old.release_resource(f"relay:{old.call_id}", value=relay)
+                calls.forget_bridge_link(old.call_id)
+                client.on_refer = None
+                calls.register_bridge(
+                    source_call_id=new.call_id, dest_call_id=destination_id,
+                    client=client, lifecycle_task=watcher, state="in_call",
+                    caller=invite.caller, callee=old.callee, route_kind=old.route_kind,
+                    expected_generation=new.generation,
+                )
+                calls.attach_relay(new.call_id, relay)
+                if target_endpoint:
+                    calls.transfer_endpoint_claim(old.call_id, new.call_id, target_endpoint)
+                BridgeMediaUpdateBinder(hass).attach(
+                    client, relay, source_call_id=new.call_id,
+                    source_video_send_format=invite.send_video_format,
+                    source_video_receive_format=invite.recv_video_format,
+                )
+                attach_dtmf_event_bridge(hass, relay, call_id=new.call_id,
+                                         dest_call_id=destination_id, caller=invite.caller,
+                                         callee=old.callee, client=client)
+                if not new.claim_answer(new.token, lambda: True):
+                    raise RuntimeError("replacement answer ownership changed")
+        except BaseException:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
+            raise
+        retired = calls.cancel_task(old.call_id, f"client_watcher:{destination_id}")
         committed = True
         grant.release()
         ready.set()
         calls.request_termination(old.call_id, TerminationIntent("forwarded"))
+        if prepared.finalize is not None:
+            await async_wait_for_cleanup(asyncio.create_task(prepared.finalize(), name="voip-replacement-finalize"))
         publish_bridge_projection(hass, new, direction="incoming", last_sip_event="REPLACES")
         if retired is not None:
             await asyncio.gather(retired, return_exceptions=True)

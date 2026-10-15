@@ -194,8 +194,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     yield obj
     from custom_components.voip_stack.endpoint_session import TerminationIntent
     for session in list(calls.sessions.values()):
-        if session.live:
-            await calls.request_termination(session.call_id, TerminationIntent("test_done"))
+        await calls.request_termination(session.call_id, TerminationIntent("test_done"))
     for transport in transports:
         transport.close()
     for task in collectors:

@@ -851,6 +851,23 @@ export function buildMainCardSkeleton(cardVersion) {
     parkBtn.title = translate("Park call");
     parkBtn.hidden = true;
     runtimeControls.appendChild(parkBtn);
+    const transferBtn = document.createElement("button");
+    const transferHangupBtn = document.createElement("button");
+    for (const [button, icon, label] of [
+      [transferBtn, "mdi:phone-forward", "Transfer call"],
+      [transferHangupBtn, "mdi:phone-hangup", "Hang up call"],
+    ]) {
+      button.type = "button";
+      button.className = "settings-btn";
+      const image = document.createElement("ha-icon");
+      image.className = "settings-label-icon";
+      image.setAttribute("icon", icon);
+      button.appendChild(image);
+      button.title = translate(label);
+      button.setAttribute("aria-label", translate(label));
+      button.hidden = true;
+      runtimeControls.appendChild(button);
+    }
     const recordBtn = document.createElement("button");
     recordBtn.type = "button";
     recordBtn.className = "settings-btn";
@@ -1143,7 +1160,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, phoneActivity, recordBtn,
+      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, transferBtn, transferHangupBtn, parkingNotice, phoneActivity, recordBtn,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,

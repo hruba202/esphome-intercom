@@ -1039,6 +1039,60 @@ assert.equal(acknowledged._softphoneKeypadOpen, true);
 
 assert.deepEqual(acknowledged._softphoneSnapshot.capabilities,["audio","video"]);
 
+// Transfer reuses the destination UI without sending DTMF or changing preferences.
+const transfer = makeCard();
+transfer.config.device_id = "phone-device";
+transfer._softphoneSnapshot = {{...base, state:"in_call",call_id:"transfer-original"}};
+transfer._softphoneTargets=()=>[{{device_id:"desk",name:"Reception"}}];
+transfer._els.transferBtn=new FakeElement();
+transfer._els.transferHangupBtn=new FakeElement();
+transfer._toggleTransfer();
+assert.equal(transfer._els.callBtn.textContent,"Transfer");
+assert.equal(transfer._els.callBtn.hidden,false);
+assert.equal(transfer._els.hangupBtn.hidden,true);
+assert.equal(transfer._els.transferHangupBtn.hidden,false);
+transfer._toggleKeypad();
+transfer._pressKeypadKey("4");transfer._pressKeypadKey("2");
+assert.equal(transfer._manualTarget(),"42");
+assert.equal(transfer._els.keypadInput.hidden,false);
+let transferRequests=[];
+transfer._hass.callWS=async request=>{{transferRequests.push(request);return {{response:{{success:false,status:486}}}}}};
+await transfer._submitTransfer();
+assert.equal(transferRequests[0].service,"transfer");
+assert.equal(transferRequests[0].service_data.call_id,"transfer-original");
+assert.equal(transferRequests[0].service_data.destination,"42");
+assert.ok(transfer._transferDraft);
+assert.equal(transfer._softphoneSnapshot.state,"in_call");
+transfer._toggleKeypad();
+transfer._hass.callWS=async request=>{{transferRequests.push(request);return {{response:{{success:true}}}}}};
+await transfer._submitTransfer();
+assert.equal(transferRequests[1].service_data.destination,"Reception");
+assert.equal(transfer._transferDraft,null);
+transfer._toggleTransfer();
+transfer._toggleTransfer();
+assert.equal(transfer._transferDraft,null);
+transfer._toggleTransfer();
+transfer._softphoneSnapshot={{...base,state:"idle",call_id:""}};
+transfer._render();
+assert.equal(transfer._transferDraft,null);
+assert.equal(transfer._els.callBtn.textContent,"Call");
+transfer._softphoneSnapshot = {{...base,state:"in_call",call_id:"old-transfer"}};
+transfer._toggleTransfer();
+let finishTransfer;
+transfer._hass.callWS=()=>new Promise(resolve=>{{finishTransfer=resolve;}});
+const pendingTransfer=transfer._submitTransfer();
+const oldDraft=transfer._transferDraft;
+await transfer._submitTransfer();
+assert.equal(transfer._transferDraft,oldDraft);
+transfer._softphoneSnapshot={{...base,state:"in_call",call_id:"next-call"}};
+transfer._render();
+finishTransfer({{response:{{success:false,status:486}}}});
+await pendingTransfer;
+assert.equal(transfer._errorMsg,"");
+assert.equal(transfer._softphoneSnapshot.call_id,"next-call");
+assert.equal(transfer._transferDraft,null);
+
+
 // Video parking is unsupported and must not expose an actionable Park button.
 const videoParking = makeCard();
 videoParking._els.parkBtn = new FakeElement();

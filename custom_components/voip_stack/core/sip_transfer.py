@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from urllib.parse import parse_qsl, quote, urlencode
+from dataclasses import dataclass, replace
+from email.parser import BytesParser
+from email.policy import default as email_policy
+from urllib.parse import quote, urlencode
 
 from . import sip
 
@@ -27,6 +29,7 @@ class ReferSubscription:
         self.allow_missing_id = False
         self._expiry: asyncio.TimerHandle | None = None
         self.expires_at: float | None = None
+        self.dialog = None
 
     def bind(self, cseq: int, *, first: bool) -> None:
         """Bind before sending, including a new CSeq after a digest challenge."""
@@ -86,6 +89,36 @@ class ReferSubscription:
             self._expiry.cancel()
         return 200, "OK"
 
+    def receive_dialog_notify(self, request: sip.SipMessage) -> tuple[int, str]:
+        """Match a notification on its own dialog usage before changing state."""
+        from .sip_dialog import DialogKey
+        state = self.dialog
+        if state is None:
+            return 481, "Subscription Does Not Exist"
+        local_tag = sip.extract_tag(request.header("To"))
+        remote_tag = sip.extract_tag(request.header("From"))
+        if (request.header("Call-ID") != state.key.call_id or local_tag != state.key.local_tag
+                or not remote_tag or (state.key.remote_tag and remote_tag != state.key.remote_tag)):
+            return 481, "Subscription Does Not Exist"
+        try:
+            cseq = sip.parse_cseq(request.header("CSeq"))
+            contact = sip.contact_target_uri(request)
+        except sip.SipError:
+            return 400, "Bad Request"
+        if cseq.method != "NOTIFY":
+            return 400, "Bad Request"
+        if cseq.number <= state.remote_cseq:
+            return 500, "Server Internal Error"
+        status, reason = self.notify(request)
+        if status == 200:
+            if not state.key.remote_tag:
+                state.key = DialogKey(state.key.call_id, local_tag, remote_tag)
+                state.route_set = tuple(request.header_values("Record-Route"))
+            if contact:
+                state.remote_target_uri = contact
+            state.remote_cseq = cseq.number
+        return status, reason
+
     def close(self) -> None:
         if self._expiry is not None:
             self._expiry.cancel()
@@ -115,6 +148,10 @@ class SipReferTarget:
 
     uri: str
     replaces: SipReplaces | None = None
+    referred_by: str = ""
+    referral_content_type: str = ""
+    referral_body: bytes = b""
+    referral_body_headers: tuple[tuple[str, str], ...] = ()
 
     def as_header(self) -> str:
         query = ""
@@ -175,19 +212,48 @@ def request_replaces(request: sip.SipMessage) -> SipReplaces | None:
 def parse_refer_to(value: str) -> SipReferTarget:
     """Parse one Refer-To name-address and its optional Replaces header."""
 
-    raw = str(value or "").strip()
-    if raw.startswith("<") and ">" in raw:
-        raw = raw[1 : raw.index(">")].strip()
-    uri_text, separator, query = raw.partition("?")
+    uri_text, headers = sip.split_sip_uri_headers(str(value or ""))
     uri = str(sip.parse_sip_uri(uri_text))
     replaces: SipReplaces | None = None
-    if separator:
-        for key, item in parse_qsl(query, keep_blank_values=True):
-            if key.casefold() == "replaces":
-                if replaces is not None:
-                    raise sip.SipError("Refer-To contains duplicate Replaces")
-                replaces = parse_replaces(item)
+    for key, item in headers:
+        if key.casefold() == "replaces":
+            if replaces is not None:
+                raise sip.SipError("Refer-To contains duplicate Replaces")
+            replaces = parse_replaces(item)
     return SipReferTarget(uri=uri, replaces=replaces)
+
+
+def request_refer_to(request: sip.SipMessage) -> SipReferTarget:
+    """Enforce Refer-To cardinality after compact-header canonicalization."""
+    values = request.header_values("Refer-To")
+    if len(values) != 1:
+        raise sip.SipError("REFER requires exactly one Refer-To")
+    target = parse_refer_to(values[0])
+    referrers = request.header_values("Referred-By")
+    if len(referrers) > 1:
+        raise sip.SipError("REFER contains duplicate Referred-By")
+    if not referrers:
+        return target
+    referred_by = referrers[0]
+    sip.parse_sip_uri(sip.name_addr_uri(referred_by))
+    body_headers = tuple((key, value) for key, value in request.headers
+                         if key.casefold() in {"content-id", "content-transfer-encoding", "content-disposition"})
+    # Inspect MIME structure for the referenced entity, but forward the original
+    # bytes: decoding and re-encoding a signed token can invalidate its signature.
+    suffix = referred_by[referred_by.rfind(">") + 1:] if ">" in referred_by else referred_by
+    _head, parameters = sip._split_semicolon_params(suffix)
+    cid = dict(parameters).get("cid")
+    if cid:
+        content_type = request.header("Content-Type")
+        raw_headers = [("Content-Type", content_type), *body_headers]
+        entity = BytesParser(policy=email_policy).parsebytes(
+            ("\r\n".join(f"{key}: {value}" for key, value in raw_headers) + "\r\n\r\n").encode() + request.body)
+        wanted = cid.strip('"<>')
+        if not request.body or not any(str(part.get("Content-ID", "")).strip("<>") == wanted for part in entity.walk()):
+            raise sip.SipError("Referred-By token is missing")
+        return replace(target, referred_by=referred_by, referral_content_type=content_type,
+                       referral_body=request.body, referral_body_headers=body_headers)
+    return replace(target, referred_by=referred_by)
 
 
 def parse_sipfrag_status(body: bytes | str) -> int:
@@ -205,3 +271,64 @@ def parse_sipfrag_status(body: bytes | str) -> int:
     if not 100 <= status <= 699:
         raise sip.SipError("message/sipfrag status is outside SIP range")
     return status
+
+
+@dataclass(frozen=True, slots=True)
+class SipTargetDialog:
+    """RFC 4538 identifiers expressed from the recipient's perspective."""
+
+    call_id: str
+    local_tag: str
+    remote_tag: str
+
+    def __str__(self):
+        return f"{self.call_id};local-tag={self.local_tag};remote-tag={self.remote_tag}"
+
+
+def request_target_dialog(request: sip.SipMessage) -> SipTargetDialog | None:
+    values = request.header_values("Target-Dialog")
+    if not values:
+        return None
+    if len(values) != 1:
+        raise sip.SipError("duplicate Target-Dialog")
+    call_id, parameters = sip._split_semicolon_params(values[0])
+    names = [key for key, _ in parameters]
+    params = dict(parameters)
+    if (not call_id or any(char.isspace() for char in call_id) or len(names) != len(set(names))
+            or not all(sip.is_sip_token(params.get(key) or "") for key in ("local-tag", "remote-tag"))):
+        raise sip.SipError("invalid Target-Dialog")
+    return SipTargetDialog(call_id, params["local-tag"], params["remote-tag"])
+
+
+def refer_event_headers(cseq: int, *, terminal: bool) -> tuple[tuple[str, str], ...]:
+    return (("Event", f"refer;id={cseq}"),
+            ("Subscription-State", "terminated;reason=noresource" if terminal else "active;expires=60"))
+
+
+async def run_refer_action(action, report, *, timeout: float = 30.0) -> int:
+    """Execute an accepted operation independently of its progress reporter."""
+    progress = asyncio.create_task(report(100, False), name="voip-refer-progress")
+    try:
+        try:
+            async with asyncio.timeout(timeout):
+                status = int(await action())
+        except TimeoutError:
+            status = 408
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("SIP REFER operation failed")
+            status = 500
+        status = status if 200 <= status <= 699 else 500
+        try:
+            response = await progress
+            if response is not None and 200 <= int(response.status_code or 0) < 300:
+                await report(status, True)
+        except (ConnectionError, OSError, TimeoutError):
+            pass
+        return status
+    finally:
+        if not progress.done():
+            progress.cancel()
+        await asyncio.gather(progress, return_exceptions=True)

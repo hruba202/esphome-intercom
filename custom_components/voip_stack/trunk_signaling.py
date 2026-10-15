@@ -20,6 +20,7 @@ def reuse_registered_trunk_flow(
         # Standard From/To and Request-URI already carry these identities.
         # External PBXs do not need duplicate VoIP Stack routing headers.
         client.include_route_metadata = False
+        client.local_contact_uri = getattr(trunk, "public_gruu", "") if getattr(trunk, "registered", False) else ""
     open_dialog = getattr(trunk, "open_outbound_dialog", None)
     if not callable(open_dialog):
         return False
@@ -32,6 +33,9 @@ def reuse_registered_trunk_flow(
         send=send, responses=responses,
         close=lambda: trunk.close_outbound_dialog(call_id),
     )
+    bind_usage = getattr(trunk, "bind_outbound_usage", None)
+    if bind_usage is not None:
+        client.bind_signaling_usage = lambda usage_id: bind_usage(call_id, usage_id)
     udp_port = getattr(trunk, "_udp_local_port", None)
     if udp_port:
         client.local_sip_port = int(udp_port)

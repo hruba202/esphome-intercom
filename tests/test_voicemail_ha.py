@@ -1067,6 +1067,7 @@ async def test_mwi_uses_existing_subscription_lifecycle_and_mailbox_counts(mailb
     notifications = asyncio.Queue()
     async def send(request, address, result):
         await notifications.put(result.follow_up)
+        return sip.SipMessage(status_code=200, reason="OK")
     def request(target="kitchen", *, tag="", expires=300, cseq=1):
         return sip.parse_message(sip.build_request("SUBSCRIBE", f"sip:{target}@127.0.0.1:5060", [
             ("From", "<sip:kitchen@127.0.0.1>;tag=caller"),
@@ -1084,6 +1085,9 @@ async def test_mwi_uses_existing_subscription_lifecycle_and_mailbox_counts(mailb
         assert b"Messages-Waiting: no\r\n" in first.follow_up.body
         assert b"Voice-Message: 0/0 (0/0)\r\n" in first.follow_up.body
         assert b"Message-Account: sip:mailbox.kitchen@127.0.0.1:5060\r\n" in first.follow_up.body
+        first.follow_up_scheduler()
+        initial_notify = await asyncio.wait_for(notifications.get(), 2)
+        assert initial_notify.cseq == first.follow_up.cseq
         archive = await get_archive(lab.hass)
         writer = await archive.begin("kitchen", caller="Door")
         assert writer.offer(b"\x01\x00" * 320, AudioFormat(16000, frame_ms=20))

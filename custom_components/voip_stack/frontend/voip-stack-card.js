@@ -367,6 +367,7 @@ class VoipStackCard extends HTMLElement {
     const data = event?.data || {};
     if (!this._eventConcernsThisCard(data)) return;
     const state = String(data.state || data.sip_state || "").toLowerCase();
+    this._mirroredCallId = state === "in_call" ? String(data.call_id || "") : "";
     if (state === "in_call" || state === "answering") {
       this._mirroredConnectedPeer = mirroredEndpointPeerLabel(
         data,
@@ -1112,7 +1113,7 @@ class VoipStackCard extends HTMLElement {
 
   _sessionCallId() {
     if (this._isHaSoftphoneMode()) return this._softphoneSnapshot?.call_id || "";
-    return "";
+    return this._mirroredCallId || "";
   }
 
   // Get current ESP state from entity
@@ -1246,7 +1247,7 @@ class VoipStackCard extends HTMLElement {
   _getSoftphoneTargetDevice() {
     const targets = this._softphoneTargets();
     if (targets.length === 0) return null;
-    const wanted = this._softphoneTargetDeviceId;
+    const wanted = this._transferDraft?.targetDeviceId || this._softphoneTargetDeviceId;
     return targets.find(d => d.device_id === wanted) || targets[0];
   }
 
@@ -1691,7 +1692,11 @@ class VoipStackCard extends HTMLElement {
     const els = this._els;
 
     const espState = this._getEspState();
-    const destination = this._getDestination();
+    if (this._transferDraft && (this._transferDraft.callId !== this._sessionCallId() || espState !== "in_call")) {
+      this._transferDraft = null;
+    }
+    const transferring = !!this._transferDraft;
+    const destination = transferring ? this._getSoftphoneTargetDevice()?.name || "" : this._getDestination();
     const caller = this._getCallerName();
 
     let statusText = "";
@@ -1840,10 +1845,10 @@ class VoipStackCard extends HTMLElement {
       this._isSoftphoneController()
       ? voipStackEngine.claimVideoCanvas(this, els.videoCanvas, this._getSoftphoneEndpointId())
       : (voipStackEngine.releaseVideoCanvas(this), false);
-    const videoVisible = ownsVideoCanvas &&
+    const videoVisible = !transferring && ownsVideoCanvas &&
       espState.toLowerCase() === "in_call" &&
       voipStackEngine.videoVisible;
-    const nativeCameraVisible = !videoVisible && this._syncNativeCameraCard(
+    const nativeCameraVisible = !transferring && !videoVisible && this._syncNativeCameraCard(
       this._activeNativeCameraEntityId(espState),
     );
     const visualMediaVisible = videoVisible || nativeCameraVisible;
@@ -1868,17 +1873,17 @@ class VoipStackCard extends HTMLElement {
       els.hangupDuration.textContent = this._formatVideoCallDuration();
     }
     const keypadOpen = this._keypadOpen();
-    const inCallDtmf = softphoneMode &&
+    const inCallDtmf = !transferring && softphoneMode &&
       espState.toLowerCase() === "in_call" && showHangup;
-    els.destRow.hidden = !showCall || keypadOpen;
+    els.destRow.hidden = !(showCall || transferring) || keypadOpen;
     els.destValue.textContent = this._contactCyclerDestination(destination);
     if (els.destSelect) {
-      els.destSelect.hidden = !softphoneMode || keypadOpen;
-      els.destValueWrap.classList.toggle("selecting", softphoneMode && !keypadOpen);
+      els.destSelect.hidden = !(softphoneMode || transferring) || keypadOpen;
+      els.destValueWrap.classList.toggle("selecting", (softphoneMode || transferring) && !keypadOpen);
       this._renderSoftphoneDestinationSelect(els.destSelect);
     }
     if (els.keypadPanel) {
-      els.keypadPanel.hidden = !((showCall || inCallDtmf) && keypadOpen);
+      els.keypadPanel.hidden = !((showCall || transferring || inCallDtmf) && keypadOpen);
       els.keypadInput.value = this._manualTarget();
       els.keypadInput.hidden = inCallDtmf;
       for (const btn of Object.values(els.keypadKeys || {})) {
@@ -1889,7 +1894,7 @@ class VoipStackCard extends HTMLElement {
         if (els.keypadKeys["⌫"]) els.keypadKeys["⌫"].disabled = true;
       }
     }
-    const hideContactCycler = softphoneMode || keypadOpen;
+    const hideContactCycler = softphoneMode || transferring || keypadOpen;
     els.prevBtn.disabled = buttonDisabled || hideContactCycler;
     els.nextBtn.disabled = buttonDisabled || hideContactCycler;
     els.prevBtn.hidden = hideContactCycler;
@@ -1905,8 +1910,8 @@ class VoipStackCard extends HTMLElement {
     // Action buttons: exactly one set visible at a time.
     els.answerBtn.hidden = !showAnswer;
     els.declineBtn.hidden = !showAnswer;
-    els.hangupBtn.hidden = !showHangup;
-    els.callBtn.hidden = !showCall;
+    els.hangupBtn.hidden = !showHangup || transferring;
+    els.callBtn.hidden = !(showCall || transferring);
     els.placeholderBtn.hidden = showAnswer || showHangup || showCall;
     els.answerBtn.disabled = buttonDisabled || browserMediaBusy;
     els.declineBtn.disabled = buttonDisabled;
@@ -1914,7 +1919,17 @@ class VoipStackCard extends HTMLElement {
     // request. In particular, a trunk call may remain in CALLING until SIP
     // timer B expires, so `_starting` must never lock out Hangup.
     els.hangupBtn.disabled = this._stopping;
-    els.callBtn.disabled = buttonDisabled || browserMediaBusy;
+    els.callBtn.disabled = buttonDisabled || browserMediaBusy || !!this._transferBusy;
+    els.callBtn.textContent = this._t(transferring ? "Transfer" : "Call");
+    if (els.transferBtn) {
+      els.transferBtn.hidden = espState !== "in_call" || !this._sessionCallId();
+      els.transferBtn.disabled = !!this._transferBusy || this._stopping;
+      els.transferBtn.setAttribute("aria-pressed", String(transferring));
+      els.transferBtn.title = this._t(transferring ? "Cancel transfer" : "Transfer call");
+      els.transferBtn.setAttribute("aria-label", els.transferBtn.title);
+      els.transferHangupBtn.hidden = !transferring;
+      els.transferHangupBtn.disabled = this._stopping;
+    }
 
     // Status
     els.statusIndicator.className = "status-indicator " + statusClass;
@@ -1928,14 +1943,14 @@ class VoipStackCard extends HTMLElement {
       this._availableDevices.find((device) => this._deviceMatchesConfig(device))?.parking;
     const inCallOptions = !this._stopping && (softphoneMode
       ? (showAnswer || showHangup)
-      : (!!this._videoSendSwitchEntityId || !!parking?.enabled) && espState === "in_call");
+      : (!!this._videoSendSwitchEntityId || !!parking?.enabled || !!this._sessionCallId()) && espState === "in_call");
     const showRuntimeOptions = (showCall && !this._starting && !this._stopping) || inCallOptions;
     const showSettingsPanel = showRuntimeOptions && this._settingsOpen;
     els.card.classList.toggle("settings-open", showSettingsPanel);
-    const canUseKeypad = softphoneMode || !!this._startCallService;
+    const canUseKeypad = transferring || softphoneMode || !!this._startCallService;
     els.runtimeControls.hidden = !showRuntimeOptions;
     els.keypadBtn.hidden = !(
-      (showCall || inCallDtmf) && showRuntimeOptions && canUseKeypad
+      (showCall || transferring || inCallDtmf) && showRuntimeOptions && canUseKeypad
     );
     const keypadLabel = this._t(keypadOpen ? "Contacts" : "Keypad");
     els.keypadLabel.textContent = keypadLabel;
@@ -1943,7 +1958,7 @@ class VoipStackCard extends HTMLElement {
     els.keypadBtn.setAttribute("aria-label", keypadLabel);
     els.keypadBtn.title = keypadLabel;
     els.card.classList.toggle("keypad-available", !els.keypadBtn.hidden);
-    els.keypadBtn.setAttribute("aria-expanded", String((showCall || inCallDtmf) && keypadOpen));
+    els.keypadBtn.setAttribute("aria-expanded", String((showCall || transferring || inCallDtmf) && keypadOpen));
     els.settingsBtn.hidden = !showRuntimeOptions;
     els.settingsPanel.hidden = !showSettingsPanel;
     els.settingsBtn.setAttribute("aria-expanded", String(showSettingsPanel));
@@ -1962,7 +1977,7 @@ class VoipStackCard extends HTMLElement {
     }
     if (els.parkBtn) {
       const established = softphoneMode ? this._softphoneSnapshot?.state === "in_call" : espState === "in_call";
-      els.parkBtn.hidden = !parking?.enabled || !established;
+      els.parkBtn.hidden = transferring || !parking?.enabled || !established;
       const parkingVideoUnsupported = softphoneMode && !!this._softphoneSnapshot?.video_active;
       els.parkBtn.disabled = !!this._parkingBusy || parkingVideoUnsupported;
       els.parkBtn.title = this._t(parkingVideoUnsupported ? "Parking requires an audio-only call" : "Park call");
@@ -2059,8 +2074,8 @@ class VoipStackCard extends HTMLElement {
     const ownId = this._getSoftphoneEndpointId() || this._activeDeviceInfo?.endpoint_id;
     const deviceId = this._getConfigDeviceId();
     const activity = this._phoneActivity || {};
-    const peer = this._softphoneSnapshot?.state === "in_call"
-      ? this._activeSoftphonePeerDevice() : null;
+    const peer = ["calling", "connecting", "remote_ringing", "ringing", "incoming", "answering", "in_call", "terminating"]
+      .includes(this._softphoneSnapshot?.state) ? this._activeSoftphonePeerDevice() : null;
     const parked = (activity.parked || []).map(slot => `${this._t("Parked in slot")}: ${slot}`);
     const phones = (activity.phones || [])
       .filter(phone => phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId) &&
@@ -2193,6 +2208,8 @@ class VoipStackCard extends HTMLElement {
     const els = this._els;
     if (!els) return;
     if (els.keypadBtn) els.keypadBtn.onclick = () => this._toggleKeypad();
+    if (els.transferBtn) els.transferBtn.onclick = () => this._toggleTransfer();
+    if (els.transferHangupBtn) els.transferHangupBtn.onclick = () => this._hangup();
     if (els.parkBtn) els.parkBtn.onclick = () => this._parkCall();
     if (els.recordBtn) els.recordBtn.onclick = () => this._toggleRecording();
     if (els.voicemailBtn) els.voicemailBtn.onclick = async () => {
@@ -2250,7 +2267,7 @@ class VoipStackCard extends HTMLElement {
     if (els.ringGroupInput) els.ringGroupInput.onchange = (event) => this._setGroupSetting("ring_group", event.target.value);
     if (els.conferenceGroupInput) els.conferenceGroupInput.onchange = (event) => this._setGroupSetting("conference_group", event.target.value);
     if (els.conferenceRingCheckbox) els.conferenceRingCheckbox.onchange = (event) => this._setGroupSetting("conference_ring", event.target.checked);
-    els.callBtn.onclick = () => this._startCall();
+    els.callBtn.onclick = () => this._transferDraft ? this._submitTransfer() : this._startCall();
     els.hangupBtn.onclick = () => this._hangup();
     els.answerBtn.onclick = () => this._answer();
     els.declineBtn.onclick = () => this._decline();
@@ -2293,26 +2310,40 @@ class VoipStackCard extends HTMLElement {
   }
 
   _setSoftphoneTarget(deviceId) {
+    if (this._transferDraft) {
+      this._transferDraft.targetDeviceId = deviceId;
+      this._render();
+      return;
+    }
     this._softphoneTargetDeviceId = deviceId || null;
     this._saveSoftphoneTargetPreference(this._softphoneTargetDeviceId);
     this._render();
   }
 
   _keypadOpen() {
+    if (this._transferDraft) return this._transferDraft.keypad;
     return this._isHaSoftphoneMode() ? this._softphoneKeypadOpen : this._mirrorKeypadOpen;
   }
 
   _manualTarget() {
+    if (this._transferDraft) return this._transferDraft.manual;
     return this._isHaSoftphoneMode() ? this._softphoneManualTarget : this._mirrorManualTarget;
   }
 
   _setManualTarget(value) {
     const clean = String(value || "").replace(/[\r\n]/g, "").trimStart();
-    if (this._isHaSoftphoneMode()) this._softphoneManualTarget = clean;
+    if (this._transferDraft) this._transferDraft.manual = clean;
+    else if (this._isHaSoftphoneMode()) this._softphoneManualTarget = clean;
     else this._mirrorManualTarget = clean;
   }
 
   _toggleKeypad() {
+    if (this._transferDraft) {
+      this._transferDraft.keypad = !this._transferDraft.keypad;
+      this._render();
+      if (this._transferDraft.keypad) this._els?.keypadInput?.focus();
+      return;
+    }
     if (!this._isHaSoftphoneMode() && !this._startCallService) return;
     if (this._isHaSoftphoneMode()) {
       this._softphoneKeypadOpen = !this._softphoneKeypadOpen;
@@ -2330,7 +2361,7 @@ class VoipStackCard extends HTMLElement {
   }
 
   _pressKeypadKey(key) {
-    const inCallDtmf = this._isHaSoftphoneMode() &&
+    const inCallDtmf = !this._transferDraft && this._isHaSoftphoneMode() &&
       String(this._softphoneSnapshot?.state || "").toLowerCase() === "in_call";
     if (inCallDtmf) {
       if (key !== "Clear" && key !== "⌫" && !voipStackEngine.sendDtmf(key)) {
@@ -3137,6 +3168,40 @@ class VoipStackCard extends HTMLElement {
       this._showError(err.message || String(err));
     } finally {
       this._recordingBusy = false;
+      this._render();
+    }
+  }
+
+  _toggleTransfer() {
+    if (this._transferBusy) return;
+    if (this._transferDraft) this._transferDraft = null;
+    else if (this._getEspState() === "in_call" && this._sessionCallId()) {
+      this._transferDraft = {callId: this._sessionCallId(), targetDeviceId: null, manual: "", keypad: false};
+      this._settingsOpen = false;
+    }
+    this._render();
+  }
+
+  async _submitTransfer() {
+    const draft = this._transferDraft;
+    if (!draft || this._transferBusy || draft.callId !== this._sessionCallId() || this._getEspState() !== "in_call") return;
+    const destination = draft.keypad ? draft.manual.trim() : this._getSoftphoneTargetDevice()?.name;
+    if (!destination) { this._showError("No destination entered"); return; }
+    this._transferBusy = true;
+    this._errorMsg = "";
+    this._render();
+    try {
+      const result = await this._hass.callWS({
+        type: "call_service", domain: "voip_stack", service: "transfer", return_response: true,
+        service_data: {device_id: this._getConfigDeviceId(), call_id: draft.callId, destination},
+      });
+      if (this._transferDraft !== draft || this._sessionCallId() !== draft.callId) return;
+      if (!result?.response?.success) throw new Error(this._t("Transfer failed") + (result?.response?.status ? ` (${result.response.status})` : ""));
+      this._transferDraft = null;
+    } catch (err) {
+      if (this._transferDraft === draft && this._sessionCallId() === draft.callId) this._showError(err.message || String(err));
+    } finally {
+      this._transferBusy = false;
       this._render();
     }
   }

@@ -705,6 +705,8 @@ async def async_originate_browser_call(
         if reuse_registered_trunk_flow(trunk, client):
             _LOGGER.info("SIP trunk registered UDP flow reused for outbound call")
     else:
+        from .sip_runtime import configure_local_contact
+        configure_local_contact(hass, client)
         _enable_reused_sip_tcp_connection(
             hass,
             client,

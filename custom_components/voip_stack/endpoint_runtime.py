@@ -270,6 +270,11 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     from .sip_application import SipApplicationMethods
 
     application_methods = SipApplicationMethods(hass, registrar)
+    import uuid
+    from .store import config_entry
+    entry = config_entry(hass)
+    if entry is not None:
+        application_methods.gruu_id = uuid.uuid5(uuid.NAMESPACE_URL, f"voip-stack:{entry.entry_id}").hex
     pbx_runtime.attach_component(
         "sip_application",
         application_methods,
@@ -887,6 +892,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         on_media_update=_on_media_update,
         on_refer=_on_refer,
         on_request=application_methods.handle,
+        request_router=application_methods,
         on_flow_closed=_on_flow_closed,
         udp_enabled=True,
         tcp_enabled=True,

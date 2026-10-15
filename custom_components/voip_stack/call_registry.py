@@ -728,6 +728,12 @@ class CallRuntimeApi:
                 _LOGGER.exception("SIP REFER routing failed call_id=%s", dest_call_id)
                 return 500
 
+        application = self.component("sip_application")
+        if application is not None and hasattr(client, "retain_signaling"):
+            client.retain_signaling = application.retain_signaling
+            client.observe_event_owner = application.observe_event_owner
+            client.release_event_owner = application.release_event_owner
+            client.archive_responses = application.archive_responses
         if hasattr(client, "on_refer") and client.on_refer is None:
             client.on_refer = _relay_refer
 

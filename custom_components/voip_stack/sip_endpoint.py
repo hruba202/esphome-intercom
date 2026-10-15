@@ -13,6 +13,7 @@ from .core.audio_format import AudioFormat
 from .session_cleanup import async_wait_for_cleanup
 from .sip_listener import (
     InfoHandler,
+    ApplicationRequestRouter,
     InviteHandler,
     OfferlessInviteHandler,
     MediaUpdateHandler,
@@ -124,6 +125,7 @@ class SipEndpointManager:
         on_media_update: MediaUpdateHandler | None = None,
         on_refer: ReferHandler | None = None,
         on_request: RequestHandler | None = None,
+        request_router: ApplicationRequestRouter | None = None,
         on_flow_closed: Callable[[str, int, str], None] | None = None,
         udp_enabled: bool = True,
         tcp_enabled: bool = True,
@@ -147,6 +149,7 @@ class SipEndpointManager:
         self.on_media_update = on_media_update
         self.on_refer = on_refer
         self.on_request = on_request
+        self.request_router = request_router
         self.on_flow_closed = on_flow_closed
         self.udp_enabled = bool(udp_enabled)
         self.tcp_enabled = bool(tcp_enabled)
@@ -216,6 +219,7 @@ class SipEndpointManager:
                     on_media_update=self.on_media_update,
                     on_refer=self.on_refer,
                     on_request=self.on_request,
+                    request_router=self.request_router,
                     enable_video=self.enable_video,
                     enable_video_transcoding=self.enable_video_transcoding,
                     prefer_browser_video_send=self.prefer_browser_video_send,
@@ -241,6 +245,7 @@ class SipEndpointManager:
                     on_media_update=self.on_media_update,
                     on_refer=self.on_refer,
                     on_request=self.on_request,
+                    request_router=self.request_router,
                     on_flow_closed=self.on_flow_closed,
                     enable_video=self.enable_video,
                     enable_video_transcoding=self.enable_video_transcoding,
@@ -482,6 +487,11 @@ class SipEndpointManager:
             send = getattr(endpoint, "send_dtmf_info", None)
             return bool(callable(send) and await send(call_id, digit))
         return False
+
+    async def acquire_replacement_dialog(self, replaces):
+        matches = [endpoint for endpoint in self._dialog_endpoints()
+                   if endpoint.invite_for_replaces(replaces) is not None]
+        return await matches[0].acquire_replacement_dialog(replaces) if len(matches) == 1 else None
 
     def invite_for_replaces(self, replaces):
         matches = [invite for endpoint in self._dialog_endpoints()

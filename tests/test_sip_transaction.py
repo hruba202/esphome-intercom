@@ -487,20 +487,29 @@ class SipTransactionTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(transport=transport):
                 active = True
                 sends = 0
+                now = 0.0
+
+                async def advance(delay):
+                    nonlocal now
+                    now += delay
 
                 def send() -> bool:
                     nonlocal sends
                     sends += 1
                     return True
 
-                result = await sip_transaction.async_run_server_transaction(
-                    send=send,
-                    active=lambda current=active: current,
-                    transport=transport,
-                    timeout=0.007,
-                    t1=0.001,
-                    t2=0.002,
-                )
+                with (
+                    patch.object(sip_transaction.asyncio, "get_running_loop", return_value=types.SimpleNamespace(time=lambda: now)),
+                    patch.object(sip_transaction.asyncio, "sleep", side_effect=advance),
+                ):
+                    result = await sip_transaction.async_run_server_transaction(
+                        send=send,
+                        active=lambda current=active: current,
+                        transport=transport,
+                        timeout=0.007,
+                        t1=0.001,
+                        t2=0.002,
+                    )
                 self.assertTrue(result.timed_out)
                 self.assertEqual(bool(sends), expected)
 

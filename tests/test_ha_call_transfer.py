@@ -83,10 +83,7 @@ async def test_attended_transfer_uses_the_consultation_dialog_identity() -> None
     source.refer = refer  # type: ignore[method-assign]
     runtime = SimpleNamespace(
         sip=SimpleNamespace(
-            sip_clients_snapshot=lambda: {
-                "source": source,
-                "consult": consultation,
-            },
+            sip_client_for={"source": source, "consult": consultation}.get,
         ),
         endpoints=SimpleNamespace(resolve=lambda _value: None),
     )
@@ -164,7 +161,7 @@ async def test_automation_transfer_targets_ha_listener_not_remote_phone(destinat
     source = _established("source", "remote", "bedroom")
     source.refer = AsyncMock(return_value=SipTransferResult(True, 200, "completed"))
     runtime = SimpleNamespace(
-        sip=SimpleNamespace(sip_clients_snapshot=lambda: {"source": source}),
+        sip=SimpleNamespace(sip_client_for={"source": source}.get),
         endpoints=SimpleNamespace(resolve=lambda _: None),
         phonebook_sensor=SimpleNamespace(extra_state_attributes={"roster_json": json.dumps([
             {"id": "HA", "address": "192.0.2.1", "port": 5070,

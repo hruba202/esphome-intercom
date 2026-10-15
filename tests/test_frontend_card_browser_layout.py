@@ -71,7 +71,8 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
                 e.parkBtn.hidden=!park;
                 e.parkBtn.querySelector('.settings-label').textContent='Anruf parken';
                 e.recordBtn.hidden=true;
-                e.voicemailBtn.hidden=false;
+                e.transferBtn.hidden=false;
+                e.voicemailBtn.hidden=true;
                 e.keypadPanel.hidden=true;e.keypadInput.hidden=true;
                 // HA supplies these icon boxes; the fixture preserves their sizes.
                 for(const icon of owner.shadowRoot.querySelectorAll('ha-icon'))
@@ -93,7 +94,7 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
             boxes = page.evaluate("""() => {
                 const e=elements;
                 return Object.fromEntries(['card','hangupBtn','hangupDuration','keypadBtn',
-                    'settingsBtn','parkBtn','recordBtn','voicemailBtn']
+                    'settingsBtn','parkBtn','recordBtn','voicemailBtn','transferBtn']
                     .filter(key=>!e[key].hidden)
                     .map(key=>[key,e[key].getBoundingClientRect().toJSON()]));
             }""")
@@ -196,7 +197,7 @@ def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
                 owner._resizeObserver=new ResizeObserver(()=>owner._measureLayout());
                 const {buildMainCardSkeleton}=await import('/voip-stack-card-view.js');
                 buildMainCardSkeleton.call(owner,'test');window.owner=owner;window.elements=owner._els;
-                const e=elements;e.callBtn.hidden=ringing;e.answerBtn.hidden=!ringing;e.declineBtn.hidden=!ringing;
+                const e=elements;e.statusText.textContent='Ready';e.callBtn.hidden=ringing;e.answerBtn.hidden=!ringing;e.declineBtn.hidden=!ringing;
                 e.hangupBtn.hidden=true;e.placeholderBtn.hidden=true;e.keypadPanel.hidden=true;e.keypadInput.hidden=true;
                 for(const button of owner.shadowRoot.querySelectorAll('button'))button.style.animation='none';
                 window.renderActivity=value=>{owner._phoneActivity=value;p._renderPhoneActivity.call(owner,false)};
@@ -229,11 +230,28 @@ def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
                     const r=e.getBoundingClientRect();return r.top>=Math.min(...buttons.map(b=>b.top))-.5 &&
                     r.bottom<=Math.max(...buttons.map(b=>b.bottom))+.5;});}""")
             page.screenshot(path=str(tmp_path / "activity.png"), full_page=True)
-            page.evaluate("""()=>{owner._softphoneSnapshot={state:'in_call'};
-                owner._activeSoftphonePeerDevice=()=>({endpoint_id:'kitchen'});
-                renderActivity(owner._phoneActivity);}""")
-            assert 'Kitchen' not in page.evaluate("elements.phoneActivity.textContent")
-            assert 'Office phone' in page.evaluate("elements.phoneActivity.textContent")
+            page.evaluate("""()=>{
+                const p=customElements.get('voip-stack-card').prototype;
+                owner._isHaSoftphoneMode=()=>true;
+                owner._availableDevices=[{device_id:'kitchen-device',endpoint_id:'kitchen',name:'Kitchen'},
+                    {device_id:'office-device',endpoint_id:'office',name:'Office phone'}];
+                owner._softphoneTargets=()=>owner._availableDevices;
+                owner._getSoftphoneTargetDevice=()=>owner._availableDevices[1];
+                owner._activeSoftphonePeerDevice=()=>p._activeSoftphonePeerDevice.call(owner);
+            }""")
+            for call_state in ("remote_ringing", "calling", "connecting", "ringing", "incoming", "answering", "in_call", "terminating"):
+                page.evaluate("""state=>{
+                    const incoming=['ringing','incoming','answering'].includes(state);
+                    owner._softphoneSnapshot={state,call_id:'current-call',direction:incoming?'incoming':'outgoing',
+                        target_device_id:'kitchen-device',caller:incoming?'Kitchen':'This phone',
+                        callee:incoming?'This phone':'Kitchen'};
+                    elements.statusText.textContent='Kitchen is ringing...';
+                    renderActivity(owner._phoneActivity);
+                }""", call_state)
+                if call_state == "remote_ringing":
+                    page.screenshot(path=str(tmp_path / "activity-remote-ringing.png"), full_page=True)
+                assert 'Kitchen' not in page.evaluate("elements.phoneActivity.textContent"), call_state
+                assert 'Office phone' in page.evaluate("elements.phoneActivity.textContent")
             page.evaluate("""()=>{owner._softphoneSnapshot={state:'idle'};
                 renderActivity(owner._phoneActivity);}""")
             assert 'Kitchen' in page.evaluate("elements.phoneActivity.textContent")

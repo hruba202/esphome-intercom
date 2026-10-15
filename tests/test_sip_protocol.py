@@ -255,7 +255,7 @@ class SipProtocolBugFixTest(unittest.TestCase):
         self.assertTrue(sip.supports_option(message, "from-change"))
         self.assertEqual(
             sip.option_tags(message),
-            frozenset({"100rel", "from-change", "replaces", "timer"}),
+            frozenset({"100rel", "from-change", "replaces", "timer", "tdialog"}),
         )
 
     def test_dtmf_collector_emits_one_digit_per_event(self) -> None:
@@ -646,7 +646,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             supported_formats=[pcm],
         )
         client.transport = types.SimpleNamespace(
-            sendto=lambda data, addr: sent.append((data, addr))
+            sendto=lambda data, addr: sent.append((data, addr)), close=lambda: None
         )
         client.dialog_ids.remote_tag = "remote"
         initial_sdp = sdp.build_offer_directional(
@@ -2622,43 +2622,21 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([response.status_code for response in responses], [481, 488, 200])
         self.assertIn("Session renegotiation is not supported", responses[1].header("Warning"))
 
-    async def test_cancelling_dialog_reader_during_child_cleanup_releases_writer_lock(self):
+    async def test_refer_deadline_includes_serialization_with_reader_active(self):
         client, _current, _sent, _negotiated = self._confirmed_audio_client()
-        reading, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
-
-        async def read(_timeout):
-            try:
-                reading.set()
-                await asyncio.Event().wait()
-            finally:
-                cleaning.set()
-                await release.wait()
-
-        client._read_response = read
         watcher = asyncio.create_task(client.wait_for_dialog_termination())
-        requested = False
         try:
-            await asyncio.wait_for(reading.wait(), 1)
-            client._request_dialog_writer()
-            requested = True
-            await asyncio.wait_for(cleaning.wait(), 1)
-            watcher.cancel()
-            release.set()
-            with self.assertRaises(asyncio.CancelledError):
-                await watcher
-            self.assertFalse(client._dialog_read_lock.locked())
-            async with asyncio.timeout(1):
-                async with client._dialog_writer():
-                    pass
+            await client._dialog_request_lock.acquire()
+            result = await asyncio.wait_for(client.refer(
+                sip_transfer.SipReferTarget("sip:next@127.0.0.1"), timeout=0.02), 0.3)
+            self.assertEqual(result.state, "timeout")
+            self.assertIsNone(client._refer_subscription)
+            self.assertFalse(watcher.done())
         finally:
-            release.set()
+            if client._dialog_request_lock.locked():
+                client._dialog_request_lock.release()
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
-            if requested:
-                client._release_dialog_writer()
-            # Also clean up the intentionally failing pre-fix witness.
-            if client._dialog_read_lock.locked():
-                client._dialog_read_lock.release()
             client.dialog = None
             client.transport = None
             await client.close()
@@ -2702,6 +2680,65 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await watcher, "remote_hangup")
         methods = [sip.parse_message(raw).method for raw, _addr in sent]
         self.assertIn("ACK", methods)
+
+    async def test_compensation_preserves_a_newer_committed_media_contract(self):
+        from dataclasses import replace
+        client, previous, sent, _audio = self._confirmed_audio_client()
+        jpeg = sdp.DEFAULT_VIDEO_FORMATS[3]
+        candidate = replace(previous, video_format=jpeg, local_video_format=jpeg,
+                            local_video_rtp_port=43000, local_video_direction="sendrecv")
+        client.dialog = candidate
+        await client._local_offer_lock.acquire()
+        restoring = asyncio.create_task(client.restore_prepared_reinvite(previous, candidate))
+        try:
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            newer = replace(candidate, remote_rtp_port=42002)
+            client.dialog = newer
+            client._local_offer_lock.release()
+            self.assertIsNone(await asyncio.wait_for(restoring, .2))
+            self.assertIs(client.dialog, newer)
+            self.assertIsNone(client._prepared_reinvite)
+            self.assertEqual(sent, [])
+        finally:
+            if client._local_offer_lock.locked():
+                client._local_offer_lock.release()
+            restoring.cancel()
+            await asyncio.gather(restoring, return_exceptions=True)
+            client.dialog = None
+            await client.close()
+
+    async def test_accepted_video_offer_is_compensated_without_ending_audio(self):
+        client, previous, sent, audio = self._confirmed_audio_client()
+        jpeg = sdp.DEFAULT_VIDEO_FORMATS[3]
+        task = asyncio.create_task(client.async_prepare_video_reinvite(
+            local_video_rtp_port=43000, video_formats=(jpeg,)))
+        try:
+            request = await self._wait_for_sent_request(sent, "INVITE")
+            answer = sdp.build_answer_directional("127.0.0.2", "127.0.0.2", 42000, audio, audio,
+                remote_sdp=request.body, video_port=44000, video_format=jpeg, video_direction="sendrecv")
+            client.queue.put_nowait((self._response_to_request(request, 200, "OK", answer), ("127.0.0.2", 5060)))
+            candidate = await asyncio.wait_for(task, 1)
+            self.assertIsNotNone(candidate)
+            sent.clear()
+            task = asyncio.create_task(client.restore_prepared_reinvite(previous, candidate))
+            restore = await self._wait_for_sent_request(sent, "INVITE")
+            self.assertIn(b"m=video 0", restore.body)
+            answer = sdp.build_answer_directional("127.0.0.2", "127.0.0.2", 42000, audio, audio,
+                remote_sdp=restore.body, video_port=0, video_format=jpeg, video_direction="inactive")
+            client.queue.put_nowait((self._response_to_request(restore, 200, "OK", answer), ("127.0.0.2", 5060)))
+            restored = await asyncio.wait_for(task, 1)
+            self.assertIs(client.dialog, restored)
+            self.assertIsNone(restored.video_format)
+            self.assertEqual(restored.send_format, previous.send_format)
+            self.assertEqual(restored.recv_format, previous.recv_format)
+            self.assertNotIn("BYE", [sip.parse_message(raw).method for raw, _ in sent])
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            client.dialog = None
+            client.transport = None
+            await client.close()
 
     async def test_local_video_reinvite_preserves_full_audio_payload_space(self) -> None:
         client, current, sent, negotiated = self._confirmed_audio_client()
@@ -3045,6 +3082,64 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             if sip.parse_message(raw).is_response
         ]
         self.assertEqual(responses[-1].status_code, 200)
+
+    async def test_local_bye_completes_the_existing_dialog_observer(self) -> None:
+        client, _current, sent, _negotiated = self._confirmed_audio_client()
+        watcher = asyncio.create_task(client.wait_for_dialog_termination())
+        ending = asyncio.create_task(client.terminate())
+        try:
+            request = await self._wait_for_sent_request(sent, "BYE")
+            client.queue.put_nowait((self._response_to_request(request, 200, "OK"), ("127.0.0.2", 5060)))
+            self.assertEqual(await ending, "remote_hangup")
+            self.assertEqual(await asyncio.wait_for(asyncio.shield(watcher), .2), "remote_hangup")
+            self.assertIsNone(client.dialog)
+        finally:
+            watcher.cancel()
+            ending.cancel()
+            await asyncio.gather(watcher, ending, return_exceptions=True)
+            await client.close()
+
+    async def test_remote_offer_preparation_serializes_and_bye_prevents_commit(self) -> None:
+        client, current, sent, negotiated = self._confirmed_audio_client()
+        entered, release = asyncio.Event(), asyncio.Event()
+        changes = []
+
+        async def prepare(_previous, _candidate, _method):
+            entered.set()
+            await release.wait()
+            async def commit():
+                changes.append("commit")
+            async def rollback():
+                changes.append("rollback")
+            return sip_client.PreparedDialogMediaUpdate(commit=commit, rollback=rollback)
+
+        client.on_media_update = prepare
+        body = sdp.build_offer_directional("127.0.0.2", "127.0.0.2", 43000,
+                                          [negotiated.audio_format], [negotiated.audio_format])
+        first = self._remote_dialog_request(client, "UPDATE", 2, body=body)
+        collision = self._remote_dialog_request(client, "UPDATE", 3, body=body)
+        watcher = asyncio.create_task(client.wait_for_dialog_termination())
+        try:
+            client.queue.put_nowait((first, ("127.0.0.2", 5060)))
+            await asyncio.wait_for(entered.wait(), 1)
+            client.queue.put_nowait((collision, ("127.0.0.2", 5060)))
+            client.queue.put_nowait((self._remote_dialog_request(client, "BYE", 4), ("127.0.0.2", 5060)))
+            self.assertEqual(await asyncio.wait_for(watcher, 1), "remote_hangup")
+            release.set()
+            await asyncio.gather(*tuple(client._dialog_dispatcher.requests))
+            responses = [sip.parse_message(raw) for raw, _addr in sent if sip.parse_message(raw).is_response]
+            by_cseq = {message.header("CSeq"): message for message in responses}
+            self.assertEqual(by_cseq["3 UPDATE"].status_code, 500)
+            self.assertIn(int(by_cseq["3 UPDATE"].header("Retry-After")), range(11))
+            self.assertEqual(by_cseq["4 BYE"].status_code, 200)
+            self.assertEqual(by_cseq["2 UPDATE"].status_code, 481)
+            self.assertEqual(changes, ["rollback"])
+            self.assertIsNone(client.dialog)
+        finally:
+            release.set()
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
+            await client.close()
 
     async def test_remote_reinvite_gets_491_during_local_offer(self) -> None:
         client, current, sent, negotiated = self._confirmed_audio_client()
@@ -4722,7 +4817,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
 
         endpoint._handle_datagram = blocked_handler  # type: ignore[method-assign]
         for index in range(100):
-            endpoint.datagram_received(b"test", ("127.0.0.1", index))
+            endpoint.datagram_received(b"OPTIONS sip:test SIP/2.0\r\n\r\n", ("127.0.0.1", index))
         await asyncio.sleep(0)
 
         self.assertEqual(len(endpoint._request_tasks), sip_listener._MAX_SIP_INVITE_TASKS)
@@ -4750,7 +4845,13 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         for index in range(100):
             endpoint.datagram_received(b"INVITE sip:test SIP/2.0\r\n\r\n", ("127.0.0.1", index))
         for index in range(8):
-            endpoint.datagram_received(b"CANCEL sip:test SIP/2.0\r\n\r\n", ("127.0.0.1", index))
+            headers = [("Via", f"SIP/2.0/UDP 127.0.0.1;branch=z9hG4bK{index}"),
+                       ("From", "<sip:caller@127.0.0.1>;tag=caller"), ("To", "<sip:ha@127.0.0.1>"),
+                       ("Call-ID", str(index)), ("CSeq", "1 INVITE")]
+            request = sip.parse_message(sip.build_request("INVITE", "sip:ha@127.0.0.1", headers))
+            endpoint.pending_invites[str(index)] = sip_listener._PendingInvite(request, ("127.0.0.1", index), "ha", "UDP")
+            headers[-1] = ("CSeq", "1 CANCEL")
+            endpoint.datagram_received(sip.build_request("CANCEL", "sip:ha@127.0.0.1", headers), ("127.0.0.1", index))
         await asyncio.sleep(0)
 
         self.assertEqual(len(endpoint._invite_tasks), sip_listener._MAX_SIP_INVITE_TASKS)
@@ -5004,6 +5105,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             username="17770000000",
             auth_username="17770000000",
             password="secret",
+            supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)],
         )
         transport = FakeTransport()
         client.transport = transport  # type: ignore[assignment]

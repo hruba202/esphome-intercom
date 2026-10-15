@@ -470,3 +470,68 @@ become a different codec. Codec switches discard incomplete converted audio
 from the previous format and preserve the destination RTP clock.
 
 This changes HA media handling, not ESP firmware or codec preference lists.
+
+
+## SIP transactions, event usages and media replacement
+
+An established outbound dialog has one transport reader. The dispatcher sends
+responses to the matching transaction mailbox and routes requests to bounded
+handlers. A transfer waits for its own subscription result rather than competing
+with the call watcher to read the socket. Its deadline includes request
+serialization, authentication and the final notification. Local BYE completion
+also wakes the dialog observer; it does not depend on another incoming packet.
+
+Responses to existing listener transactions do not consume an ordinary request
+handler. Recognized dialog control has reserved capacity, including PRACK and
+transfer NOTIFY. Unknown requests cannot obtain that capacity merely by naming
+a control method. These rules also apply to messages received over TCP.
+
+A REFER operation and its progress subscription have distinct lifetimes.
+Rejecting the first NOTIFY does not cancel an already accepted transfer.
+Notifications match the dialog, the REFER CSeq carried in the Event id, and the
+remote notification sequence. Legacy peers may omit the id for the first REFER
+in a dialog, but an ambiguous notification cannot complete a later transfer.
+Terminating the INVITE usage does not discard an unfinished event usage.
+
+When the peer provides a GRUU Contact, REFER creates a separate dialog and uses
+Target-Dialog to identify the call. Without a GRUU, the legacy in-dialog path is
+retained. Accepted REFER responses use 200; received 202 responses remain valid.
+Referred-By and an associated MIME token are forwarded without treating them as
+authorization credentials. The integration does not provide certificate or
+signature validation for those tokens.
+
+Application subscriptions share stable dialog routing and CSeq state. A refresh
+can update Contact but cannot replace the initial route set. NOTIFY follows that
+route set or Contact, rather than automatically returning to the SUBSCRIBE
+source port. Presence, MWI and BLF keep one notification in flight and at most
+one pending state update. A terminal update cannot be replaced by a later state
+change. The application owner limits retained subscriptions and publications to
+256 globally and 64 per account. Each successful PUBLISH produces a new ETag;
+independent publications for the same address remain independent records.
+
+Replaces waits for the source and destination dialogs' current media transitions
+before preparing the handoff. The source media lock remains held through commit or rollback;
+BYE processing does not wait for that lock. The destination preparation exposes
+the exact pre-commit and post-commit dialog identities, including changes that
+finished while waiting for offer serialization. Session generation, registry
+membership, endpoint claims and the destination client are checked separately.
+
+An accepted remote media change cannot be undone by freeing local reservations.
+Rollback sends a compensating offer when the same dialog is still owned. It
+does not overwrite a newer committed contract or stop video retained by that
+contract. Old
+video resources remain available until handoff finalization. Synchronous session
+handoff restores registry resources and callbacks if a local operation fails.
+The existing termination intent and cleanup barrier release the candidate;
+they do not create a second call lifecycle or RTP receiver.
+
+Protocol references: [RFC 3261](https://www.rfc-editor.org/rfc/rfc3261),
+[RFC 3264](https://www.rfc-editor.org/rfc/rfc3264),
+[RFC 3515](https://www.rfc-editor.org/rfc/rfc3515),
+[RFC 3891](https://www.rfc-editor.org/rfc/rfc3891),
+[RFC 3903](https://www.rfc-editor.org/rfc/rfc3903),
+[RFC 4538](https://www.rfc-editor.org/rfc/rfc4538),
+[RFC 5057](https://www.rfc-editor.org/rfc/rfc5057),
+[RFC 5627](https://www.rfc-editor.org/rfc/rfc5627),
+[RFC 6665](https://www.rfc-editor.org/rfc/rfc6665) and
+[RFC 7647](https://www.rfc-editor.org/rfc/rfc7647).

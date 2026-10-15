@@ -222,6 +222,10 @@ def enable_reused_tcp_connection(
             tcp_server.close_reused_dialog(addr, call_id)
         ),
     )
+    bind_usage = getattr(tcp_server, "bind_reused_usage", None)
+    if bind_usage is not None:
+        call_id = client.dialog_ids.call_id
+        client.bind_signaling_usage = lambda usage_id: bind_usage(remote_addr, call_id, usage_id)
     _LOGGER.info(
         "SIP TCP connection reuse enabled for %s via %s:%s",
         target,
@@ -229,3 +233,21 @@ def enable_reused_tcp_connection(
         remote_addr[1],
     )
     return True
+
+
+def configure_local_contact(hass: HomeAssistant, client) -> None:
+    """Publish the HA user agent's stable Contact before opening its call leg."""
+    from .core import sip
+    registry = call_projection(hass)
+    manager = sip_endpoint_manager(hass)
+    application = registry.component("sip_application") if registry is not None else None
+    if manager is None or application is None or not application.gruu_id:
+        return
+    client.local_contact_uri = str(sip.SipUri(client.local_uri_user, manager.local_ip, manager.port,
+        params=(("transport", client.signaling_transport.lower()), ("gr", application.gruu_id))))
+    client.resolve_local_target = application.resolve_local_target
+    client.retain_signaling = application.retain_signaling
+    client.observe_event_owner = application.observe_event_owner
+    client.release_event_owner = application.release_event_owner
+    client.archive_responses = application.archive_responses
+    application.observe_event_owner(client)

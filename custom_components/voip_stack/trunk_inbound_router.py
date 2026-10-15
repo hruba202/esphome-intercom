@@ -557,6 +557,8 @@ async def async_route_trunk_invite(
         generic_video_relay=video_relay is not None,
         allow_video_transcoding=bool(cfg.get(CONF_VIDEO_TRANSCODING, False)),
     )
+    from .sip_runtime import configure_local_contact
+    configure_local_contact(hass, client)
     enable_reused_tcp_connection(
         hass,
         client,

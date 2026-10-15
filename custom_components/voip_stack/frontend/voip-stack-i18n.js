@@ -1,4 +1,8 @@
 const PT_BR = {
+  "Transfer": "Transferir",
+  "Transfer call": "Transferir chamada",
+  "Cancel transfer": "Cancelar transferência",
+  "Transfer failed": "Falha na transferência",
   "After timeout": "Após o tempo limite",
   "Mailbox": "Caixa postal",
   "Forward to": "Encaminhar para",
@@ -143,6 +147,10 @@ const PT_BR = {
 };
 
 const DE = {
+  "Transfer": "Übergeben",
+  "Transfer call": "Anruf übergeben",
+  "Cancel transfer": "Übergabe abbrechen",
+  "Transfer failed": "Übergabe fehlgeschlagen",
   "After timeout": "Nach Ablauf der Klingelzeit",
   "Mailbox": "Mailbox",
   "Forward to": "Weiterleiten an",

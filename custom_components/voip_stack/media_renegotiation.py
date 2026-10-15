@@ -188,6 +188,10 @@ async def _prepare_bridge_video_contract_change(
         )
         if candidate is None:
             return SipInviteResult(488, "Not Acceptable Here")
+        identity = client.prepared_reinvite_identity(candidate)
+        if identity is None:
+            return SipInviteResult(488, "Not Acceptable Here")
+        destination_dialog = identity.previous
         answer_video_format = None
         answer_video_direction = "inactive"
         if adding_video:
@@ -270,6 +274,8 @@ async def _prepare_bridge_video_contract_change(
             video_direction=answer_video_direction,
         )
         committed = False
+        rolled_back = False
+        finalized = False
         previous_video_left = (
             current_video_relay.left if retaining_video else None
         )
@@ -326,15 +332,39 @@ async def _prepare_bridge_video_contract_change(
             if commit_video_right is not None:
                 commit_video_right()
             committed = True
+
+        async def finalize() -> None:
+            nonlocal finalized
+            if finalized or rolled_back:
+                return
+            finalized = True
             if removing_video and current_video_relay is not None:
                 await current_video_relay.stop()
 
         async def rollback() -> None:
-            if committed:
+            nonlocal rolled_back
+            if rolled_back or finalized:
                 return
-            client.abort_prepared_reinvite(destination_dialog, candidate)
-            if staged_video_relay is not None:
-                await staged_video_relay.stop()
+            rolled_back = True
+            try:
+                if (registry.is_generation_current(updated.call_id, call_generation)
+                        and registry.resource_for(updated.call_id, "relay") is relay):
+                    restored = await client.restore_prepared_reinvite(destination_dialog, candidate)
+                    if restored is not None:
+                        if committed:
+                            relay.prepare_peer_reconfiguration("left", previous_left)()
+                        relay.prepare_peer_reconfiguration("right", dialog_rtp_peer(restored))()
+                        relay.video_relay = current_video_relay
+                        if retaining_video and committed:
+                            current_video_relay.prepare_peer_reconfiguration("left", previous_video_left)()
+                            current_video_relay.prepare_peer_reconfiguration("right", previous_video_right)()
+                else:
+                    client.abort_prepared_reinvite(destination_dialog, candidate)
+            finally:
+                # A superseding update may retain published video. Its relay
+                # owner remains responsible for releasing that resource.
+                if staged_video_relay is not None and relay.video_relay is not staged_video_relay:
+                    await staged_video_relay.stop()
 
         result = SipInviteResult(
             200,
@@ -342,6 +372,8 @@ async def _prepare_bridge_video_contract_change(
             answer_sdp=answer,
             commit=commit,
             rollback=rollback,
+            dialog_identity=identity,
+            finalize=finalize,
         )
         result_transferred = True
         return result
@@ -349,14 +381,16 @@ async def _prepare_bridge_video_contract_change(
         return SipInviteResult(488, "Not Acceptable Here")
     finally:
         if not result_transferred:
-            if candidate is not None:
-                client.abort_prepared_reinvite(destination_dialog, candidate)
-            if staged_video_relay is not None:
-                cleanup = asyncio.create_task(
-                    staged_video_relay.stop(),
-                    name=f"voip-video-reinvite-rollback-{updated.call_id}",
-                )
-                await async_wait_for_cleanup(cleanup)
+            try:
+                if candidate is not None:
+                    if registry.is_generation_current(updated.call_id, call_generation):
+                        await client.restore_prepared_reinvite(destination_dialog, candidate)
+                    else:
+                        client.abort_prepared_reinvite(destination_dialog, candidate)
+            finally:
+                if staged_video_relay is not None:
+                    cleanup = asyncio.create_task(staged_video_relay.stop(), name=f"voip-video-reinvite-rollback-{updated.call_id}")
+                    await async_wait_for_cleanup(cleanup)
 
 
 async def async_prepare_media_update(
@@ -893,13 +927,13 @@ async def async_prepare_media_update(
     )
     try:
         previous_audio_peer = getattr(relay, side)
-        commit_audio = relay.prepare_peer_reconfiguration(
-            side, invite_rtp_peer(updated)
-        )
+        next_audio_peer = invite_rtp_peer(updated)
+        commit_audio = relay.prepare_peer_reconfiguration(side, next_audio_peer)
+        next_video_peer = invite_video_rtp_peer(updated) if video_relay is not None and updated.video_format is not None else None
         previous_video_peer = getattr(video_relay, side) if video_relay is not None else None
         commit_video = (
             video_relay.prepare_peer_reconfiguration(
-                side, invite_video_rtp_peer(updated)
+                side, next_video_peer
             )
             if video_relay is not None and updated.video_format is not None
             else None
@@ -907,7 +941,10 @@ async def async_prepare_media_update(
     except (TypeError, ValueError):
         return SipInviteResult(488, "Not Acceptable Here")
 
+    audio_committed = video_committed = False
+
     async def _commit_relay_update() -> None:
+        nonlocal audio_committed, video_committed
         if not registry.is_generation_current(call_id, call_generation):
             raise RuntimeError(
                 "SIP relay media update belongs to a terminated call"
@@ -919,9 +956,23 @@ async def async_prepare_media_update(
         ):
             raise RuntimeError("SIP relay media owner changed before commit")
         commit_audio()
+        audio_committed = True
         if commit_video is not None:
             commit_video()
+            video_committed = True
+
+    async def _rollback_relay_update() -> None:
+        nonlocal audio_committed, video_committed
+        if (not registry.is_generation_current(call_id, call_generation)
+                or registry.resource_for(call_id, "relay") is not relay):
+            return
+        if video_committed and getattr(video_relay, side) is next_video_peer:
+            video_relay.prepare_peer_reconfiguration(side, previous_video_peer)()
+            video_committed = False
+        if audio_committed and getattr(relay, side) is next_audio_peer:
+            relay.prepare_peer_reconfiguration(side, previous_audio_peer)()
+            audio_committed = False
 
     return SipInviteResult(
-        200, "OK", answer_sdp=answer, commit=_commit_relay_update
+        200, "OK", answer_sdp=answer, commit=_commit_relay_update, rollback=_rollback_relay_update
     )

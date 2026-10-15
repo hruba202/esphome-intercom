@@ -121,6 +121,10 @@ def runtime_resource_snapshot(
             int(counts.get(key, 0)) == 0 for key in call_scoped_keys
         ),
     }
+    component = getattr(registry, "component", None)
+    application = component("sip_application") if callable(component) else None
+    if application is not None and callable(getattr(application, "snapshot", None)):
+        result["sip_application"] = application.snapshot()
     if detailed:
         result["call_ids"] = {
             "registry": list(registry_snapshot.get("call_ids") or ()),

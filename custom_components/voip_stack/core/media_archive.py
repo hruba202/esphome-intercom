@@ -275,6 +275,10 @@ class ArchiveWriter:
         self._recording_timeline = {}
         self._final_shape = (0, 0, 0)
 
+    def fail(self, reason: str) -> None:
+        """Mark this recording failed while retaining its normal finalization owner."""
+        self._fail(reason)
+
     def _fail(self, reason):
         self.error = reason
         self.accepting = False

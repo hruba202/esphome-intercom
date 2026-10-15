@@ -611,9 +611,13 @@ class SipVideoRtpRelay:
         if start_task is not None and start_task is not asyncio.current_task():
             await asyncio.gather(start_task, return_exceptions=True)
         async with self._lifecycle_lock:
-            await self._stop_transcoding()
-            self._close_resources()
-            self._release_ports()
+            try:
+                await self._stop_transcoding()
+            finally:
+                try:
+                    self._close_resources()
+                finally:
+                    self._release_ports()
 
     def _close_resources(self) -> None:
         """Synchronously detach every socket/transport from the relay."""

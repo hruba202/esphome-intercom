@@ -103,12 +103,15 @@ class InitialTransitionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancellation_after_acceptance_rolls_back_and_retires_dialog(self):
         started = asyncio.Event()
+        rollback_started, rollback_release = asyncio.Event(), asyncio.Event()
         changes = []
         async def commit():
             started.set()
             await asyncio.Future()
         async def rollback():
             changes.append("rollback")
+            rollback_started.set()
+            await rollback_release.wait()
         async def route(invite):
             return sip_listener.SipInviteResult(200, "OK", answer_sdp=sdp.build_answer_directional(
                 "127.0.0.1", "127.0.0.1", 41000, invite.send_format, invite.recv_format,
@@ -119,12 +122,18 @@ class InitialTransitionTest(unittest.IsolatedAsyncioTestCase):
         try:
             await asyncio.wait_for(started.wait(), 2)
             task.cancel()
+            await asyncio.wait_for(rollback_started.wait(), 2)
+            task.cancel()
+            await asyncio.sleep(0)
+            self.assertFalse(task.done())
+            rollback_release.set()
             with self.assertRaises(asyncio.CancelledError):
                 await task
             self.assertEqual(changes, ["rollback"])
             self.assertFalse(endpoint.active_dialogs)
             self.assertFalse(endpoint.pending_invites)
         finally:
+            rollback_release.set()
             endpoint.connection_lost(None)
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)

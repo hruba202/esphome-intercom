@@ -83,11 +83,9 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_dialog_writer_wakeup_survives_queued_writer(self) -> None:
+    async def test_dialog_requests_remain_serialized_with_a_queued_writer(self) -> None:
         client = object.__new__(sip_client.SipCallClient)
-        client._dialog_read_lock = asyncio.Lock()  # noqa: SLF001
-        client._dialog_writer_requested = asyncio.Event()  # noqa: SLF001
-        client._dialog_writer_count = 0  # noqa: SLF001
+        client._dialog_request_lock = asyncio.Lock()  # noqa: SLF001
         first_entered = asyncio.Event()
         release_first = asyncio.Event()
         second_entered = asyncio.Event()
@@ -107,12 +105,13 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         await first_entered.wait()
         second_task = asyncio.create_task(second())
         await asyncio.sleep(0)
+        self.assertFalse(second_entered.is_set())
         release_first.set()
         await second_entered.wait()
-        self.assertTrue(client._dialog_writer_requested.is_set())  # noqa: SLF001
+        self.assertTrue(client._dialog_request_lock.locked())  # noqa: SLF001
         release_second.set()
         await asyncio.gather(first_task, second_task)
-        self.assertFalse(client._dialog_writer_requested.is_set())  # noqa: SLF001
+        self.assertFalse(client._dialog_request_lock.locked())  # noqa: SLF001
 
     async def test_rfc5168_keyframe_request_uses_in_dialog_info(self) -> None:
         client = object.__new__(sip_client.SipCallClient)
@@ -571,7 +570,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         )
 
         await endpoint._handle_datagram(refer, addr)
-        self.assertEqual(sip.parse_message(sent[0]).status_code, 202)
+        self.assertEqual(sip.parse_message(sent[0]).status_code, 200)
         for notify_count, expected in enumerate((100, 200), start=1):
             for _ in range(100):
                 notifications = [
@@ -2896,49 +2895,43 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
             ["INVITE", "CANCEL", "ACK", "BYE"],
         )
 
-    async def test_cancelled_dialog_waiter_joins_both_child_tasks(self) -> None:
-        client = sip_client.SipCallClient(
-            local_ip="127.0.0.1",
-            local_name="HA",
-            local_sip_port=5060,
-            local_rtp_port=41000,
-        )
-        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2")  # type: ignore[assignment]
-        read_started = asyncio.Event()
-        read_cancelled = asyncio.Event()
-        release_read = asyncio.Event()
+    async def test_cancelled_waiter_preserves_owned_reader_until_client_close(self) -> None:
+        client = sip_client.SipCallClient(local_ip="127.0.0.1", local_name="HA",
+                                          local_sip_port=5060, local_rtp_port=41000)
+        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2", session_timer=sip.SipSessionTimer())
+        read_started, read_cancelled, release_read = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
-        async def blocked_read(_timeout: float):
+        async def blocked_read(_timeout):
             read_started.set()
             try:
-                await asyncio.Event().wait()
+                await asyncio.Future()
             except asyncio.CancelledError:
                 read_cancelled.set()
                 await release_read.wait()
                 raise
 
-        client._read_response = blocked_read  # type: ignore[method-assign]
+        client._read_response = blocked_read
         waiter = asyncio.create_task(client.wait_for_dialog_termination())
-        await asyncio.wait_for(read_started.wait(), timeout=1)
-        waiter.cancel()
-        await asyncio.wait_for(read_cancelled.wait(), timeout=1)
-        waiter.cancel()
-        await asyncio.sleep(0)
-        self.assertFalse(waiter.done())
-
-        release_read.set()
-        with self.assertRaises(asyncio.CancelledError):
-            await asyncio.wait_for(waiter, timeout=1)
-
-        pending_names = {
-            task.get_name()
-            for task in asyncio.all_tasks()
-            if not task.done()
-        }
-        self.assertFalse(
-            any(name.startswith("voip-sip-dialog-") for name in pending_names)
-        )
-        await client.close()
+        try:
+            await asyncio.wait_for(read_started.wait(), 1)
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+            self.assertFalse(read_cancelled.is_set())
+            client.dialog = None
+            closer = asyncio.create_task(client.close())
+            await asyncio.wait_for(read_cancelled.wait(), 1)
+            closer.cancel()
+            await asyncio.sleep(0)
+            self.assertFalse(closer.done())
+            release_read.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await closer
+            self.assertIsNone(client._dialog_dispatcher)
+        finally:
+            release_read.set()
+            client.dialog = None
+            await client.close()
 
     async def test_udp_start_cannot_publish_transport_after_close(self) -> None:
         entered = asyncio.Event()
@@ -5956,7 +5949,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(
             await client._dispatch_in_dialog_request(request, ("127.0.0.2", 5060))
         )
-        self.assertEqual(sip.parse_message(sent[0][0]).status_code, 202)
+        self.assertEqual(sip.parse_message(sent[0][0]).status_code, 200)
         for notify_count, expected in enumerate((100, 200), start=1):
             for _ in range(100):
                 notifications = [

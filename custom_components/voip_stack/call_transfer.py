@@ -27,15 +27,14 @@ def _client_for_call(runtime: VoipStackRuntime, call_id: str) -> SipCallClient |
     calls = runtime.sip
     if calls is None:
         return None
-    clients = calls.sip_clients_snapshot()
-    if client := clients.get(call_id):
+    if client := calls.sip_client_for(call_id):
         return client if isinstance(client, SipCallClient) else None
     session = calls.get_session(call_id)
     if session is None:
         return None
     destination = str(session.metadata.get("bridge_dest_call_id") or "")
-    if destination and isinstance(clients.get(destination), SipCallClient):
-        return clients[destination]
+    if destination and isinstance(client := calls.sip_client_for(destination), SipCallClient):
+        return client
     candidates = tuple(
         leg.dialog
         for leg in session.legs.values()

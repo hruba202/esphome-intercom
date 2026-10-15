@@ -134,7 +134,12 @@ def _load_module(registry, answer_calls: list[dict], *, generic=False):
         decline_reason: str = ""
         commit: object | None = None
         rollback: object | None = None
+        dialog_identity: object | None = None
+        finalize: object | None = None
 
+    from .voip_phase1_support import _load_intercom_module
+    identity = _load_intercom_module("core.sip_dialog").PreparedDialogIdentity
+    _module("core.sip_dialog", PreparedDialogIdentity=identity)
     _module("sip_listener", SipInvite=object, SipInviteResult=SipInviteResult)
     _module("sip_video_relay")
     _module(
@@ -367,12 +372,20 @@ def test_bridge_video_addition_cancellation_releases_staged_media() -> None:
             self.dialog = types.SimpleNamespace(remote_host="192.0.2.20")
             self.aborted = False
 
+        def prepared_reinvite_identity(self, candidate):
+            from custom_components.voip_stack.core.sip_dialog import PreparedDialogIdentity
+            return PreparedDialogIdentity(self, self.dialog, candidate)
+
         async def async_prepare_video_reinvite(self, **_kwargs):
             return candidate
 
-        def abort_prepared_reinvite(self, previous, staged) -> None:
+        async def restore_prepared_reinvite(self, previous, staged):
             assert previous is self.dialog
             assert staged is candidate
+            self.aborted = True
+            return None
+
+        def abort_prepared_reinvite(self, previous, staged) -> None:
             self.aborted = True
 
     client = Client()
@@ -419,7 +432,8 @@ def test_bridge_video_addition_cancellation_releases_staged_media() -> None:
     assert video_relay.stopped is True
 
 
-def test_bridge_activates_video_when_initial_offer_was_recvonly() -> None:
+@pytest.mark.parametrize("superseded", [False, True])
+def test_bridge_activates_video_when_initial_offer_was_recvonly(superseded) -> None:
     """A dormant source m-line must not masquerade as an active bridge leg."""
 
     answer_calls: list[dict] = []
@@ -523,6 +537,10 @@ def test_bridge_activates_video_when_initial_offer_was_recvonly() -> None:
             self.prepared = None
             self.committed = False
 
+        def prepared_reinvite_identity(self, candidate):
+            from custom_components.voip_stack.core.sip_dialog import PreparedDialogIdentity
+            return PreparedDialogIdentity(self, self.dialog, candidate)
+
         async def async_prepare_video_reinvite(self, **kwargs):
             self.prepared = kwargs
             return candidate
@@ -531,7 +549,12 @@ def test_bridge_activates_video_when_initial_offer_was_recvonly() -> None:
             assert previous is destination_dialog
             assert staged is candidate
             self.committed = True
+            self.dialog = staged
             return True
+
+        async def restore_prepared_reinvite(self, *_args):
+            assert superseded and self.dialog is not candidate
+            return None
 
         def abort_prepared_reinvite(self, *_args) -> None:
             raise AssertionError("committed video activation was rolled back")
@@ -593,6 +616,12 @@ def test_bridge_activates_video_when_initial_offer_was_recvonly() -> None:
     assert relay.video_relay is staged_video_relay
     assert answer_calls[-1]["video_port"] == 43000
     assert answer_calls[-1]["video_direction"] == "sendrecv"
+
+    if superseded:
+        client.dialog = types.SimpleNamespace(video_format="jpeg", remote_rtp_port=42002)
+        asyncio.run(result.rollback())
+        assert relay.video_relay is staged_video_relay
+        assert not staged_video_relay.stopped
 
 
 def test_bridge_video_removal_updates_both_dialogs_and_stops_media() -> None:
@@ -663,6 +692,10 @@ def test_bridge_video_removal_updates_both_dialogs_and_stops_media() -> None:
             self.prepared: dict = {}
             self.committed = False
 
+        def prepared_reinvite_identity(self, candidate):
+            from custom_components.voip_stack.core.sip_dialog import PreparedDialogIdentity
+            return PreparedDialogIdentity(self, self.dialog, candidate)
+
         async def async_prepare_video_reinvite(self, **kwargs):
             self.prepared = kwargs
             return candidate
@@ -671,6 +704,7 @@ def test_bridge_video_removal_updates_both_dialogs_and_stops_media() -> None:
             assert previous is self.dialog
             assert staged is candidate
             self.committed = True
+            self.dialog = staged
             return True
 
         def abort_prepared_reinvite(self, _previous, _staged) -> None:
@@ -720,6 +754,9 @@ def test_bridge_video_removal_updates_both_dialogs_and_stops_media() -> None:
     asyncio.run(result.commit())
     assert client.committed is True
     assert relay.video_relay is None
+    assert video_relay.stopped is False
+    assert result.dialog_identity.current(committed=True)
+    asyncio.run(result.finalize())
     assert video_relay.stopped is True
     assert relay.left is updated
     assert relay.right is candidate
@@ -848,6 +885,10 @@ def test_bridge_video_inactive_updates_both_video_legs_atomically(local_paramete
             self.prepared = None
             self.committed = False
 
+        def prepared_reinvite_identity(self, candidate):
+            from custom_components.voip_stack.core.sip_dialog import PreparedDialogIdentity
+            return PreparedDialogIdentity(self, self.dialog, candidate)
+
         async def async_prepare_video_reinvite(self, **kwargs):
             self.prepared = kwargs
             return candidate
@@ -856,6 +897,7 @@ def test_bridge_video_inactive_updates_both_video_legs_atomically(local_paramete
             assert previous is destination_dialog
             assert staged is candidate
             self.committed = True
+            self.dialog = staged
             return True
 
         def abort_prepared_reinvite(self, *_args) -> None:

@@ -501,6 +501,25 @@ class SipEndpointRuntime(CallRuntimeApi):
             ))
         return bool(self._endpoint_registry.release_call(endpoint_id, call_id))
 
+    def endpoint_claim_projection(self, endpoint_ids) -> dict[str, str]:
+        """Read each affected phone's canonical selected call, including consultation."""
+        if self._endpoint_registry is None:
+            return {}
+        return {endpoint_id: endpoint.active_call_id for endpoint_id in endpoint_ids
+                if (endpoint := self._endpoint_registry.get(endpoint_id)) is not None}
+
+    def restore_endpoint_claim_projection(self, claims: dict[str, str]) -> None:
+        """Restore projections after a synchronous handoff restored its owners."""
+        if self._endpoint_registry is None:
+            return
+        for endpoint_id, owner in claims.items():
+            session = self.get_session(owner)
+            if session is None or not session.live or endpoint_id not in session.endpoint_claims:
+                raise RuntimeError("handoff claim owner changed")
+            endpoint = self._endpoint_registry.get(endpoint_id)
+            if endpoint is not None and endpoint.active_call_id != owner:
+                self._endpoint_registry.release_call(endpoint_id, endpoint.active_call_id, remaining_call_id=owner)
+
     def transfer_endpoint_claim(self, source_id: str, destination_id: str, endpoint_id: str) -> None:
         """Move a live claim without briefly publishing the phone as idle."""
         source, destination = self.get_session(source_id), self.get_session(destination_id)

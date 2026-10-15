@@ -13,3 +13,6 @@ ruff==0.15.21
 # HA and ESPHome constrain different compatible schema-library versions.
 voluptuous>=0.15.2,<=0.16.0
 websockets==17.0
+
+# GRUU temporary-instance tokens use authenticated encryption.
+cryptography==50.0.1

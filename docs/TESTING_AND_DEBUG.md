@@ -491,3 +491,84 @@ Use your actual HA test interpreter in the last line. The peer is installed only
 in the supplied directory; system packages and running PBXs are not replaced.
 The override also selects its matching modules. Real peer tests must not be
 reported as hardware validation for a physical phone or ESP.
+
+
+### SIP consolidation regressions
+
+The focused protocol tests exercise REFER correlation, independent event dialog
+lifetime, authenticated retries, parsing, request saturation and subscription
+routing. The saturation test occupies 24 real request handlers, then exchanges
+final responses, PRACK, NOTIFY, BYE and CANCEL over UDP and TCP. The routing test
+uses a separate TCP listener for the Contact or proxy destination.
+
+```bash
+.venv/bin/python -m pytest -q tests/test_refer_correlation.py \
+  tests/test_sip_refer_parser.py tests/test_sip_control_load.py \
+  tests/test_sip_subscription_routing.py tests/test_sip_replaces.py
+```
+
+The Home Assistant transfer suite starts three independent baresip processes.
+It covers audio transfers, video added or removed during replacement, transfer
+while a consultation is being put on hold, and compensation after an injected
+handoff failure. Use the Home Assistant test environment for this suite:
+
+```bash
+HA_PYTHON=/path/to/ha-test-environment/bin/python
+"$HA_PYTHON" -m pytest -q tests/test_sip_phone_transfers_ha.py
+```
+
+A short repeated-call test runs by default. For a one-hour, 100-cycle run on the
+same backend and registered peers:
+
+```bash
+mkdir -p test_captures
+VOIP_CONSOLIDATION_SOAK_CYCLES=100 \
+VOIP_CONSOLIDATION_SOAK_SECONDS=3600 \
+VOIP_CONSOLIDATION_SOAK_REPORT="$PWD/test_captures/sip-soak.jsonl" \
+"$HA_PYTHON" -m pytest -q tests/test_sip_phone_transfers_ha.py \
+  -k long_lived_transfer_runtime --timeout=3720
+```
+
+Each cycle establishes a call, starts a consultation, performs an attended
+transfer, observes bidirectional RTP and hangs up. It requires empty call and
+RTP reservation registries before the next cycle. The JSONL report records
+application subscription ownership, notification tasks, cached responses, open
+file descriptors and process task counts. Pin and record the component tree
+before starting; do not edit it during the run. A short run is not evidence of
+one-hour stability, and RTP packet counts alone do not certify decoded audio or
+video presentation.
+
+For an independent Asterisk/PJSIP transfer check, install Asterisk, baresip and
+FFmpeg, then run:
+
+```bash
+.venv/bin/python scripts/run_asterisk_transfer_lab.py \
+  --output test_captures/asterisk-transfer
+```
+
+The output directory must be new. The runner starts a private Asterisk process
+with loopback SIP transports and two baresip phones. It calls through Asterisk,
+checks a received PCMU tone, transfers the call and checks the independently
+decoded audio at both phones. It stops its processes before writing a successful
+`result.json`. Asterisk's installed documentation data must be readable; use
+`--asterisk-data` to select an accessible data directory if required by the
+package's permissions. It does not modify the installed PBX configuration or
+contact an external provider. This check validates the SIP client and transfer
+path; the separate HA suite validates services, session ownership and UI-facing
+state.
+
+
+Use `--mode attended` to exercise consultation followed by Replaces, and
+`--authenticate` to require Digest credentials generated for that run. The
+password is removed from the saved PBX configuration after shutdown. With
+`--transport tcp`, the HA client leg uses TCP while Asterisk routes the handset
+legs over UDP. The lab leaves endpoint transport selection to the URI, following
+[Asterisk's transport selection rules](https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/PJSIP-Transport-Selection/),
+so an endpoint setting cannot force TCP dialog notifications onto a UDP transport.
+For example:
+
+```bash
+.venv/bin/python scripts/run_asterisk_transfer_lab.py \
+  --mode attended --authenticate --transport tcp \
+  --output test_captures/asterisk-attended-tcp
+```

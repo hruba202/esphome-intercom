@@ -64,7 +64,7 @@ class CallRecording:
                 task.cancel()
             await asyncio.gather(stopped, failed, return_exceptions=True)
             if self.error:
-                self.writer._fail(self.error)
+                self.writer.fail(self.error)
             try:
                 self.result = await self.writer.finish()
             except Exception:
