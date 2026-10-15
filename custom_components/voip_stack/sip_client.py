@@ -590,6 +590,8 @@ class SipCallClient:
         self._remote_cseq = 0
         self._in_dialog_responses: list[_InDialogResponse] = []
         self._refer_subscription: sip_transfer.ReferSubscription | None = None
+        self._refer_dialog_key = None
+        self._refer_count = 0
         self._incoming_refer_task: asyncio.Task[None] | None = None
         self._dialog_read_lock = asyncio.Lock()
         self._local_offer_lock = asyncio.Lock()
@@ -2835,6 +2837,12 @@ class SipCallClient:
                     )
                 except (TypeError, ValueError, sip.SipError):
                     return None
+                if method == "REFER" and self._refer_subscription is not None:
+                    key = (request.ids.call_id, request.ids.local_tag, request.ids.remote_tag)
+                    if key != self._refer_dialog_key:
+                        self._refer_dialog_key, self._refer_count = key, 0
+                    self._refer_subscription.bind(request.ids.cseq, first=self._refer_count == 0)
+                    self._refer_count += 1
                 try:
                     response = await self._run_built_dialog_request(
                         request,
@@ -3000,7 +3008,11 @@ class SipCallClient:
             while True:
                 if subscription.result.done():
                     return subscription.result.result()
-                remaining = deadline - asyncio.get_running_loop().time()
+                now = asyncio.get_running_loop().time()
+                if subscription.expires_at is not None and now >= subscription.expires_at:
+                    subscription.close()
+                    return subscription.result.result()
+                remaining = min(deadline, subscription.expires_at or deadline) - now
                 if remaining <= 0:
                     return SipTransferResult(False, 0, "timeout")
                 async with self._dialog_read_lock:
@@ -3008,6 +3020,12 @@ class SipCallClient:
                         return subscription.result.result()
                     received = await self._read_response(remaining)
                     if received is None:
+                        if subscription.result.done():
+                            return subscription.result.result()
+                        if (subscription.expires_at is not None
+                                and asyncio.get_running_loop().time() >= subscription.expires_at):
+                            subscription.close()
+                            return subscription.result.result()
                         return SipTransferResult(False, 0, "timeout")
                     message, addr = received
                     if message.is_request:
@@ -3016,6 +3034,8 @@ class SipCallClient:
                             return SipTransferResult(False, 0, terminal)
                     elif self._ack_retransmitted_invite_2xx(message):
                         continue
+        except ConnectionAbortedError:
+            return SipTransferResult(False, 0, "terminated")
         finally:
             subscription.close()
             if self._refer_subscription is subscription:
@@ -3412,7 +3432,7 @@ class SipCallClient:
             )
             return None
         if self._refer_subscription is None:
-            self._send_response_to_request(request, host, port, 489, "Bad Event")
+            self._send_response_to_request(request, host, port, 481, "Subscription Does Not Exist")
             return None
         try:
             request_cseq = sip.parse_cseq(request.header("CSeq"))

@@ -315,6 +315,7 @@ class _ActiveDialog(DialogSignalingState):
     session_timer_task: asyncio.Task[None] | None = None
     refer_task: asyncio.Task[None] | None = None
     refer_subscription: sip_transfer.ReferSubscription | None = None
+    refer_count: int = 0
     termination_task: asyncio.Task[bool] | None = None
     delayed_offer: _PendingDelayedOffer | None = None
     prepared_video_reinvite: tuple[SipInvite, SipInvite, str] | None = None
@@ -1110,6 +1111,9 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 )
                 return None
 
+            if method == "REFER" and dialog.refer_subscription is not None:
+                dialog.refer_subscription.bind(request.ids.cseq, first=dialog.refer_count == 0)
+                dialog.refer_count += 1
             dialog.local_cseq += 1
             response = await self._run_client_transaction(
                 raw=request.raw,
@@ -2326,6 +2330,11 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                     to_tag=existing_dialog.to_tag,
                 )
                 return
+            if (request.method == "NOTIFY" and request_cseq.number < existing_dialog.cseq
+                    and uas_request_matches_dialog(request, existing_dialog.request, local_tag=existing_dialog.to_tag)):
+                self._send_response(request, addr, 500, "Server Internal Error",
+                                    to_tag=existing_dialog.to_tag, extra_headers=(("Retry-After", "1"),))
+                return
             if not _same_dialog_request(request, existing_dialog, addr):
                 self._send_response(request, addr, 481, "Call/Transaction Does Not Exist", to_tag=existing_dialog.to_tag)
                 return
@@ -2333,7 +2342,7 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
                 subscription = existing_dialog.refer_subscription
                 status, reason = (
                     subscription.notify(request)
-                    if subscription is not None else (489, "Bad Event")
+                    if subscription is not None else (481, "Subscription Does Not Exist")
                 )
                 self._send_response(request, addr, status, reason, to_tag=existing_dialog.to_tag)
                 self._remember_dialog_response(existing_dialog, request, addr, status, reason)
@@ -2823,107 +2832,123 @@ class SipUdpEndpoint(asyncio.DatagramProtocol):
             if delayed_plan is not None and delayed_plan.rollback is not None:
                 await delayed_plan.rollback()
             return
-        to_tag = result.to_tag or pending.to_tag
-        answer_sdp = (
-            sdp.rewrite_sdp_origin(
-                result.answer_sdp,
-                pending.local_sdp_session_id,
-                pending.local_sdp_session_version,
+        try:
+            to_tag = result.to_tag or pending.to_tag
+            answer_sdp = (
+                sdp.rewrite_sdp_origin(
+                    result.answer_sdp,
+                    pending.local_sdp_session_id,
+                    pending.local_sdp_session_version,
+                )
+                if result.answer_sdp
+                else ""
             )
-            if result.answer_sdp
-            else ""
-        )
-        if result.defer_final:
+            if result.defer_final:
+                pending.to_tag = to_tag
+                pending.status = int(result.status)
+                pending.reason = str(result.reason)
+                pending.answer_sdp = answer_sdp
+                pending.decline_reason = result.decline_reason
+                reliable = (
+                    101 <= int(result.status) < 200
+                    and (
+                        sip.supports_option(request, "100rel")
+                        or "100rel" in sip.option_tags(request, "Require")
+                    )
+                )
+                if reliable:
+                    self._send_reliable_provisional(call_id, pending)
+                else:
+                    body = answer_sdp.encode("utf-8") if answer_sdp else b""
+                    self._send_response(
+                        request,
+                        addr,
+                        result.status,
+                        result.reason,
+                        body=body,
+                        to_tag=to_tag,
+                    )
+                self._arm_pending_expiry(call_id, pending)
+                return
+
             pending.to_tag = to_tag
+            pending.connected_identity_name = _identity_header(result.connected_identity_name)
+            pending.connected_identity_user = _identity_header(result.connected_identity_user)
             pending.status = int(result.status)
             pending.reason = str(result.reason)
             pending.answer_sdp = answer_sdp
             pending.decline_reason = result.decline_reason
-            reliable = (
-                101 <= int(result.status) < 200
-                and (
-                    sip.supports_option(request, "100rel")
-                    or "100rel" in sip.option_tags(request, "Require")
-                )
+            body = answer_sdp.encode("utf-8") if answer_sdp else b""
+            sent = self._send_response(
+                request,
+                addr,
+                result.status,
+                result.reason,
+                body=body,
+                to_tag=to_tag,
+                decline_reason=result.decline_reason,
             )
-            if reliable:
-                self._send_reliable_provisional(call_id, pending)
-            else:
-                body = answer_sdp.encode("utf-8") if answer_sdp else b""
-                self._send_response(
+            if sent:
+                self.pending_invites.pop(call_id, None)
+            if sent and 200 <= int(result.status) < 300:
+                dialog = self._activate_dialog(call_id, pending, request, addr)
+                self._remember_dialog_response(
+                    dialog,
                     request,
                     addr,
-                    result.status,
-                    result.reason,
-                    body=body,
-                    to_tag=to_tag,
+                    int(result.status),
+                    str(result.reason),
+                    answer_sdp,
                 )
-            self._arm_pending_expiry(call_id, pending)
-            return
-
-        pending.to_tag = to_tag
-        pending.connected_identity_name = _identity_header(result.connected_identity_name)
-        pending.connected_identity_user = _identity_header(result.connected_identity_user)
-        pending.status = int(result.status)
-        pending.reason = str(result.reason)
-        pending.answer_sdp = answer_sdp
-        pending.decline_reason = result.decline_reason
-        body = answer_sdp.encode("utf-8") if answer_sdp else b""
-        sent = self._send_response(
-            request,
-            addr,
-            result.status,
-            result.reason,
-            body=body,
-            to_tag=to_tag,
-            decline_reason=result.decline_reason,
-        )
-        if sent:
-            self.pending_invites.pop(call_id, None)
-        if sent and 200 <= int(result.status) < 300:
-            dialog = self._activate_dialog(call_id, pending, request, addr)
-            self._remember_dialog_response(
-                dialog,
-                request,
-                addr,
-                int(result.status),
-                str(result.reason),
-                answer_sdp,
-            )
-            self._arm_invite_2xx(
-                dialog,
-                request,
-                addr,
-                int(result.status),
-                str(result.reason),
-                answer_sdp,
-            )
-            if not await apply_remote_offer_media(result.commit, result.rollback):
-                await self._terminate_dialog(call_id, "media_update_failed")
-        elif sent and int(result.status) >= 300:
-            if result.rollback is not None:
-                await result.rollback()
-            self._remember_completed(self.completed_invites, call_id, pending)
-            self._arm_invite_non2xx(call_id, pending)
-            # The server transaction remains cached until ACK or Timer H, but
-            # the logical call has already reached a final response. Retire
-            # its runtime ownership now instead of keeping the phone busy for
-            # the lifetime of the transaction cache.
-            if self.on_terminated is not None:
-                await self.on_terminated(
-                    call_id,
-                    result.decline_reason or "declined",
+                self._arm_invite_2xx(
+                    dialog,
+                    request,
+                    addr,
+                    int(result.status),
+                    str(result.reason),
+                    answer_sdp,
                 )
-        elif not sent and (result.commit is not None or result.rollback is not None):
-            if result.rollback is not None:
-                await result.rollback()
-            # A retransmission must not accept a prepared result whose
-            # resources have already been rolled back.
-            pending.status = 500
-            pending.reason = "Server Internal Error"
-            pending.answer_sdp = ""
-            if self.on_terminated is not None:
-                await self.on_terminated(call_id, "transport_unreachable")
+                if not await apply_remote_offer_media(result.commit, result.rollback):
+                    await self._terminate_dialog(call_id, "media_update_failed")
+            elif sent and int(result.status) >= 300:
+                if result.rollback is not None:
+                    await result.rollback()
+                self._remember_completed(self.completed_invites, call_id, pending)
+                self._arm_invite_non2xx(call_id, pending)
+                # The server transaction remains cached until ACK or Timer H, but
+                # the logical call has already reached a final response. Retire
+                # its runtime ownership now instead of keeping the phone busy for
+                # the lifetime of the transaction cache.
+                if self.on_terminated is not None:
+                    await self.on_terminated(
+                        call_id,
+                        result.decline_reason or "declined",
+                    )
+            elif not sent:
+                if result.rollback is not None:
+                    await result.rollback()
+                # Retain only the bounded server transaction. A retransmission
+                # cannot accept media that has already been rolled back.
+                if pending.status < 300:
+                    pending.status = 500
+                    pending.reason = "Server Internal Error"
+                    pending.answer_sdp = ""
+                self.pending_invites.pop(call_id, None)
+                self._remember_completed(self.completed_invites, call_id, pending)
+                self._arm_invite_non2xx(call_id, pending)
+                if self.on_terminated is not None:
+                    await self.on_terminated(call_id, "transport_unreachable")
+        except BaseException:
+            try:
+                if result.rollback is not None:
+                    await result.rollback()
+            finally:
+                self.pending_invites.pop(call_id, None)
+                if call_id in self.active_dialogs:
+                    await self._terminate_dialog(call_id, "media_update_failed")
+                elif self.on_terminated is not None:
+                    await self.on_terminated(call_id, "media_update_failed")
+            raise
 
     def send_final_response(
         self,

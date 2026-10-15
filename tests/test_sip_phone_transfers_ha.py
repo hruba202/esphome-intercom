@@ -463,3 +463,175 @@ async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(regist
         if process.returncode is None:
             process.terminate()
             await process.communicate()
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("failure", ["busy", "non2xx", "exception", "cancel", "rollback_exception", "rollback_twice", "original_ends", "send_failure", "send_exception", "sdp_exception", "cancel_cleanup", "generation_reuse"])
+async def test_replacement_failure_releases_only_candidate(registered_phones, trunks, monkeypatch, failure):
+    from dataclasses import replace
+    from custom_components.voip_stack import media_renegotiation
+    from custom_components.voip_stack.call_replaces import prepare_replacement, prepare_replacement_grant
+    from custom_components.voip_stack.core import sip
+    from custom_components.voip_stack.core.sip_transfer import SipReplaces, SipReferTarget
+    from custom_components.voip_stack.endpoint_registry import EndpointBusyError
+    from custom_components.voip_stack.sip_listener import SipInviteResult
+
+    lab = trunks
+    original, consultation = await establish_consultation(lab, registered_phones)
+    manager = lab.calls.component("udp_listener")
+    dialog = next(endpoint.active_dialogs[consultation.call_id] for endpoint in manager._dialog_endpoints()
+                  if consultation.call_id in endpoint.active_dialogs)
+    key = SipReplaces(consultation.call_id, dialog.to_tag, sip.extract_tag(dialog.request.header("From")))
+    invite = replace(dialog.invite, call_id="failed-replacement", replaces=key,
+                     caller="transfer_a", identified_source_endpoint_id="transfer_a")
+    _, referring_id = lab.calls.bridge_for(original)
+    grant = prepare_replacement_grant(lab.runtime, original, SipReferTarget("sip:transfer_c@127.0.0.1", key),
+                                      lab.calls.sip_client_for(referring_id))
+    relay = lab.calls.resource_for(consultation.call_id, "relay")
+    previous_peer = relay.left
+    claims = lab.calls.endpoint_claims_snapshot()
+    ports = set(lab.runtime.rtp_port_pool["used"])
+    real_prepare = media_renegotiation.async_prepare_media_update
+    started = asyncio.Event()
+    rollback_calls = []
+    release = asyncio.Event()
+
+    async def prepare(*args):
+        if failure == "non2xx":
+            return SipInviteResult(488, "Not Acceptable Here")
+        if failure == "exception":
+            raise RuntimeError("injected media preparation failure")
+        if failure == "cancel":
+            started.set()
+            await asyncio.Future()
+        result = await real_prepare(*args)
+        if failure == "cancel_cleanup":
+            async def slow_rollback():
+                rollback_calls.append(True)
+                started.set()
+                await release.wait()
+            return replace(result, rollback=slow_rollback)
+        if failure == "rollback_exception":
+            async def broken_rollback():
+                rollback_calls.append(True)
+                raise RuntimeError("injected rollback failure")
+            return replace(result, rollback=broken_rollback)
+        return result
+
+    if failure == "busy":
+        real_claim = lab.calls.claim_endpoint
+        def claim(call_id, endpoint_id, **kwargs):
+            if call_id == invite.call_id:
+                raise EndpointBusyError(lab.runtime.endpoints.get(endpoint_id), call_id)
+            return real_claim(call_id, endpoint_id, **kwargs)
+        monkeypatch.setattr(lab.calls, "claim_endpoint", claim)
+    monkeypatch.setattr(media_renegotiation, "async_prepare_media_update", prepare)
+    try:
+        if failure in {"send_failure", "send_exception", "sdp_exception"}:
+            from custom_components.voip_stack import sip_listener
+            from custom_components.voip_stack.core.audio_format import AudioFormat
+            async def route(_parsed):
+                return await prepare_replacement(lab.hass, invite, "127.0.0.1")
+            def send(raw, _addr):
+                response = sip.parse_message(raw)
+                if response.status_code == 200:
+                    if failure == "send_exception":
+                        raise ValueError("injected response construction failure")
+                    return False
+                return True
+            endpoint = sip_listener.SipUdpEndpoint(
+                local_ip="127.0.0.1", local_sip_port=5060, local_rtp_port=41000,
+                supported_formats=[AudioFormat(8000, "s16le", 1, 20)], on_invite=route, send_override=send,
+            )
+            request = sip.build_request("INVITE", dialog.request.uri,
+                [(name, invite.call_id if name.casefold() == "call-id" else value)
+                 for name, value in dialog.request.headers] + [("Replaces", str(key))], dialog.request.body)
+            try:
+                with monkeypatch.context() as scoped:
+                    if failure == "sdp_exception":
+                        def broken_sdp(*_args):
+                            raise ValueError("injected response construction failure")
+                        scoped.setattr(sip_listener.sdp, "rewrite_sdp_origin", broken_sdp)
+                    if failure == "send_failure":
+                        await endpoint._handle_datagram(request, dialog.addr)
+                    else:
+                        with pytest.raises(ValueError, match="injected response"):
+                            await endpoint._handle_datagram(request, dialog.addr)
+                assert not endpoint.active_dialogs
+                assert not endpoint.pending_invites
+            finally:
+                endpoint.connection_lost(None)
+        elif failure == "cancel":
+            task = asyncio.create_task(prepare_replacement(lab.hass, invite, "127.0.0.1"))
+            await asyncio.wait_for(started.wait(), 3)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        elif failure == "exception":
+            with pytest.raises(RuntimeError, match="injected media"):
+                await prepare_replacement(lab.hass, invite, "127.0.0.1")
+        else:
+            result = await prepare_replacement(lab.hass, invite, "127.0.0.1")
+            if failure in {"busy", "non2xx"}:
+                assert result.status == (486 if failure == "busy" else 488)
+            elif failure == "cancel_cleanup":
+                task = asyncio.create_task(result.rollback())
+                await asyncio.wait_for(started.wait(), 2)
+                task.cancel()
+                await asyncio.sleep(0)
+                task.cancel()
+                release.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                await result.rollback()
+                assert len(rollback_calls) == 1
+            elif failure == "rollback_exception":
+                for _ in range(2):
+                    with pytest.raises(RuntimeError, match="injected rollback"):
+                        await result.rollback()
+                assert len(rollback_calls) == 1
+            else:
+                assert result.status == 200
+                if failure == "original_ends":
+                    old_session = lab.calls.get_session(original)
+                    await asyncio.to_thread(registered_phones[0].hangup)
+                    await asyncio.wait_for(old_session.terminated.wait(), 3)
+                    with pytest.raises(RuntimeError, match="ownership changed"):
+                        await result.commit()
+                if failure == "generation_reuse":
+                    from custom_components.voip_stack.endpoint_session import TerminationIntent, SipTerminationDisposition
+                    candidate = lab.calls.get_session(invite.call_id)
+                    await lab.calls.terminate_call_wait(invite.call_id, intent=TerminationIntent(
+                        "test_reuse", sip_disposition=SipTerminationDisposition.NONE))
+                    successor = lab.calls.upsert(invite.call_id, state="connecting", owner="bridge")
+                    assert successor.generation != candidate.generation
+                    await result.rollback()
+                    assert lab.calls.get_session(invite.call_id) is successor and successor.live
+                    await lab.calls.terminate_call_wait(invite.call_id, intent=TerminationIntent(
+                        "test_done", sip_disposition=SipTerminationDisposition.NONE))
+                await result.rollback()
+                await result.rollback()
+        assert lab.calls.get_session(invite.call_id) is None
+        assert not list(lab.calls.resource_items("replacement_grant"))
+        assert consultation.live
+        assert lab.calls.resource_for(consultation.call_id, "relay") is relay
+        assert relay.left is previous_peer
+        if failure != "original_ends":
+            assert lab.calls.get_session(original).live
+            assert lab.calls.endpoint_claims_snapshot() == claims
+            assert set(lab.calls.sessions) == {original, consultation.call_id}
+            assert set(lab.runtime.rtp_port_pool["used"]) == ports
+            original_relay = lab.calls.resource_for(original, "relay")
+            _, original_wire_id = lab.calls.bridge_for(original)
+            await asyncio.to_thread(registered_phones[1].command, f"/callfind {original_wire_id}")
+            await asyncio.to_thread(registered_phones[1].command, "/resume")
+            before = original_relay.left_tx_packets
+            async with asyncio.timeout(3):
+                while original_relay.left_tx_packets <= before + 5:
+                    await asyncio.sleep(0.02)
+    finally:
+        grant.release()
+        if lab.calls.get_session(invite.call_id) is not None:
+            from custom_components.voip_stack.endpoint_session import TerminationIntent, SipTerminationDisposition
+            await lab.calls.terminate_call_wait(invite.call_id, intent=TerminationIntent(
+                "test_cleanup", sip_disposition=SipTerminationDisposition.NONE))

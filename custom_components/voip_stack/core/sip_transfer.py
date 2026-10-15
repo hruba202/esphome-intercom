@@ -23,17 +23,57 @@ class ReferSubscription:
 
     def __init__(self) -> None:
         self.result: asyncio.Future[SipTransferResult] = asyncio.get_running_loop().create_future()
+        self.refer_cseq: int | None = None
+        self.allow_missing_id = False
+        self._expiry: asyncio.TimerHandle | None = None
+        self.expires_at: float | None = None
+
+    def bind(self, cseq: int, *, first: bool) -> None:
+        """Bind before sending, including a new CSeq after a digest challenge."""
+        self.refer_cseq = cseq
+        self.allow_missing_id = first
 
     def notify(self, request: sip.SipMessage) -> tuple[int, str]:
-        if request.header("Event").split(";", 1)[0].strip().casefold() != "refer":
+        if len(request.header_values("Event")) != 1:
+            return 400, "Bad Request"
+        event = request.header("Event").split(";")
+        if event[0].strip().casefold() != "refer":
             return 489, "Bad Event"
+        ids = [part.split("=", 1)[1].strip() if "=" in part else ""
+               for part in event[1:] if part.split("=", 1)[0].strip().casefold() == "id"]
+        if len(ids) > 1:
+            return 400, "Bad Request"
+        if (self.refer_cseq is None or self.result.done()
+                or (ids and ids[0] != str(self.refer_cseq))
+                or (not ids and not self.allow_missing_id)):
+            return 481, "Subscription Does Not Exist"
+        if len(request.header_values("Subscription-State")) != 1:
+            return 400, "Bad Request"
+        state_parts = request.header("Subscription-State").split(";")
+        state = state_parts[0].strip().casefold()
+        if state not in {"active", "pending", "terminated"}:
+            return 400, "Bad Request"
         if request.header("Content-Type").split(";", 1)[0].strip().casefold() != "message/sipfrag":
             return 415, "Unsupported Media Type"
         try:
             status = parse_sipfrag_status(request.body)
         except (TypeError, ValueError, sip.SipError):
             return 400, "Bad Request"
-        terminated = request.header("Subscription-State").split(";", 1)[0].strip().casefold() == "terminated"
+        terminated = state == "terminated"
+        if not terminated:
+            expirations = [part.partition("=")[2].strip() for part in state_parts[1:]
+                           if part.partition("=")[0].strip().casefold() == "expires"]
+            if len(expirations) > 1:
+                return 400, "Bad Request"
+            if expirations:
+                value = expirations[0]
+                if not value.isascii() or not value.isdigit() or len(value) > 10:
+                    return 400, "Bad Request"
+                if self._expiry is not None:
+                    self._expiry.cancel()
+                loop = asyncio.get_running_loop()
+                self.expires_at = loop.time() + int(value)
+                self._expiry = loop.call_at(self.expires_at, self.close)
         if not self.result.done():
             if status >= 200:
                 self.result.set_result(SipTransferResult(
@@ -42,9 +82,13 @@ class ReferSubscription:
                 ))
             elif terminated:
                 self.result.set_result(SipTransferResult(False, status, "terminated"))
+        if self.result.done() and self._expiry is not None:
+            self._expiry.cancel()
         return 200, "OK"
 
     def close(self) -> None:
+        if self._expiry is not None:
+            self._expiry.cancel()
         if not self.result.done():
             self.result.set_result(SipTransferResult(False, 0, "terminated"))
 

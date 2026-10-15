@@ -2416,7 +2416,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
                     burst_arrivals.append(loop.time())
             self.assertEqual(
                 [packet.sequence for packet in burst],
-                list(range(burst[0].sequence, burst[0].sequence + 40)),
+                [(burst[0].sequence + index) & 0xFFFF for index in range(40)],
             )
             self.assertEqual(
                 [

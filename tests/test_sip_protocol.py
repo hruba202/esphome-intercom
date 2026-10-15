@@ -5854,6 +5854,7 @@ class ReferSubscriptionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_progress_does_not_finish_and_final_result_is_immutable(self):
         subscription = sip_transfer.ReferSubscription()
+        subscription.bind(10, first=True)
         self.assertEqual(subscription.notify(self.notification(100)), (200, "OK"))
         self.assertFalse(subscription.result.done())
         self.assertEqual(subscription.notify(self.notification(200)), (200, "OK"))
@@ -5865,8 +5866,61 @@ class ReferSubscriptionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unrelated_notifications_do_not_complete_transfer(self):
         subscription = sip_transfer.ReferSubscription()
+        subscription.bind(10, first=True)
         self.assertEqual(subscription.notify(self.notification(200, event="presence"))[0], 489)
         self.assertEqual(subscription.notify(self.notification(200, content_type="text/plain"))[0], 415)
         self.assertFalse(subscription.result.done())
         subscription.close()
         self.assertEqual(await subscription.result, sip_transfer.SipTransferResult(False, 0, "terminated"))
+
+    async def test_consecutive_refer_rejects_previous_wrong_and_missing_event_id(self):
+        first = sip_transfer.ReferSubscription()
+        first.bind(10, first=True)
+        self.assertEqual(first.notify(self.notification(486))[0], 200)
+        second = sip_transfer.ReferSubscription()
+        second.bind(11, first=False)
+        for event in ("refer", "refer;id=10", "refer;id=12"):
+            self.assertEqual(second.notify(self.notification(200, event=event))[0], 481)
+            self.assertFalse(second.result.done())
+        self.assertEqual(second.notify(self.notification(200, event="refer;id=11"))[0], 200)
+        self.assertTrue((await second.result).accepted)
+        self.assertEqual(second.notify(self.notification(486, event="refer;id=11"))[0], 481)
+        self.assertTrue((await second.result).accepted)
+
+    async def test_first_refer_accepts_optional_correct_id_only(self):
+        for event, status in (("refer", 200), ("refer;id=10", 200),
+                              ("refer;id=9", 481), ("refer;id=10;id=10", 400)):
+            subscription = sip_transfer.ReferSubscription()
+            subscription.bind(10, first=True)
+            self.assertEqual(subscription.notify(self.notification(200, event=event))[0], status)
+            subscription.close()
+
+    async def test_subscription_state_and_expiry(self):
+        for state, status in (("", 400), ("unknown", 400), ("active;expires=bad", 400),
+                              ("terminated;reason=timeout", 200), ("active;expires=0", 200)):
+            subscription = sip_transfer.ReferSubscription()
+            subscription.bind(10, first=True)
+            request = self.notification(100)
+            from dataclasses import replace
+            request = replace(request, headers=tuple((key, state if key == "Subscription-State" else value)
+                                                    for key, value in request.headers))
+            self.assertEqual(subscription.notify(request)[0], status)
+            if state.startswith("active;expires=0"):
+                await asyncio.wait_for(asyncio.shield(subscription.result), 0.5)
+            if status == 200:
+                self.assertFalse((await subscription.result).accepted)
+            subscription.close()
+
+    async def test_unbound_and_closed_subscription_rejects_notify(self):
+        subscription = sip_transfer.ReferSubscription()
+        self.assertEqual(subscription.notify(self.notification(200))[0], 481)
+        subscription.bind(10, first=True)
+        subscription.close()
+        self.assertEqual(subscription.notify(self.notification(200))[0], 481)
+
+    async def test_digest_retry_rebinds_cseq_before_notify(self):
+        subscription = sip_transfer.ReferSubscription()
+        subscription.bind(10, first=True)
+        subscription.bind(11, first=False)
+        self.assertEqual(subscription.notify(self.notification(200, event="refer;id=10"))[0], 481)
+        self.assertEqual(subscription.notify(self.notification(200, event="refer;id=11"))[0], 200)

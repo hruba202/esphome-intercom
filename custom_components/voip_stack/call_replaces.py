@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from .core.sip_transfer import SipReplaces
 from .endpoint_session import EndpointCallSession, SipTerminationDisposition, TerminationIntent
 from .sip_listener import SipInviteResult
+from .session_cleanup import async_wait_for_cleanup
 
 
 class ReplacementRejected(Exception):
@@ -118,40 +119,65 @@ async def prepare_replacement(hass, invite, local_ip):
     grant.pending_call_id = invite.call_id
     destination_dialog = client.dialog
     target_endpoint = str(old.metadata.get("dest_endpoint_id") or "")
-    new = calls.upsert(
-        invite.call_id, state="connecting", owner="bridge", caller=invite.caller,
-        callee=old.callee, route_kind=old.route_kind,
-        source_endpoint_id=grant.endpoint_id, dest_endpoint_id=target_endpoint,
-        inbound_trunk_id=invite.trunk_id,
-        outbound_trunk_id=old.metadata.get("outbound_trunk_id", ""),
-        policy_endpoint_ids=tuple(sorted(set(
-            (*old.endpoint_claims, *grant.original.endpoint_claims,
-             *(old.metadata.get("policy_endpoint_ids") or ()),
-             *(grant.original.metadata.get("policy_endpoint_ids") or ()))
-        ))),
-    )
     try:
-        calls.claim_endpoint(new.call_id, grant.endpoint_id, role="source")
-    except EndpointBusyError:
-        grant.release()
-        return SipInviteResult(486, "Busy Here")
-    try:
-        prepared = await async_prepare_media_update(
-            hass, local_ip, previous, replace(invite, call_id=old.call_id), "INVITE",
+        new = calls.upsert(
+            invite.call_id, state="connecting", owner="bridge", caller=invite.caller,
+            callee=old.callee, route_kind=old.route_kind,
+            source_endpoint_id=grant.endpoint_id, dest_endpoint_id=target_endpoint,
+            inbound_trunk_id=invite.trunk_id,
+            outbound_trunk_id=old.metadata.get("outbound_trunk_id", ""),
+            policy_endpoint_ids=tuple(sorted(set(
+                (*old.endpoint_claims, *grant.original.endpoint_claims,
+                 *(old.metadata.get("policy_endpoint_ids") or ()),
+                 *(grant.original.metadata.get("policy_endpoint_ids") or ()))
+            ))),
         )
     except BaseException:
         grant.release()
-        await calls.terminate_call_wait(new.call_id, intent=TerminationIntent(
-            "replacement_failed", sip_disposition=SipTerminationDisposition.NONE,
-        ))
         raise
-    if not 200 <= prepared.status < 300:
-        grant.release()
-        return prepared
+    prepared = None
     committed = False
+    rollback_task = None
+
+    async def cleanup():
+        grant.release()
+        try:
+            if prepared is not None and prepared.rollback is not None:
+                await prepared.rollback()
+        finally:
+            barrier = calls.request_termination(
+                new.call_id,
+                TerminationIntent("replacement_failed", sip_disposition=SipTerminationDisposition.NONE),
+                generation=new.generation,
+            )
+            if barrier is not None:
+                await async_wait_for_cleanup(barrier)
+
+    async def rollback():
+        nonlocal rollback_task
+        if committed:
+            return
+        if rollback_task is None:
+            rollback_task = asyncio.create_task(cleanup(), name=f"voip-replacement-rollback-{new.call_id}")
+        await async_wait_for_cleanup(rollback_task)
+
+    try:
+        calls.claim_endpoint(new.call_id, grant.endpoint_id, role="source")
+        prepared = await async_prepare_media_update(
+            hass, local_ip, previous, replace(invite, call_id=old.call_id), "INVITE",
+        )
+        if not 200 <= prepared.status < 300:
+            await rollback()
+            return replace(prepared, commit=None, rollback=None)
+    except EndpointBusyError:
+        await rollback()
+        return SipInviteResult(486, "Busy Here")
+    except BaseException:
+        await rollback()
+        raise
 
     def validate():
-        if (not new.live or not old.live or not grant.original.live
+        if (rollback_task is not None or not new.live or not old.live or not grant.original.live
                 or new.owner != "bridge" or new.answer_committed
                 or not grant.current()
                 or client.dialog is not destination_dialog
@@ -159,16 +185,6 @@ async def prepare_replacement(hass, invite, local_ip):
             raise RuntimeError("replacement dialog ownership changed")
         if target_endpoint and target_endpoint not in old.endpoint_claims:
             raise RuntimeError("replacement destination claim changed")
-
-    async def rollback():
-        if committed:
-            return
-        grant.release()
-        if prepared.rollback is not None:
-            await prepared.rollback()
-        await calls.terminate_call_wait(new.call_id, intent=TerminationIntent(
-            "replacement_failed", sip_disposition=SipTerminationDisposition.NONE,
-        ))
 
     async def commit():
         nonlocal committed
