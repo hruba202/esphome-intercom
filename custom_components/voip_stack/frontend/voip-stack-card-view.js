@@ -96,7 +96,7 @@ export function buildMainCardSkeleton(cardVersion) {
         min-width: 0;
         height: 100%;
         min-height: 0;
-        overflow: hidden;
+        overflow: visible;
         --voip-stack-card-surface: var(--ha-card-background, var(--card-background-color, white));
         --voip-control-surface: transparent;
         --voip-control-hover-surface: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
@@ -116,9 +116,6 @@ export function buildMainCardSkeleton(cardVersion) {
          * this card has no remaining vertical overflow. Interactive controls
          * still receive their normal pointer/click events. */
         overscroll-behavior-y: auto;
-        background: var(--voip-stack-card-surface);
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));
         padding: var(--voip-fluid-space, 16px);
         position: relative;
         isolation: isolate;
@@ -1188,9 +1185,6 @@ export function buildUnconfiguredCardSkeleton(cardVersion) {
         height: 100%;
         min-height: 0;
         overflow: auto;
-        background: var(--ha-card-background, var(--card-background-color, white));
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));
         padding: 16px;
       }
       .header { font-size: 1.2em; font-weight: 500; margin-bottom: 16px; color: var(--primary-text-color); text-align: center; }

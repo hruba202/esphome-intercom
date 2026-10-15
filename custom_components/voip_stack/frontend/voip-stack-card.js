@@ -1,5 +1,5 @@
 /**
- * VoIP Stack Card v2.0.0
+ * VoIP Stack Card
  *
  * ESP cards mirror the ESPHome phone entities and send only button/contact
  * commands. HA softphone cards mirror backend-pushed SIP session state and own
@@ -3742,6 +3742,7 @@ class VoipStackCard extends HTMLElement {
 // Idempotent define so HMR / re-installs don't throw.
 if (!customElements.get("voip-stack-card")) {
   customElements.define("voip-stack-card", VoipStackCard);
+  console.info(`VOIP STACK CARD ${VOIP_STACK_CARD_VERSION} (build ${VOIP_STACK_MODULE_VERSION})`);
 }
 
 window.customCards = window.customCards || [];
