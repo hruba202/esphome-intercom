@@ -223,7 +223,17 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     from custom_components.voip_stack import call_transfer
     from custom_components.voip_stack.sip_client import SipTransferResult
 
-    phones = SimpleNamespace(resolve_source=AsyncMock())
+    from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
+    from custom_components.voip_stack import endpoint_termination
+    from custom_components.voip_stack.endpoint_session import TerminationInitiator
+
+    registry = SipEndpointRuntime(allow_dark_sessions=True)
+    registry.upsert("active-call", state="in_call", owner="bridge", endpoint_id="phone-endpoint")
+    phones = SimpleNamespace(resolve_source=AsyncMock(
+        return_value=SimpleNamespace(endpoint_id="phone-endpoint")))
+    terminate = AsyncMock()
+    monkeypatch.setattr(endpoint_termination, "EndpointTerminationHandler",
+                        lambda _hass: SimpleNamespace(terminate_reason=terminate))
     monkeypatch.setattr(
         voip_stack,
         "_runtime_data",
@@ -234,7 +244,7 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     )
     monkeypatch.setattr(
         voip_stack, "_call_registry",
-        lambda _hass: SimpleNamespace(get_session=lambda _call_id: None),
+        lambda _hass: registry,
     )
     monkeypatch.setattr(call_transfer, "async_transfer_call", transfer)
 
@@ -261,6 +271,8 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     }
     phones.resolve_source.assert_awaited_once()
     transfer.assert_awaited_once()
+    terminate.assert_awaited_once_with("active-call", "forwarded", TerminationInitiator.ROUTING)
+    await registry.terminate_call_wait("active-call", reason="test_complete")
 
 
 async def test_default_phone_call_state_keeps_its_historical_entity_id(
