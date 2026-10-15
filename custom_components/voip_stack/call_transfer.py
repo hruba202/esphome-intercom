@@ -72,21 +72,18 @@ def _blind_target(
         if not entry.enabled:
             raise sip.SipError("transfer destination is disabled")
         target = entry.extension or entry.id
-        uri = ha_uri_for(target, entries)
-        if not uri:
-            # A REFER asks the remote phone to dial again. Its own SIP host
-            # cannot execute an HA automation; use the shared HA listener.
-            config = runtime.transport_config
-            server = runtime.sip.component("udp_listener") if runtime.sip is not None else None
-            host = str(config.get("advertise_host") or getattr(server, "local_ip", "") or "").strip()
-            if not host or host in {"0.0.0.0", "::"}:
-                raise sip.SipError("Home Assistant SIP address is unavailable for transfer")
-            port = int(config.get("sip_port") or getattr(server, "local_sip_port", 5060))
-            uri = ha_uri_for(target, entries, str(sip.SipUri("HA", host, port)))
-        return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(uri)))
+        return _local_transfer_target(runtime, target, entries)
+    if entry is not None and entry.address:
+        route = resolve_ha_router(raw, entries)
+        if route.action is RouteAction.REJECT:
+            raise sip.SipError("transfer destination is unavailable")
+        if route.sip_uri:
+            return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(route.sip_uri)))
     if entry is not None and entry.sip_uri:
         return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(entry.sip_uri)))
     endpoint = runtime.endpoints.resolve(raw)
+    if endpoint is not None and (endpoint.kind.is_softphone or endpoint.kind == "sip_account"):
+        return _local_transfer_target(runtime, _endpoint_user(endpoint, raw), entries)
     if not remote_uri:
         raise sip.SipError("call dialog is unavailable")
     remote = sip.parse_sip_uri(remote_uri)
@@ -96,6 +93,20 @@ def _blind_target(
     return sip_transfer.SipReferTarget(
         str(sip.SipUri(user, remote.host, remote.port, remote.params))
     )
+
+
+def _local_transfer_target(runtime, target, entries):
+    """Address a local extension through the PBX that owns its dial plan."""
+    uri = ha_uri_for(target, entries)
+    if not uri:
+        config = runtime.transport_config
+        server = runtime.sip.component("udp_listener") if runtime.sip is not None else None
+        host = str(config.get("advertise_host") or getattr(server, "local_ip", "") or "")
+        if not host or host in {"0.0.0.0", "::"}:
+            raise sip.SipError("Home Assistant SIP address is unavailable for transfer")
+        port = int(config.get("sip_port") or getattr(server, "local_sip_port", 5060))
+        uri = ha_uri_for(target, entries, str(sip.SipUri("HA", host, port)))
+    return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(uri)))
 
 
 def _inbound_server(runtime: VoipStackRuntime, call_id: str):

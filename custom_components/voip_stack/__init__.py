@@ -465,7 +465,7 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
             translation_key="phone_unavailable",
             translation_placeholders={"phone": "VoIP Stack"},
         )
-    await runtime.phones.resolve_source(call)
+    phone = await runtime.phones.resolve_source(call)
     request = CallTransferRequest(
         call_id=str(call.data.get("call_id") or "").strip(),
         destination=str(call.data.get("destination") or "").strip(),
@@ -477,7 +477,14 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
             translation_key="transfer_destination_required",
         )
     registry = _call_registry(call.hass)
-    source_session = registry.get_session(request.call_id)
+    source_session = registry.get_session(registry.resolve_session_id(request.call_id)) if call.data.get("device_id") else registry.get_session(request.call_id)
+    if call.data.get("device_id"):
+        from .call_scope import call_belongs_to_endpoint
+
+        if not call_belongs_to_endpoint(registry, request.call_id, phone.endpoint_id):
+            raise ServiceValidationError("The selected phone does not own this call")
+        if source_session is None or not source_session.live or source_session.state != "in_call":
+            raise ServiceValidationError("Transfer requires an established call")
     try:
         result = await async_transfer_call(runtime, request)
     except (ValueError, RuntimeError) as err:

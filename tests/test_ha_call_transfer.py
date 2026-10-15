@@ -205,3 +205,17 @@ def test_automation_transfer_without_reachable_ha_address_fails_explicitly():
     )
     with pytest.raises(sip.SipError, match="Home Assistant SIP address is unavailable"):
         call_transfer._blind_target(runtime, "sip:bedroom@192.0.2.20", "Wakeup")
+
+
+@pytest.mark.parametrize("destination", ["Room speaker", "321"])
+def test_transfer_uses_address_contact_route_not_current_peer(destination):
+    import json
+    runtime = SimpleNamespace(
+        endpoints=SimpleNamespace(resolve=lambda _: None),
+        phonebook_sensor=SimpleNamespace(extra_state_attributes={"roster_json": json.dumps([
+            {"id": "room-speaker", "name": "Room speaker", "address": "192.0.2.30",
+             "port": 5070, "extension": "321", "metadata": {"sip_transport": "udp"}},
+        ])}),
+    )
+    target = call_transfer._blind_target(runtime, "sip:old@192.0.2.20:5060", destination)
+    assert target.uri == "sip:room-speaker@192.0.2.30:5070;transport=udp"

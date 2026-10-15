@@ -118,6 +118,7 @@ ha_tests=(
   tests/test_entity_rename_ha.py
   tests/test_ha_integration_runtime.py
   tests/test_ha_call_transfer.py
+  tests/test_card_transfer_ha.py
   tests/test_ha_assist_speech.py
   tests/test_assist_intent_responses_ha.py
   tests/test_local_source_runtime.py
