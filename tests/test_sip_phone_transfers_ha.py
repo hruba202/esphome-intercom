@@ -2,6 +2,8 @@
 
 import asyncio
 import math
+import os
+from pathlib import Path
 import secrets
 import shutil
 import struct
@@ -27,6 +29,9 @@ async def registered_phones(trunks, tmp_path, request):
     lab.runtime.transport_config["rtp_port"] = 12000 + 2 * secrets.randbelow(2000)
     video_names = getattr(request, "param", {}).get("video", ())
     if video_names:
+        module_path = Path(os.environ.get("VOIP_TEST_BARESIP_MODULE_PATH", "/usr/lib/baresip/modules"))
+        for module in ("avcodec.so", "fakevideo.so"):
+            assert (module_path / module).is_file(), f"Video peer requires {module_path / module}"
         lab.runtime.transport_config["experimental_sip_video"] = True
         for endpoint in lab.calls.component("udp_listener")._dialog_endpoints():
             endpoint.enable_video = True
@@ -97,7 +102,6 @@ module_app account.so
                     await asyncio.sleep(0.01)
         except TimeoutError:
             import io
-            from pathlib import Path
 
             trace = io.StringIO()
             for task in asyncio.all_tasks():

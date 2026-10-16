@@ -47,8 +47,12 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-      - name: Install audio decoder for real media tests
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg cmake libssl-dev libsndfile1-dev zlib1g-dev
+      - name: Install dependencies for independent SIP and video peers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg cmake libssl-dev libsndfile1-dev zlib1g-dev \
+            sip-tester libavcodec-dev libavfilter-dev libavformat-dev \
+            libswscale-dev libavdevice-dev libavutil-dev
       - name: Build pinned independent SIP test peer
         run: |
           scripts/build_sip_test_peer.sh "$RUNNER_TEMP/sip-peer"
