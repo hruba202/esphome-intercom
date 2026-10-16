@@ -376,6 +376,7 @@ async def async_answer_browser_call(
             callee=resolved_callee,
             route_kind="ha_softphone",
             endpoint_id=endpoint_id,
+            dest_endpoint_id=endpoint_id,
             session_device_id=endpoint_device_id,
             media_client_id=str(call.data.get("media_client_id") or ""),
             expected_generation=authoritative_session.generation,

@@ -131,6 +131,56 @@ def video_bridge_offer_formats(
     return tuple(formats)
 
 
+def _video_pair_passthrough_compatible(left_recv, right_send, right_recv, left_send):
+    """Require compatible wire formats for each direction of the bridge."""
+    return (
+        sdp.video_formats_passthrough_compatible(left_recv, right_send)
+        and sdp.video_formats_passthrough_compatible(right_recv, left_send)
+    )
+
+
+async def async_prepare_invite_pair_video(hass, left_invite, right_invite, *, enable_transcoding=False):
+    """Negotiate relay media for two offers using the common video contracts."""
+    from .media_ports import reserve_sip_video_relay_media
+
+    if left_invite.video_format is None or right_invite.video_format is None:
+        return None, None, None
+    compatible = _video_pair_passthrough_compatible(
+        left_invite.recv_video_format, right_invite.send_video_format,
+        right_invite.recv_video_format, left_invite.send_video_format,
+    )
+    if not compatible and not enable_transcoding:
+        return None, None, None
+    reservation, sockets = reserve_sip_video_relay_media(hass)
+    relay = None
+    try:
+        relay = SipVideoRtpRelay(left=invite_video_rtp_peer(left_invite), right=invite_video_rtp_peer(right_invite),
+            left_port=reservation.ports[0], right_port=reservation.ports[1],
+            left_socket=sockets[0], left_rtcp_socket=sockets[1], right_socket=sockets[2], right_rtcp_socket=sockets[3],
+            on_release=lambda _ports: reservation.release())
+        if not compatible:
+            relay.configure_transcoding(hass, left_invite.call_id)
+        answers = []
+        for invite, peer in ((left_invite, right_invite), (right_invite, left_invite)):
+            direction = sdp.constrained_video_direction(invite.video_format.direction,
+                allow_send=remote_can_send(peer.video_format) and not invite.remote_video_connection_held,
+                allow_receive=remote_can_receive(peer.video_format, connection_held=peer.remote_video_connection_held))
+            answers.append(VideoBridgeAnswer(invite.answer_video_format, direction))
+        relay.left.video_format = replace(relay.left.video_format, direction=sdp.local_direction_for_remote(answers[0].direction))
+        relay.right.video_format = replace(relay.right.video_format, direction=sdp.local_direction_for_remote(answers[1].direction))
+        return relay, answers[0], answers[1]
+    except BaseException:
+        if relay is not None:
+            from .session_cleanup import async_wait_for_cleanup
+            import asyncio
+            await async_wait_for_cleanup(asyncio.create_task(relay.stop(), name="voip-pickup-video-rollback"))
+        else:
+            for sock in sockets:
+                sock.close()
+            reservation.release()
+        raise
+
+
 def build_pending_invite_video_relay(
     invite: SipInvite,
     *,
@@ -191,13 +241,9 @@ def configure_answered_invite_video_relay(
         and source_video is not None
         and source_directional is not None
         and dialog.remote_video_rtp_port > 0
-        and sdp.video_formats_passthrough_compatible(
-            source_directional.recv,
-            dialog.send_video_format,
-        )
-        and sdp.video_formats_passthrough_compatible(
-            dialog.recv_video_format,
-            source_directional.send,
+        and _video_pair_passthrough_compatible(
+            source_directional.recv, dialog.send_video_format,
+            dialog.recv_video_format, source_directional.send,
         )
     )
     if exact_passthrough:

@@ -482,7 +482,8 @@ async def test_sip_refer_parks_established_caller_without_redial(registered_phon
 
 
 @pytest.mark.parametrize('trunks',[True],indirect=True)
-async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(registered_phones,trunks):
+@pytest.mark.parametrize("via_service", [False, True])
+async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(registered_phones,trunks,via_service):
     from custom_components.voip_stack.store import config_entry
     from custom_components.voip_stack.parking import get_parking_lot
     runtime=trunks
@@ -498,6 +499,7 @@ async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(regist
     original=next(iter(runtime.calls.sessions.values()))
     client=runtime.calls.sip_client_for(runtime.calls.bridge_link_for(original.call_id))
     transport=runtime.calls.resource_for(original.call_id,'relay').right_transport
+    source_address=transport.get_extra_info('sockname')
     await asyncio.to_thread(operator.command,f'/transfer sip:700@127.0.0.1:{runtime.runtime.transport_config["sip_port"]}')
     lot=get_parking_lot(runtime.hass)
     await wait_for(lambda: '701' in lot.calls and not runtime.runtime.endpoints.get('transfer_a').active_call_id)
@@ -510,10 +512,22 @@ async def test_caller_can_park_answered_outgoing_peer_and_keep_its_dialog(regist
     await wait_for(lambda: not media.can_send)
     await asyncio.to_thread(remaining.command,'/resume')
     await wait_for(lambda: media.can_send)
-    await asyncio.to_thread(picker.dial,'701')
+    if via_service:
+        runtime.runtime.endpoints.update("transfer_c", device_id="pickup-device")
+        result = await runtime.hass.services.async_call("voip_stack", "pickup", {
+            "device_id": "pickup-device", "slot": "701", "answer_timeout": 3,
+        }, blocking=True, return_response=True)
+        assert result["call_id"] == current.call_id
+    else:
+        await asyncio.to_thread(picker.dial,'701')
     await wait_for(lambda: not lot.calls)
     relay=runtime.calls.resource_for(current.call_id,'relay')
-    assert relay.left_transport is transport
+    if via_service:
+        assert transport.is_closing()
+        assert relay.left_transport.get_extra_info("sockname") == source_address
+        assert runtime.calls.sip_client_for(client.dialog_ids.call_id) is client
+    else:
+        assert relay.left_transport is transport
     await wait_for(lambda: relay.left_tx_packets>30 and relay.right_tx_packets>30)
     await asyncio.to_thread(remaining.hangup)
     await wait_for(lambda: not runtime.calls.sessions)

@@ -99,7 +99,7 @@ async def test_permission_is_read_again_for_later_transfer():
 async def test_attended_transfer_to_trunk_keeps_both_dialogs_when_denied():
     runtime, source = _runtime()
     consultation = Mock(spec=SipCallClient)
-    consultation.dialog = SimpleNamespace(remote_uri="sip:441234567890@provider.example")
+    consultation.dialog = SimpleNamespace(remote_uri="sip:441234567890@provider.example", remote_target_uri="sip:441234567890@provider.example")
     consultation.dialog_ids = SimpleNamespace(
         call_id="consultation", remote_tag="remote", local_tag="local"
     )

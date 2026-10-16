@@ -145,6 +145,18 @@ async def _service_user(hass: Any, call: Any) -> Any | None:
     return user
 
 
+async def async_require_service_read(hass: Any, call: Any) -> None:
+    user = await _service_user(hass, call)
+    if user is not None:
+        _require_entity_permission(hass, user, POLICY_READ, context=getattr(call, "context", None))
+
+
+async def async_require_service_endpoint_read(hass: Any, call: Any, endpoint: Any) -> None:
+    user = await _service_user(hass, call)
+    if user is not None:
+        _require_endpoint_permission(hass, user, endpoint, POLICY_READ, context=getattr(call, "context", None))
+
+
 async def async_require_service_control(hass: Any, call: Any) -> None:
     """Allow internal automations or users allowed to control VoIP Stack."""
 

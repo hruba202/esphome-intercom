@@ -72,7 +72,9 @@ module_app account.so
                                  "video_size 160x120\nvideo_fps 5\nvideo_bitrate 128000\n"
                                  "avcodec_keyint 5\nmodule avcodec.so\nmodule fakevideo.so\n")
             accounts = config / "accounts"
-            answer_mode = "manual" if name == getattr(request, "param", {}).get("manual") else "auto"
+            manual = getattr(request, "param", {}).get("manual", ())
+            manual = (manual,) if isinstance(manual, str) else manual
+            answer_mode = "manual" if name in manual else "auto"
             accounts.write_text(
                 f'<sip:{name}@127.0.0.1:{lab.runtime.transport_config["sip_port"]}>'
                 f';auth_user={name};auth_pass=isolated-test-only;regint=60;answermode={answer_mode}\n'

@@ -609,3 +609,26 @@ async def test_registered_instance_gruu_routes_ack_refer_and_bye_to_its_contact(
             endpoint.active_dialogs.pop("registered-gruu-inbound", None)
     finally:
         await client.close()
+
+
+async def test_expired_subscription_emits_terminal_even_on_unrelated_update(hass):
+    import asyncio
+    registrar = SipRegistrar(enabled=True, accounts=[SipAccount("alice", "Alice", "test")], local_ip="127.0.0.1", local_sip_port=5060)
+    methods = SipApplicationMethods(hass, registrar)
+    sent = []
+    async def send(_request, _addr, result):
+        sent.append(result.follow_up)
+        return sip.SipMessage(status_code=200, reason="OK")
+    try:
+        initial = methods._subscribe(_subscribe(), ("127.0.0.2", 5060), "alice", send)
+        initial.follow_up_scheduler()
+        sub = next(iter(methods.subscriptions.values()))
+        await sub.notify_task
+        sub.expires_at = time.time() - 1
+        methods._notify_subscribers("unrelated")
+        await asyncio.wait_for(sub.notify_task, 1)
+        assert len(sent) == 2
+        assert dict(sent[-1].headers)["Subscription-State"] == "terminated;reason=timeout"
+        assert not methods.subscriptions and not methods.subscription_timers
+    finally:
+        await methods.stop()

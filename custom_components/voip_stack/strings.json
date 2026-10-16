@@ -440,6 +440,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Idle",
+        "unavailable": "Unavailable",
+        "calling": "Calling",
+        "ringing": "Ringing",
+        "in_call": "In a call",
+        "held": "On hold"
+      }
     }
   },
   "system_health": {
@@ -846,6 +856,36 @@
           "description": "Optional phone filter. Leave empty for all mailboxes."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Phone state changed",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "from": {
+          "name": "From"
+        },
+        "to": {
+          "name": "To"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Phone mailbox changed",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Call picked up",
+      "fields": {
+        "destination": {
+          "name": "Destination"
+        }
+      }
     }
   },
   "conditions": {
@@ -886,6 +926,74 @@
         "digits": {
           "name": "Expected digits",
           "description": "Leave empty to match any received digits."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Phone is in state",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "state": {
+          "name": "State"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Phone has a ringing call",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Phone has voicemail",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "unread_only": {
+          "name": "Unread messages only"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Get phone state",
+      "description": "Read state, calls and mailbox counters for the selected phone.",
+      "fields": {
+        "device_id": {
+          "name": "Phone"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Pick up call",
+      "description": "Recover a ringing or parked call on the selected phone.",
+      "fields": {
+        "device_id": {
+          "name": "Recovering phone"
+        },
+        "target_device_id": {
+          "name": "Ringing phone"
+        },
+        "slot": {
+          "name": "Parking slot"
+        },
+        "answer_timeout": {
+          "name": "Wait for answer"
+        },
+        "call_id": {
+          "name": "Call ID"
+        },
+        "expected_generation": {
+          "name": "Call generation"
+        },
+        "leg_id": {
+          "name": "Call leg"
         }
       }
     }

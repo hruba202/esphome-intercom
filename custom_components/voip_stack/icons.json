@@ -153,6 +153,15 @@
     },
     "set_external_call_access": {
       "service": "mdi:phone-lock"
+    },
+    "pickup": {
+      "service": "mdi:phone-incoming",
+      "sections": {
+        "advanced": "mdi:tune-variant"
+      }
+    },
+    "get_phone_state": {
+      "service": "mdi:phone-check"
     }
   },
   "triggers": {
@@ -176,6 +185,15 @@
     },
     "call_unanswered": {
       "trigger": "mdi:phone-missed"
+    },
+    "phone_state_changed": {
+      "trigger": "mdi:phone-sync"
+    },
+    "mailbox_changed": {
+      "trigger": "mdi:voicemail"
+    },
+    "call_picked_up": {
+      "trigger": "mdi:phone-incoming"
     }
   },
   "conditions": {
@@ -190,6 +208,15 @@
     },
     "is_dtmf_result": {
       "condition": "mdi:dialpad"
+    },
+    "is_phone_state": {
+      "condition": "mdi:phone-check"
+    },
+    "has_ringing_call": {
+      "condition": "mdi:phone-ring"
+    },
+    "has_voicemail": {
+      "condition": "mdi:voicemail"
     }
   }
 }

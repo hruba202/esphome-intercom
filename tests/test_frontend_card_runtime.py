@@ -184,6 +184,7 @@ class FakeElement {{
     this.children = children;
     for (const child of children) child.parentNode = this;
   }}
+  appendChild(child) {{ (this.children ||= []).push(child); child.parentNode = this; return child; }}
   addEventListener() {{}}
   focus() {{}}
 }}
@@ -337,6 +338,24 @@ function makeCard() {{
   }});
   return card;
 }}
+
+const activityIdentity = makeCard();
+activityIdentity._getSoftphoneEndpointId = () => "office";
+activityIdentity._getConfigDeviceId = () => "device-office";
+activityIdentity._activeSoftphonePeerDevice = () => null;
+activityIdentity._layoutPhoneActivity = () => {{}};
+activityIdentity._els.phoneActivity = new FakeElement();
+activityIdentity._els.parkingNotice = new FakeElement();
+activityIdentity._softphoneSnapshot = {{state: "in_call", call_id: "current-call"}};
+activityIdentity._phoneActivity = {{parked: [], phones: [
+  {{endpoint_id: "peer", name: "Peer", state: "busy", call_ids: ["current-call"]}},
+  {{endpoint_id: "other", name: "Other", state: "busy", call_ids: ["another-call"]}},
+]}};
+activityIdentity._renderPhoneActivity(false);
+assert.deepEqual(JSON.parse(activityIdentity._els.phoneActivity.dataset.rows), ["Other: Busy"]);
+activityIdentity._softphoneSnapshot = {{state: "idle", call_id: ""}};
+activityIdentity._renderPhoneActivity(false);
+assert.deepEqual(JSON.parse(activityIdentity._els.phoneActivity.dataset.rows), ["Peer: Busy", "Other: Busy"]);
 
 const manualIdentity = makeCard();
 manualIdentity._softphoneTargets = () => [{{device_id: "ball", name: "Spotpear"}}];

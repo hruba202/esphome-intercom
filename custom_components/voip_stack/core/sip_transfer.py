@@ -18,6 +18,7 @@ class SipTransferResult:
     accepted: bool
     status: int
     state: str
+    retained_call: bool = False
 
 
 class ReferSubscription:
@@ -332,3 +333,133 @@ async def run_refer_action(action, report, *, timeout: float = 30.0) -> int:
         if not progress.done():
             progress.cancel()
         await asyncio.gather(progress, return_exceptions=True)
+
+
+class ReferNotifier:
+    """One implicit REFER usage; unsubscribing never cancels its operation."""
+
+    def __init__(self, dialog, refer_cseq, send, *, allow_missing_id=True):
+        self.dialog = dialog
+        self.refer_cseq = refer_cseq
+        self.send = send
+        self.allow_missing_id = allow_missing_id
+        self.active = True
+        self.status = 100
+        self.expires_at = asyncio.get_running_loop().time() + 60
+        self.lock = asyncio.Lock()
+        self.timer = asyncio.get_running_loop().call_later(60, self._expire)
+        self.pending = None
+        self.task = None
+
+    def _expire(self):
+        self.active = False
+        self._schedule(True, "timeout")
+
+    def _schedule(self, terminal=False, reason="noresource"):
+        if self.pending is not None and self.pending[0]:
+            return
+        self.pending = (terminal, reason)
+        if self.task is None:
+            self.task = asyncio.create_task(
+                self._drain(), name="voip-refer-notify-refresh"
+            )
+
+    async def _drain(self):
+        try:
+            while self.pending is not None:
+                terminal, reason = self.pending
+                self.pending = None
+                async with self.lock:
+                    if self.active or terminal:
+                        await self._send(self.status, terminal, reason)
+        except Exception:
+            import logging
+
+            self.active = False
+            logging.getLogger(__name__).exception(
+                "REFER subscription notification failed"
+            )
+        finally:
+            self.task = None
+
+    async def _send(self, status, terminal, reason="noresource"):
+        remaining = max(0, int(self.expires_at - asyncio.get_running_loop().time()))
+        state = (
+            f"terminated;reason={reason}" if terminal else f"active;expires={remaining}"
+        )
+        headers = (
+            ("Event", f"refer;id={self.refer_cseq}"),
+            ("Subscription-State", state),
+        )
+        phrase = (
+            "Trying" if status < 200 else "OK" if status < 300 else "Transfer Failed"
+        )
+        response = await self.send(headers, f"SIP/2.0 {status} {phrase}\r\n".encode())
+        if response is None or not 200 <= int(response.status_code or 0) < 300:
+            self.active = False
+        return response
+
+    async def report(self, status, terminal):
+        async with self.lock:
+            self.status = status
+            if not self.active:
+                return sip.SipMessage(status_code=200, reason="OK")
+            if terminal:
+                self.active = False
+                self.timer.cancel()
+            return await self._send(status, terminal)
+
+    def refresh(self, request):
+        from .sip_dialog import DialogKey
+
+        if DialogKey.from_uas_request(request) != self.dialog.key or not self.active:
+            return 481, "Subscription Does Not Exist", ()
+        events = request.header_values("Event")
+        if len(events) != 1:
+            return 400, "Bad Request", ()
+        package, pairs = sip._split_semicolon_params(events[0])
+        ids = [value for key, value in pairs if key == "id"]
+        if package.casefold() != "refer":
+            return 489, "Bad Event", ()
+        if len(ids) > 1:
+            return 400, "Bad Request", ()
+        if (ids and ids[0] != str(self.refer_cseq)) or (
+            not ids and not self.allow_missing_id
+        ):
+            return 481, "Subscription Does Not Exist", ()
+        value = request.header("Expires").strip() or "60"
+        if (
+            not value.isascii()
+            or not value.isdigit()
+            or len(value) > 10
+            or request.body
+        ):
+            return 400, "Bad Request", ()
+        try:
+            self.dialog.refresh(request)
+        except sip.SipError:
+            return 400, "Bad Request", ()
+        except ValueError:
+            return 500, "Server Internal Error", (("Retry-After", "1"),)
+        expires = min(int(value), 60)
+        self.timer.cancel()
+        self.expires_at = asyncio.get_running_loop().time() + expires
+        if expires:
+            self.timer = asyncio.get_running_loop().call_later(expires, self._expire)
+        else:
+            self.active = False
+        self._schedule(not expires, "timeout")
+        return 200, "OK", (("Expires", str(expires)),)
+
+    def cancel(self):
+        self.active = False
+        self.timer.cancel()
+        if self.task is not None:
+            self.task.cancel()
+
+    async def close(self):
+        self.cancel()
+        task = self.task
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

@@ -4,6 +4,7 @@ from .endpoint_lifecycle import call_registry
 from .media_offer_answer import validate_direct_video_reoffer
 from .media_session_updates import commit_audio_session_update, commit_video_session_update
 from .runtime_data import require_runtime_data
+from .sip_client import PreparedDialogMediaUpdate
 from .websocket_api import _ha_softphone_store, _fire_call_event
 
 
@@ -31,7 +32,9 @@ def attach_browser_dialog_updates(hass, client, endpoint_id, source_device_id, *
             return None
         video_session = browser_media.sessions_for("video").get((call_id, endpoint_id))
 
+        payload = None
         async def _commit() -> None:
+            nonlocal payload
             if not registry.is_generation_current(call_id, call_generation):
                 raise RuntimeError(
                     "SIP softphone media update belongs to a terminated call"
@@ -102,16 +105,16 @@ def attach_browser_dialog_updates(hass, client, endpoint_id, source_device_id, *
                         + 1,
                     }
                 )
-                _fire_call_event(
-                    hass,
-                    dict(
-                        store,
-                        endpoint_id=endpoint_id,
-                        device_id=source_device_id,
-                    ),
-                    "session",
-                )
+                payload = dict(store, endpoint_id=endpoint_id, device_id=source_device_id,
+                               event_type="state_changed")
 
-        return _commit
+        def published(actual):
+            from .call_scope import call_belongs_to_endpoint
+            if (payload is not None and registry.is_generation_current(call_id, call_generation)
+                    and client.on_media_update is _prepare_softphone_media_update and client.dialog is actual
+                    and call_belongs_to_endpoint(registry, call_id, endpoint_id)):
+                _fire_call_event(hass, payload, "session")
+
+        return PreparedDialogMediaUpdate(_commit, on_committed=published)
 
     client.on_media_update = _prepare_softphone_media_update

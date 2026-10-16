@@ -171,12 +171,18 @@ async def lab(hass, monkeypatch, socket_enabled):
     monkeypatch.setattr(module, "roster_from_peers", lambda *_args: roster)
     from custom_components.voip_stack.parking import async_park_call
     from custom_components.voip_stack.call_recording import async_start_recording, async_stop_recording, async_get_recording, async_delete_recording
+    from custom_components.voip_stack.call_pickup import async_pickup_call
+    from custom_components.voip_stack.phone_state import async_get_phone_state
+    from custom_components.voip_stack.external_call_access import async_set_external_call_access
     await services.async_register_services(hass, {
         "call": voip_stack._handle_sip_call_target_service,
         "answer": voip_stack._handle_sip_answer_service,
         "forward": voip_stack._handle_sip_forward_service,
         "transfer": voip_stack._handle_sip_transfer_service,
         "park": async_park_call,
+        "pickup": async_pickup_call,
+        "get_phone_state": async_get_phone_state,
+        "set_external_call_access": async_set_external_call_access,
         "start_recording": async_start_recording,
         "stop_recording": async_stop_recording,
         "get_recording": async_get_recording,

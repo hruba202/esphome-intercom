@@ -186,6 +186,23 @@ class LocalSoftphoneBridgeTest(unittest.TestCase):
         with self.assertRaises(bridge_module.LocalCallStateError):
             self.bridge.redirect_ringing("call-1", "kitchen")
 
+    def test_established_transfer_retains_either_participant_and_its_media_lease(self) -> None:
+        for retained in ("office", "kitchen"):
+            with self.subTest(retained=retained):
+                self.setUp()
+                self.start(caller_owner_id="caller-card", request_video=True)
+                self.bridge.answer("call-1", "kitchen", "kitchen-card")
+                owner = "caller-card" if retained == "office" else "kitchen-card"
+                lease = self.bridge.acquire_media("call-1", retained, owner)
+                moved = self.bridge.redirect_ringing("call-1", "hall", retained_endpoint_id=retained)
+                self.assertEqual(moved.caller_endpoint_id, retained)
+                self.assertEqual(moved.callee_endpoint_id, "hall")
+                self.assertEqual(self.bridge.acquire_media("call-1", retained, owner), lease)
+                retired = "kitchen" if retained == "office" else "office"
+                self.assertEqual(self.registry.require(retired).active_call_id, "")
+                self.bridge.answer("call-1", "hall", "hall-card")
+                self.assertEqual(self.bridge.require_call("call-1").caller_state.value, "in_call")
+
     def test_redirect_to_busy_endpoint_preserves_original_call(self) -> None:
         original = self.start()
         self.registry.claim_call("hall", "other-call")

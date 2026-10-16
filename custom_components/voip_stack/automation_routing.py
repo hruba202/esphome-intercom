@@ -33,6 +33,7 @@ AUTOMATION_EVENT_TYPES = [
     "ringing_timeout_requested",
     "answered",
     "connected",
+    "picked_up",
     "dtmf",
     "ended",
     "missed",

@@ -9,7 +9,7 @@ from .bridge_media_updates import BridgeMediaUpdateBinder
 from .call_projection import publish_bridge_projection, publish_esp_media_route
 from .core.sip_transfer import SipTransferResult
 from .dtmf_events import attach_dtmf_event_bridge
-from .endpoint_session import CleanupStage, LegPhase, TerminationIntent
+from .endpoint_session import CleanupStage, LegPhase, SessionHandoff, TerminationIntent
 from .media_ports import RtpPortReservation
 from .session_cleanup import async_wait_for_cleanup
 from .sip_rtp_bridge import SipRtpRelay
@@ -60,12 +60,6 @@ async def try_local_audio_transfer(hass, runtime, grant, referrer):
         reservation = RtpPortReservation.merge(hass, previous, retained)
         return lambda _ports: reservation.release()
 
-    relay = SipRtpRelay.splice_audio(
-        source_relay, "left" if from_callee else "right", destination_relay, "right",
-        merge_reservations=merge_reservations,
-    )
-    # No awaits during ownership cutover. The referring phone's dialog stays
-    # with its old owner until the final NOTIFY transaction completes.
     goal = original if from_callee else calls.upsert(
         f"ha-transfer-{secrets.token_hex(12)}", state="connecting", owner="bridge",
         caller=str(original.metadata.get("connected_party") or original.callee),
@@ -74,59 +68,87 @@ async def try_local_audio_transfer(hass, runtime, grant, referrer):
         ingress="trunk" if old_leg.trunk_id or original.route_kind == "trunk" else "extension",
         inbound_trunk_id=old_leg.trunk_id,
     )
+    ready = asyncio.Event()
+    watchers = []
+    def commit_owner(relay):
+        calls.remove_leg(consultation.call_id, new_destination)
+        calls.forget_bridge_link(consultation.call_id)
+        for session, retired in ((original, source_relay), (consultation, destination_relay)):
+            session.release_resource(f"relay:{session.call_id}", value=retired)
+            goal.add_resource(f"retired_relay:{session.call_id}", retired,
+                              lambda _reason, value=retired: value.stop(), stage=CleanupStage.MEDIA)
+        calls.attach_relay(goal.call_id, relay)
+
+        def watch_client(value):
+            async def watch():
+                await ready.wait()
+                await async_watch_sip_bridge_destination(
+                    hass, client=value, source_call_id=goal.call_id,
+                    terminate_sip_bridge=async_terminate_sip_bridge_session,
+                )
+            task = asyncio.create_task(watch(), name=f"voip-bridge-destination-{value.dialog_ids.call_id}")
+            watchers.append(task)
+            return task
+
+        if from_callee:
+            old_leg.phase = LegPhase.CLOSING
+            old_leg.endpoint_id = transferrer
+            referrer.on_media_update = None
+            referrer.on_info_dtmf = None
+        else:
+            calls.remove_leg(original.call_id, old_destination)
+            calls.forget_bridge_link(original.call_id)
+            source_client.on_refer = None
+            calls.add_leg(goal.call_id, old_destination, role="caller", state="in_call", endpoint_id=grant.endpoint_id)
+            calls.attach_sip_client(goal.call_id, old_destination, source_client, role="caller", state="in_call", trunk_id=old_leg.trunk_id)
+            calls.attach_client_watcher(old_destination, watch_client(source_client))
+            if grant.endpoint_id:
+                calls.transfer_endpoint_claim(original.call_id, goal.call_id, grant.endpoint_id)
+        client.on_refer = None
+        calls.register_bridge(source_call_id=goal.call_id, dest_call_id=new_destination,
+                              client=client, lifecycle_task=watch_client(client), state="in_call",
+                              caller=goal.caller, callee=consultation.callee, route_kind=consultation.route_kind,
+                              expected_generation=goal.generation)
+        goal.legs[new_destination].trunk_id = destination_trunk_id
+        if target:
+            calls.transfer_endpoint_claim(consultation.call_id, goal.call_id, target)
+        goal.update_metadata(dest_endpoint_id=target, target_endpoint_id=target,
+                                 connected_party=consultation.callee,
+                                 outbound_trunk_id=consultation.metadata.get("outbound_trunk_id", ""),
+                                 policy_endpoint_ids=tuple(sorted(set(
+                                     (*goal.endpoint_claims, *original.endpoint_claims, *consultation.endpoint_claims,
+                                      *(original.metadata.get("policy_endpoint_ids") or ()),
+                                      *(consultation.metadata.get("policy_endpoint_ids") or ()))
+                                 ))))
+        binder = BridgeMediaUpdateBinder(hass)
+        binder.attach(client, relay, source_call_id=goal.call_id)
+        if source_client is not None:
+            binder.attach_audio_side(source_client, relay, source_call_id=goal.call_id, side="left")
+            goal.claim_answer(goal.token, lambda: True)
+        attach_dtmf_event_bridge(hass, relay, call_id=goal.call_id, dest_call_id=new_destination,
+                                 caller=goal.caller, callee=consultation.callee, client=client, source_client=source_client)
+
+    try:
+        with SessionHandoff(calls, original, consultation, goal) as handoff:
+            handoff.preserve(old_leg, "phase", "endpoint_id")
+            for value in (client, source_client, referrer):
+                if value is not None:
+                    handoff.preserve(value, "on_refer", "on_media_update", "on_info_dtmf")
+            relay = SipRtpRelay.splice_audio(
+                source_relay, "left" if from_callee else "right", destination_relay, "right",
+                merge_reservations=merge_reservations, commit_owner=commit_owner,
+            )
+    except BaseException:
+        for task in watchers:
+            task.cancel()
+        await async_wait_for_cleanup(asyncio.gather(*watchers, return_exceptions=True))
+        if goal is not original:
+            await async_wait_for_cleanup(calls.request_termination(
+                goal.call_id, TerminationIntent("transfer_failed"), generation=goal.generation))
+        raise
     old_watcher = calls.cancel_task(original.call_id, f"client_watcher:{old_destination}")
     new_watcher = calls.cancel_task(consultation.call_id, f"client_watcher:{new_destination}")
-    calls.remove_leg(consultation.call_id, new_destination)
-    calls.forget_bridge_link(consultation.call_id)
-    for session, retired in ((original, source_relay), (consultation, destination_relay)):
-        session.release_resource(f"relay:{session.call_id}", value=retired)
-        goal.add_resource(f"retired_relay:{session.call_id}", retired,
-                          lambda _reason, value=retired: value.stop(), stage=CleanupStage.MEDIA)
-    calls.attach_relay(goal.call_id, relay)
-
-    def watch_client(value):
-        return asyncio.create_task(async_watch_sip_bridge_destination(
-            hass, client=value, source_call_id=goal.call_id,
-            terminate_sip_bridge=async_terminate_sip_bridge_session,
-        ), name=f"voip-bridge-destination-{value.dialog_ids.call_id}")
-
-    if from_callee:
-        old_leg.phase = LegPhase.CLOSING
-        old_leg.endpoint_id = transferrer
-        referrer.on_media_update = None
-        referrer.on_info_dtmf = None
-    else:
-        calls.remove_leg(original.call_id, old_destination)
-        calls.forget_bridge_link(original.call_id)
-        source_client.on_refer = None
-        calls.add_leg(goal.call_id, old_destination, role="caller", state="in_call", endpoint_id=grant.endpoint_id)
-        calls.attach_sip_client(goal.call_id, old_destination, source_client, role="caller", state="in_call", trunk_id=old_leg.trunk_id)
-        calls.attach_client_watcher(old_destination, watch_client(source_client))
-        if grant.endpoint_id:
-            calls.transfer_endpoint_claim(original.call_id, goal.call_id, grant.endpoint_id)
-    client.on_refer = None
-    calls.register_bridge(source_call_id=goal.call_id, dest_call_id=new_destination,
-                          client=client, lifecycle_task=watch_client(client), state="in_call",
-                          caller=goal.caller, callee=consultation.callee, route_kind=consultation.route_kind,
-                          expected_generation=goal.generation)
-    goal.legs[new_destination].trunk_id = destination_trunk_id
-    if target:
-        calls.transfer_endpoint_claim(consultation.call_id, goal.call_id, target)
-    goal.update_metadata(dest_endpoint_id=target, target_endpoint_id=target,
-                             connected_party=consultation.callee,
-                             outbound_trunk_id=consultation.metadata.get("outbound_trunk_id", ""),
-                             policy_endpoint_ids=tuple(sorted(set(
-                                 (*goal.endpoint_claims, *original.endpoint_claims, *consultation.endpoint_claims,
-                                  *(original.metadata.get("policy_endpoint_ids") or ()),
-                                  *(consultation.metadata.get("policy_endpoint_ids") or ()))
-                             ))))
-    binder = BridgeMediaUpdateBinder(hass)
-    binder.attach(client, relay, source_call_id=goal.call_id)
-    if source_client is not None:
-        binder.attach_audio_side(source_client, relay, source_call_id=goal.call_id, side="left")
-        goal.claim_answer(goal.token, lambda: True)
-    attach_dtmf_event_bridge(hass, relay, call_id=goal.call_id, dest_call_id=new_destination,
-                             caller=goal.caller, callee=consultation.callee, client=client, source_client=source_client)
+    ready.set()
     grant.release()
     calls.request_termination(consultation.call_id, TerminationIntent("forwarded"))
 

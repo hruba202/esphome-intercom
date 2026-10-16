@@ -28,7 +28,7 @@ from .const import (
     CONF_TRUNK_USERNAME,
     DOMAIN,
 )
-from .dial_fork import DialDisposition, DialForkController, terminal_reason
+from .dial_fork import DialDisposition, terminal_reason
 from .endpoint_lifecycle import call_registry as _call_registry, create_runtime_task
 from .endpoint_dialing import OutboundLegPolicy
 from .runtime_data import (
@@ -72,7 +72,7 @@ from .phonebook_runtime import registered_roster_entries as _registered_roster_e
 from .ring_group import (
     settle_browser_candidates as _settle_ring_browser_candidates,
 )
-from .ring_group_fork import build_ring_group_fork
+from .ring_group_fork import build_ring_group_fork, group_leg_observer, run_owned_ring_group_fork
 from .router import RouteAction
 from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, call_external_call_denied
 from .route_abort import (
@@ -536,7 +536,9 @@ async def async_forward_existing_call(
         resume_route_kind=original_route_kind,
         transition_resume=session is not None,
         resume_owner=("router" if local_source.outgoing else "local_bridge") if local_source is not None else application.owner if application else "ha_softphone",
-        resume_state="remote_ringing" if local_source is not None and local_source.outgoing else "in_call" if application and application.answered else "ringing",
+        resume_state=("in_call" if local_source is not None and local_source.established
+                      else "remote_ringing" if local_source is not None and local_source.outgoing
+                      else "in_call" if application and application.answered else "ringing"),
         publish_resume=application.resume if application else partial(
             runtime.publish_pending_ringing,
             invite,
@@ -843,6 +845,17 @@ async def async_forward_existing_call(
                     raise RuntimeError("forward source call is no longer current")
 
                 browser_route_future = asyncio.get_running_loop().create_future()
+                registry.set_pending_route(
+                    call_id,
+                    {
+                        "invite": invite,
+                        "future": browser_route_future,
+                        "ring_group_endpoint_ids": tuple(
+                            leg.endpoint_id for leg in browser_legs
+                        ),
+                        "declined_endpoint_ids": set(),
+                    },
+                )
                 if browser_legs:
                     registry.upsert(
                         call_id,
@@ -854,17 +867,6 @@ async def async_forward_existing_call(
                         ring_endpoint_ids=tuple(
                             leg.endpoint_id for leg in browser_legs
                         ),
-                    )
-                    registry.set_pending_route(
-                        call_id,
-                        {
-                            "invite": invite,
-                            "future": browser_route_future,
-                            "ring_group_endpoint_ids": tuple(
-                                leg.endpoint_id for leg in browser_legs
-                            ),
-                            "declined_endpoint_ids": set(),
-                        },
                     )
                     for browser_leg in browser_legs:
                         runtime.publish_pending_ringing(
@@ -895,6 +897,7 @@ async def async_forward_existing_call(
                             last_sip_event="SIP_RESPONSE",
                         )
 
+                leg_state = group_leg_observer(hass, registry, authoritative_session)
                 (
                     fork_candidates,
                     candidate_payloads,
@@ -906,16 +909,14 @@ async def async_forward_existing_call(
                     browser_legs=browser_legs,
                     preflight_failures=[],
                     on_ringing=_publish_group_ringing,
+                    on_leg_state=leg_state,
                 )
                 try:
-                    fork_result = await DialForkController(
-                        authoritative_session,
-                        fork_candidates,
-                    ).run(
-                        lambda _candidate, _outcome: registry.is_generation_current(
-                            call_id,
-                            call_generation,
-                        )
+                    fork_result, pickup_gate = await run_owned_ring_group_fork(
+                        authoritative_session, fork_candidates, candidate_payloads,
+                        invite=invite, attempts=attempts, browser_legs=browser_legs, on_leg_state=leg_state,
+                        commit_winner=lambda _candidate, _outcome: registry.is_generation_current(
+                            call_id, call_generation),
                     )
                 except asyncio.CancelledError:
                     await _abort_group(
@@ -934,6 +935,14 @@ async def async_forward_existing_call(
                     if fork_result.winner is not None
                     else None
                 )
+                if winner is pickup_gate:
+                    if pickup_gate.current.payload is None:
+                        registry.take_pending_route(call_id)
+                        _settle_browser_candidates(CallState.CANCELLED.value, TerminalReason.CANCELLED.value)
+                        if not reservation_from_preanswer:
+                            reservation.release()
+                        return
+                    winner = pickup_gate.current.payload
                 reroute_decision = (
                     dict(browser_decision)
                     if fork_result.outcome.disposition is DialDisposition.REROUTE
@@ -1011,6 +1020,10 @@ async def async_forward_existing_call(
                     finally:
                         call_artifacts.answer_commit = False
                     await retire_application()
+                    if not reservation_from_preanswer:
+                        reservation.release()
+                    if winner.pickup:
+                        publish_bridge_projection(hass, session, event_type="picked_up", route_kind="pickup")
                     return
 
                 registry.take_pending_route(call_id)
@@ -1064,7 +1077,8 @@ async def async_forward_existing_call(
                         response_already_sent=response_already_sent,
                         local_source=local_source is not None,
                         endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
-                        source_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else "",
+                        source_endpoint_id=local_source.call.caller_endpoint_id if local_source is not None else str(authoritative_session.metadata.get("source_endpoint_id") or ""),
+                        dest_endpoint_id=winner.endpoint_id,
                         media_client_id=local_source.call.caller_media_owner_id if local_source is not None else "",
                         expected_generation=session.generation if session is not None else None,
                     ),

@@ -143,6 +143,11 @@ class LocalCallSnapshot:
     end_reason: LocalCallEndReason | None = None
 
     @property
+    def video_active(self) -> bool:
+        """Whether either participant has enabled a negotiated video sender."""
+        return self.video_enabled and (self.caller_video_send or self.callee_video_send)
+
+    @property
     def ended(self) -> bool:
         """Return whether both logical endpoint legs are terminal."""
         return (
@@ -475,34 +480,43 @@ class LocalSoftphoneBridge:
         call = self._calls.get(str(call_id or "").strip())
         return call.snapshot() if call is not None else None
 
-    def redirect_ringing(self, call_id: object, endpoint_id: object) -> LocalCallSnapshot:
-        """Replace an unanswered destination while retaining the caller's lease.
+    def redirect_ringing(self, call_id: object, endpoint_id: object, *, retained_endpoint_id: str = "") -> LocalCallSnapshot:
+        """Retarget one local call while preserving the retained phone's lease.
 
-        Claim the new endpoint before releasing the old one. A rejected claim
-        leaves the original call unchanged; no callback observes a partial move.
+        An explicit retained participant permits an established-call transfer.
+        Target validation and acquisition precede any destructive media change.
         """
         call = self._require_internal(call_id)
-        if call.callee_state is not LocalCallState.RINGING:
+        established = bool(retained_endpoint_id)
+        if established:
+            if (call.caller_state is not LocalCallState.IN_CALL or call.callee_state is not LocalCallState.IN_CALL
+                    or retained_endpoint_id not in {call.caller_endpoint_id, call.callee_endpoint_id}):
+                raise LocalCallStateError("transfer requires an established participant")
+        elif call.callee_state is not LocalCallState.RINGING:
             raise LocalCallStateError("only an unanswered call can be redirected")
+        retained = retained_endpoint_id or call.caller_endpoint_id
+        previous = call.callee_endpoint_id if retained == call.caller_endpoint_id else call.caller_endpoint_id
         target = self._registry.require(endpoint_id)
-        if target.endpoint_id == call.callee_endpoint_id:
+        if target.endpoint_id == previous:
             return call.snapshot()
-        if target.endpoint_id == call.caller_endpoint_id:
-            raise LocalCallStateError("a call cannot be redirected to its caller")
+        if target.endpoint_id == retained:
+            raise LocalCallStateError("a call cannot be redirected to its retained participant")
         media = self._new_endpoint_media(target.endpoint_id)
         self._registry.claim_call(target.endpoint_id, call.call_id)
-        previous = call.callee_endpoint_id
-        old_media = call.callee_media
+        old_media = call.media_for(previous)
+        retained_media = call.media_for(retained)
+        retained_video_send = call.caller_video_send if retained == call.caller_endpoint_id else call.callee_video_send
+        call.caller_endpoint_id = retained
+        call.caller_media = retained_media
         call.callee_endpoint_id = target.endpoint_id
         call.callee_media = media
+        call.caller_state = LocalCallState.CALLING
+        call.callee_state = LocalCallState.RINGING
         call.answer_owner_id = ""
         call.callee_video_send = False
-        call.video_enabled = bool(
-            call.video_requested
-            and self._registry.require(call.caller_endpoint_id).supports(LocalMediaKind.VIDEO)
-            and target.supports(LocalMediaKind.VIDEO)
-        )
-        call.caller_video_send = bool(call.caller_video_send and call.video_enabled)
+        call.video_enabled = bool(call.video_requested and self._registry.require(retained).supports(LocalMediaKind.VIDEO)
+                                  and target.supports(LocalMediaKind.VIDEO))
+        call.caller_video_send = bool(retained_video_send and call.video_enabled)
         old_media.clear_queued_media()
         if old_media.lease is not None:
             old_media.lease.released.set()
@@ -526,7 +540,7 @@ class LocalSoftphoneBridge:
         """Retain either participant while an application takes its media."""
         call = self._require_internal(call_id)
         if (call.caller_state is not LocalCallState.IN_CALL
-                or call.callee_state is not LocalCallState.IN_CALL or call.video_enabled):
+                or call.callee_state is not LocalCallState.IN_CALL or call.snapshot().video_active):
             raise LocalCallStateError("handoff requires an established audio call")
         if retained_endpoint_id not in {call.caller_endpoint_id, call.callee_endpoint_id}:
             raise LocalCallStateError("the retained phone does not belong to this call")

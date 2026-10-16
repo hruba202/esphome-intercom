@@ -35,6 +35,7 @@ from .core.sip_dialog import (
     DialogKey,
     SubscriptionDialog,
     apply_remote_offer_media,
+    notify_media_commit,
     build_dialog_request,
 )
 from .sip_tcp_io import (
@@ -393,6 +394,7 @@ class PreparedDialogMediaUpdate:
     rollback: DialogMediaCommit | None = None
     answer_video_format: sdp.RtpVideoFormat | None = None
     answer_video_rtp_port: int | None = None
+    on_committed: Callable[[SipDialog], None] | None = None
 
 
 DialogMediaUpdateHandler = Callable[
@@ -554,8 +556,9 @@ class SipCallClient:
         self._deferred_signaling: list[tuple[sip.SipMessage, tuple[str, int]]] = []
         self._reliable_rseq: dict[tuple[str, int], int] = {}
         self.dialog_ids = sip.SipDialogIds(call_id=sip.make_call_id("ha"), local_tag=sip.make_tag())
-        self.dialog: SipDialog | None = None
-        self.early_dialogs: dict[str, SipDialog] = {}
+        self._dialog_changed = asyncio.Event()
+        self.dialog = None
+        self.early_dialogs: dict[str, SipDialog | None] = {}
         self._terminated_invite_branches: set[str] = set()
         self.on_info_dtmf: Callable[[str], None] | None = None
         self.on_media_update: DialogMediaUpdateHandler | None = None
@@ -601,6 +604,8 @@ class SipCallClient:
         self._refer_subscription: sip_transfer.ReferSubscription | None = None
         self._refer_dialog_key = None
         self._refer_count = 0
+        self._refer_notifiers = {}
+        self._incoming_refer_count = 0
         self._outside_refer = {}
         self._event_dialogs = {}
         self.retain_signaling = None
@@ -633,6 +638,15 @@ class SipCallClient:
         self.last_sip_status_code = 0
         self.last_sip_reason = ""
         self.connected_party = ""
+
+    @property
+    def dialog(self) -> SipDialog | None:
+        return self._dialog
+
+    @dialog.setter
+    def dialog(self, value: SipDialog | None) -> None:
+        self._dialog = value
+        self._dialog_changed.set()
 
     async def start(self) -> None:
         if self.signaling_transport in {"TCP", "TLS"}:
@@ -821,6 +835,9 @@ class SipCallClient:
         if self._dialog_dispatcher is not None:
             await self._dialog_dispatcher.close()
             self._dialog_dispatcher = None
+        for notifier in tuple(self._refer_notifiers.values()):
+            await notifier.close()
+        self._refer_notifiers.clear()
         self._outside_refer.clear()
         self._event_dialogs.clear()
         self._invite_transaction_active = False
@@ -1292,10 +1309,15 @@ class SipCallClient:
                 remote_target_uri=delayed.remote_target_uri,
             )
         unchanged = self._same_dialog_media(current, updated)
-        commit = None
+        commit = rollback = on_committed = None
         if self.on_media_update is not None:
             try:
-                commit = await self.on_media_update(current, updated, "INVITE")
+                prepared_update = await self.on_media_update(current, updated, "INVITE")
+                if isinstance(prepared_update, PreparedDialogMediaUpdate):
+                    commit, rollback = prepared_update.commit, prepared_update.rollback
+                    on_committed = prepared_update.on_committed
+                else:
+                    commit = prepared_update
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -1308,20 +1330,18 @@ class SipCallClient:
         if commit is None and not unchanged:
             await self._terminate_confirmed_dialog()
             return "media_incompatible"
-        if not await apply_remote_offer_media(commit):
+        if not await apply_remote_offer_media(commit, rollback):
             _LOGGER.error(
                 "SIP delayed offer commit failed call_id=%s", self.dialog_ids.call_id
             )
             await self._terminate_confirmed_dialog()
             return "media_update_failed"
         requested_timer = sip.negotiate_uas_session_timer(delayed.request)
-        if requested_timer is not None:
-            updated.session_timer.configure(
-                requested_timer,
-                local_role="uas",
-                now=asyncio.get_running_loop().time(),
-            )
+        updated.session_timer.configure(
+            requested_timer, local_role="uas", now=asyncio.get_running_loop().time(),
+        )
         self.dialog = updated
+        notify_media_commit(on_committed, updated)
         return None
 
     def _request_matches_dialog(self, request: sip.SipMessage, _host: str, method: str) -> bool:
@@ -2437,6 +2457,9 @@ class SipCallClient:
             sip.mark_sip_event(self, "SIP_RESPONSE", int(msg.status_code or 0), msg.reason)
             _LOGGER.info("SIP RX %s %s from %s:%s", msg.status_code, msg.reason, addr[0], addr[1])
             if msg.status_code is not None and 100 <= msg.status_code < 200:
+                remote_tag = sip.extract_tag(msg.header("To"))
+                if msg.status_code > 100 and remote_tag:
+                    self.early_dialogs.setdefault(remote_tag, None)
                 received_provisional = True
                 self._received_provisional = True
                 if not await self._ack_reliable_provisional(msg, addr):
@@ -2655,6 +2678,7 @@ class SipCallClient:
         updated: SipDialog | None = None
         commit: DialogMediaCommit | None = None
         rollback: DialogMediaCommit | None = None
+        on_committed = None
         if not request.body:
             if method == "UPDATE":
                 status = 200
@@ -2705,6 +2729,7 @@ class SipCallClient:
                         if isinstance(prepared_update, PreparedDialogMediaUpdate):
                             commit = prepared_update.commit
                             rollback = prepared_update.rollback
+                            on_committed = prepared_update.on_committed
                             answer_video_format = (
                                 prepared_update.answer_video_format
                             )
@@ -2871,6 +2896,7 @@ class SipCallClient:
             if self._uas_invite_ack_timeout.is_set() or self.dialog is None:
                 return "ack_timeout"
             self.dialog = updated
+            notify_media_commit(on_committed, updated)
         elif (
             200 <= status < 300
             and refreshed_remote_target
@@ -2883,7 +2909,6 @@ class SipCallClient:
             )
         if (
             200 <= status < 300
-            and requested_timer is not None
             and self.dialog is not None
             and self._uas_delayed_offer is None
         ):
@@ -2892,6 +2917,7 @@ class SipCallClient:
                 local_role="uas",
                 now=asyncio.get_running_loop().time(),
             )
+            self._dialog_changed.set()
         if (
             method == "UPDATE"
             and 200 <= status < 300
@@ -3091,8 +3117,11 @@ class SipCallClient:
             self.observe_event_owner(self)
 
     def knows_control_request(self, request, addr):
-        if request.method not in {"ACK", "BYE", "CANCEL", "UPDATE", "NOTIFY", "PRACK"}:
+        if request.method not in {"ACK", "BYE", "CANCEL", "UPDATE", "NOTIFY", "PRACK", "SUBSCRIBE"}:
             return False
+        notifier = self._refer_notifiers.get(request.header("Call-ID"))
+        if request.method == "SUBSCRIBE" and notifier is not None:
+            return DialogKey.from_uas_request(request) == notifier.dialog.key
         subscription = self._outside_refer.get(request.header("Call-ID"))
         if request.method == "NOTIFY" and subscription is not None:
             key = subscription.dialog.key
@@ -3304,22 +3333,37 @@ class SipCallClient:
 
     async def _monitor_dialog(self) -> str:
         ack_timeout = asyncio.create_task(self._uas_invite_ack_timeout.wait())
+        changed = None
         try:
             while self.dialog is not None:
-                timer = getattr(self.dialog, "session_timer", sip.SipSessionTimer())
+                # Clear before reading the contract: a subsequent publication
+                # must wake this wait, including when the timer was disabled.
+                self._dialog_changed.clear()
+                timer = self.dialog.session_timer
                 driver = SessionTimerDriver(timer, self._send_in_dialog_request, "uac", asyncio.get_running_loop().time)
                 timeout = max(0.0, driver.deadline - asyncio.get_running_loop().time()) if driver.deadline else None
-                done, _ = await asyncio.wait((self._dialog_result, ack_timeout), timeout=timeout,
-                                             return_when=asyncio.FIRST_COMPLETED)
+                changed = asyncio.create_task(self._dialog_changed.wait())
+                try:
+                    done, _ = await asyncio.wait((self._dialog_result, ack_timeout, changed), timeout=timeout,
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    changed.cancel()
+                    await asyncio.gather(changed, return_exceptions=True)
                 if self._dialog_result in done:
                     return self._dialog_result.result()
                 if ack_timeout in done:
                     return "ack_timeout"
+                if self.dialog is None:
+                    return "remote_hangup"
+                if self._dialog_changed.is_set():
+                    continue
+                driver = SessionTimerDriver(self.dialog.session_timer, self._send_in_dialog_request,
+                                            "uac", asyncio.get_running_loop().time)
                 try:
                     result = await driver.advance()
                 except ConnectionAbortedError as error:
                     return str(error) or "remote_hangup"
-                if result != "refreshed":
+                if result in {"session_timer_expired", "session_timer_failed"}:
                     await self._terminate_confirmed_dialog()
                     return result
             return "remote_hangup"
@@ -3336,12 +3380,27 @@ class SipCallClient:
     ) -> str | None:
         """Dispatch one sequential request without creating a second reader."""
 
-        if msg.method in {"BYE", "REFER", "NOTIFY", "INFO", "OPTIONS"}:
+        if msg.method in {"BYE", "REFER", "NOTIFY", "INFO", "OPTIONS", "SUBSCRIBE"}:
             cached = self._find_in_dialog_response(msg)
             if cached is not None:
                 self._send_response_to_request(msg, *addr, cached.status, cached.reason,
                     extra_headers=cached.extra_headers, body=cached.body, to_tag=cached.to_tag)
                 return None
+        if msg.method == "SUBSCRIBE":
+            notifier = self._refer_notifiers.get(msg.header("Call-ID"))
+            if notifier is None:
+                self._send_response_to_request(msg, *addr, 481, "Subscription Does Not Exist")
+                return None
+            if notifier.dialog.key.call_id == self.dialog_ids.call_id:
+                notifier.dialog.remote_cseq = max(notifier.dialog.remote_cseq, self._remote_cseq)
+            status, reason, headers = notifier.refresh(msg)
+            self._send_response_to_request(msg, *addr, status, reason, extra_headers=headers,
+                                           to_tag=notifier.dialog.key.local_tag)
+            self._remember_in_dialog_response(msg, status, reason, extra_headers=headers,
+                                               to_tag=notifier.dialog.key.local_tag)
+            if status == 200 and notifier.dialog.key.call_id == self.dialog_ids.call_id:
+                self._remote_cseq = notifier.dialog.remote_cseq
+            return None
         if msg.method == "BYE":
             _LOGGER.info("SIP RX BYE from %s:%s", addr[0], addr[1])
             if not self._request_matches_dialog(msg, addr[0], "BYE"):
@@ -3560,6 +3619,9 @@ class SipCallClient:
             self._incoming_refer_task = None
         self._release_event_dialog(usage_id or self.dialog_ids.call_id)
         if task.cancelled():
+            notifier = self._refer_notifiers.get(usage_id or self.dialog_ids.call_id)
+            if notifier is not None:
+                notifier.cancel()
             return
         error = task.exception()
         if error is not None:
@@ -3569,25 +3631,34 @@ class SipCallClient:
                 error,
             )
 
-    async def _run_incoming_refer(
+    def _run_incoming_refer(
         self,
         target: sip_transfer.SipReferTarget,
         refer_cseq: int,
         usage: SubscriptionDialog | None = None,
-    ) -> None:
+    ) -> Awaitable[None]:
         """Report progress and the final transfer outcome with NOTIFY."""
 
-        async def report(status, terminal):
-            reason = "Trying" if status == 100 else "OK" if status < 300 else "Transfer Failed"
-            return await self._send_in_dialog_request("NOTIFY",
-                extra_headers=sip_transfer.refer_event_headers(refer_cseq, terminal=terminal),
-                body=f"SIP/2.0 {status} {reason}\r\n".encode(),
-                content_type="message/sipfrag", usage=usage)
+        usage = usage or self._event_dialog(self.dialog)
+        async def send(headers, body):
+            return await self._send_in_dialog_request("NOTIFY", extra_headers=headers,
+                body=body, content_type="message/sipfrag", usage=usage)
 
         async def action():
             return await self.on_refer(target) if self.on_refer else 603
 
-        await sip_transfer.run_refer_action(action, report)
+        self._incoming_refer_count += 1
+        notifier = sip_transfer.ReferNotifier(usage, refer_cseq, send,
+            allow_missing_id=usage.key.call_id != self.dialog_ids.call_id or self._incoming_refer_count == 1)
+        self._refer_notifiers[usage.key.call_id] = notifier
+        async def run():
+            try:
+                await sip_transfer.run_refer_action(action, notifier.report)
+            finally:
+                await notifier.close()
+                self._refer_notifiers.pop(usage.key.call_id, None)
+
+        return run()
 
     def _handle_refer_notify(
         self,
@@ -3620,34 +3691,7 @@ class SipCallClient:
                 if request.header("Call-ID") == self.dialog_ids.call_id:
                     self._remote_cseq = subscription.dialog.remote_cseq
             return None
-        if not self._request_matches_dialog(request, host, "NOTIFY"):
-            self._send_response_to_request(
-                request, host, port, 481, "Subscription Does Not Exist"
-            )
-            return None
-        if self._refer_subscription is None:
-            self._send_response_to_request(request, host, port, 481, "Subscription Does Not Exist")
-            return None
-        try:
-            request_cseq = sip.parse_cseq(request.header("CSeq"))
-        except (TypeError, ValueError, sip.SipError):
-            self._send_response_to_request(request, host, port, 400, "Bad Request")
-            return None
-        if request_cseq.number <= self._remote_cseq:
-            self._send_response_to_request(
-                request,
-                host,
-                port,
-                500,
-                "Server Internal Error",
-                extra_headers=(("Retry-After", "1"),),
-            )
-            return None
-        status, reason = self._refer_subscription.notify(request)
-        self._send_response_to_request(request, host, port, status, reason)
-        if status == 200:
-            self._remember_in_dialog_response(request, status, reason)
-            self._remote_cseq = request_cseq.number
+        self._send_response_to_request(request, host, port, 481, "Subscription Does Not Exist")
         return None
 
     def _dialog_candidate_from_answer(

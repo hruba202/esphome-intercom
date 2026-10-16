@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 import logging
 from typing import ClassVar
 
+from .session_cleanup import async_wait_for_cleanup
 from .call_deadlines import CallDeadline
 from .call_projection import publish_bridge_projection
 from .endpoint_lifecycle import call_registry
@@ -576,8 +577,8 @@ async def prepare_parking_pickup(hass, invite, slot, local_ip):
     return SipInviteResult(200, "OK", answer_sdp=answer, commit=commit, rollback=rollback)
 
 
-async def pickup_browser_call(call, endpoint, slot):
-    """An explicit pickup reuses the ordinary browser forwarding and answer path."""
+async def pickup_phone_call(call, endpoint, slot):
+    """Recover a slot through ordinary routing, answering browser legs locally."""
     from homeassistant.core import ServiceCall
     from .softphone_answer import async_answer_browser_call
     from .softphone_commands import async_resolve_browser_call_command
@@ -598,7 +599,21 @@ async def pickup_browser_call(call, endpoint, slot):
         await registry.forward_call(call_id=session.call_id, destination=endpoint.name, on_failure="resume")
         task = registry.task_for(session.call_id, "forward")
         if task is not None:
-            await task
+            try:
+                async with asyncio.timeout(float(call.data.get("answer_timeout", 30))):
+                    await asyncio.shield(task)
+            except BaseException:
+                if not task.done():
+                    task.cancel()
+                await async_wait_for_cleanup(asyncio.gather(task, return_exceptions=True))
+                raise
+        if not endpoint.kind.is_softphone:
+            if not session.live or session.state != "in_call" or session.metadata.get("dest_endpoint_id") != endpoint.endpoint_id:
+                raise ParkingError("The selected phone did not answer the pickup")
+            if claim.current:
+                claim.commit()
+            publish_bridge_projection(hass, session, event_type="picked_up", route_kind="parking_pickup")
+            return session
         if not claim.current or session.owner == "parking":
             raise ParkingError("The selected phone could not accept the parked call")
         answer = ServiceCall(hass, "voip_stack", "answer", {
@@ -614,6 +629,8 @@ async def pickup_browser_call(call, endpoint, slot):
         claim.commit()
         registry.release_resource(session.call_id, f"parking:{session.call_id}", value=application)
         await application.close("picked_up")
+        publish_bridge_projection(hass, session, event_type="picked_up", route_kind="parking_pickup")
+        return session
     except BaseException:
         claim.rollback()
         if session.live and session.owner == "ha_softphone" and session.state == "ringing":
@@ -625,6 +642,10 @@ async def pickup_browser_call(call, endpoint, slot):
                                     dest_endpoint_id="", target_endpoint_id="", ring_endpoint_ids=())
             await application.resume()
         raise
+
+
+async def pickup_browser_call(call, endpoint, slot):
+    return await pickup_phone_call(call, endpoint, slot)
 
 
 async def async_park_call(call):

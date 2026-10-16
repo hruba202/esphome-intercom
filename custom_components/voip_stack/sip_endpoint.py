@@ -509,6 +509,18 @@ class SipEndpointManager:
                 return key
         return None
 
+    def local_uri_for_call(self, call_id: str) -> str:
+        for endpoint in self._dialog_endpoints():
+            if uri := endpoint.local_uri_for_call(call_id):
+                return uri
+        return ""
+
+    def remote_target_for_call(self, call_id: str) -> str:
+        for endpoint in self._dialog_endpoints():
+            if uri := endpoint.remote_target_for_call(call_id):
+                return uri
+        return ""
+
     def remote_uri_for_call(self, call_id: str) -> str:
         for endpoint in self._dialog_endpoints():
             if uri := endpoint.remote_uri_for_call(call_id):

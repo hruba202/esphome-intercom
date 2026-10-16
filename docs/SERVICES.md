@@ -19,6 +19,48 @@ timeout. Use a [call automation](AUTOMATION_DIALPLAN.md) when the result depends
 on time, presence or keypad input. The reference below explains exact fields,
 call context and failure behavior for more complex sequences.
 
+## Phone state and pickup
+
+### `voip_stack.get_phone_state`
+
+Choose **Phone** in the action editor and name a response variable. This read-only
+action returns that phone's current state, its calls and its mailbox counts.
+The required `device_id` comes from the picker; there is no need to copy an ID
+from the device registry.
+
+The response contains `schema_version`, `endpoint_id`, `device_id`, `name`,
+`extension`, `kind`, `availability`, `dnd`, `state`, `calls` and `mailbox`.
+`state` is `idle`, `unavailable`, `calling`, `ringing`, `in_call` or `held`.
+DND is separate from availability and call state. Each call includes the logical
+`call_id`, `generation`, `leg_id`, peer identity and `pickup_available`.
+`sip_call_id` identifies the SIP dialog, not the call token used by HA actions.
+The mailbox has `enabled`, `waiting`, `new` and `old` fields.
+
+For ordinary automations, use the native **Phone state changed** or **Mailbox
+changed** trigger and the **Phone state**, **Has ringing call** or **Has voicemail**
+condition instead of parsing this response with templates. These features read
+the same backend state used for SIP dialog notifications and the card.
+
+### `voip_stack.pickup`
+
+Choose **Recovering phone**, then either **Ringing phone** or **Parking slot**.
+The recovering phone must be available. For a SIP or ESPHome phone, the PBX calls
+that phone and connects the caller when it answers. A browser softphone needs
+its active audio connection. **Wait for answer** is 1 to 120 seconds, default 30.
+
+The fields are `device_id`, either `target_device_id` or `slot`, and optional
+`answer_timeout`. Advanced `call_id`, `expected_generation` and `leg_id` identify
+one particular ringing call. If several eligible calls are present, select one
+explicitly: pickup never guesses from whichever call was displayed most recently.
+A native call trigger can supply call context, but the recovering phone is always
+an explicit choice.
+
+The optional response contains `schema_version`, `call_id`, `generation`,
+`endpoint_id` and `state`. A successful pickup also produces the native
+**Call picked up** trigger. An already answered, ended or replaced call cannot
+be recovered using an old call token. For parking setup and slot dialing, see
+[Call parking](CALL_PARKING.md).
+
 ## External call permissions
 
 ### `voip_stack.set_external_call_access`
@@ -128,11 +170,21 @@ See [Automation Dial Plan](AUTOMATION_DIALPLAN.md) for complete examples.
 
 ### `voip_stack.transfer`
 
-Transfer an established call with the standard SIP REFER subscription.
+Transfer an established call through its existing backend owner. SIP peers use
+the standard REFER subscription where appropriate.
 `call_id` identifies the active call. For a blind transfer, set `destination`
 to a configured phone, extension, `user@host` or `sip:user@host`. For an
 attended transfer, set `replaces_call_id` to the established consultation call;
 VoIP Stack derives the RFC 3891 dialog tags and sends them in `Refer-To`.
+
+For a call between two HA browsers, a blind transfer can select another browser
+or route the remaining participant to a SIP phone or trunk. The latter reuses
+the ordinary forwarding and RTP bridge, with a 30-second operation deadline.
+A failure or cancellation before the handoff commits restores the original
+conversation. For browser-to-SIP/trunk handoffs, turn off both local cameras first. A local
+call with an active video sender is rejected without changing it; merely having
+video capability does not prevent an audio transfer.
+Attended transfers require the corresponding SIP consultation dialogs.
 
 For a local Automation contact, a name or extension resolves to HA's reachable
 SIP listener, using the contact's extension when assigned. It is not addressed
@@ -140,8 +192,9 @@ to the remote phone's SIP host. Explicit `sip:` and `sips:` URIs retain their
 supplied destinations. A successful target resolution does not establish that
 the receiving phone supports REFER; verify its SIP response and NOTIFY result.
 
-The optional action response reports the REFER acceptance status and the final
-`message/sipfrag` status delivered by NOTIFY. This is distinct from
+The optional action response reports whether the transfer completed. For a
+transfer delegated with REFER, its status comes from the final `message/sipfrag`
+notification; a locally controlled handoff reports the backend outcome. This is distinct from
 `voip_stack.forward`, which moves a pending or ringing HA-owned route before
 the call is established.
 

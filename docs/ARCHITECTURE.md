@@ -472,6 +472,36 @@ from the previous format and preserve the destination RTP clock.
 This changes HA media handling, not ESP firmware or codec preference lists.
 
 
+## Phone state and call pickup
+
+The call registry owns sessions, legs and generations; the endpoint registry
+owns phone identity, availability and settings. `dialog_info.snapshot_all`
+projects the call legs for SIP dialog notifications. `PhoneStateObserver`
+shares that projection with WebSocket activity and native HA triggers, without
+polling or maintaining another call registry. Mailbox counters come from the
+same archive used by MWI.
+
+A phone claim is an internal reservation, not a public ringing or answered
+transition. Call events update the shared projection after their call context
+has been published. Identity, availability and mailbox changes can update their
+own fields without exposing a partially prepared call. Native trigger payloads
+carry detached snapshots and, for call-related actions, the original call token.
+A stale automation cannot control a later generation of the same phone.
+
+HA actions and card commands enter the same backend operations. SIP requests
+use those operations through their protocol adapters; the SIP transport does
+not depend on an automation execution to progress its transactions. Conditions
+read state and do not answer, route or allocate media. `get_phone_state` is a
+read-only action; `pickup` explicitly names the recovering phone.
+
+An individual pickup retains the original caller. A group pickup competes with
+ordinary answers in `DialForkController`, including groups reached through a
+forward. The existing session owns the prepared candidates and the answer gate.
+Before selection, cancellation releases the prospective recovering leg. After
+the arbiter accepts it, cancelling the action waiter cannot close a leg already
+owned by the group. The committed media/answer owner emits the pickup event,
+so the event does not depend on a browser or an automation waiting for a reply.
+
 ## SIP transactions, event usages and media replacement
 
 An established outbound dialog has one transport reader. The dispatcher sends

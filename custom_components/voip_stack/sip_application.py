@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import EVENT_SIP_MESSAGE, EVENT_SIP_PRESENCE
 from .core import sip, sip_transfer
 from .core.sip_dialog import SubscriptionDialog
+from .core.sip_auth import SipDigestCredentials
 from .sip_listener import SipFollowUpRequest, SipRequestResult
 from .sip_registrar import SipRegistrar
 
@@ -71,6 +72,13 @@ class SipApplicationMethods:
         account = self.registrar.account_for_source(addr, transport)
         if request.method == "REFER":
             return self._refer(request, addr, transport, account, follow_up_sender, flow_trunk_id)
+        if request.method == "SUBSCRIBE" and request.header("Event").partition(";")[0].strip().casefold() == "refer":
+            for subscription in self.subscriptions.values():
+                notifier = subscription.refer_notifier
+                if notifier is not None and notifier.dialog.key.call_id == request.header("Call-ID"):
+                    status, reason, headers = notifier.refresh(request)
+                    return SipRequestResult(status, reason, headers=headers, to_tag=subscription.to_tag)
+            return SipRequestResult(481, "Subscription Does Not Exist")
         if account is None:
             return SipRequestResult(403, "Forbidden")
         if request.method == "MESSAGE":
@@ -128,12 +136,10 @@ class SipApplicationMethods:
             )
             if (event == "dialog" and result.status == 200 and self.dialog_unsubscribe is None
                     and any(item.event == "dialog" for item in self.subscriptions.values())):
-                from .websocket_api import CALL_EVENT
-                from .runtime_data import endpoint_directory
+                from .phone_state import phone_state_observer
 
-                self.dialog_unsubscribe = self.hass.bus.async_listen(CALL_EVENT, self._dialog_changed)
-                self.endpoint_unsubscribe = endpoint_directory(self.hass).subscribe(self._dialog_endpoint_changed)
-                self.parking_unsubscribe = self.hass.bus.async_listen("voip_stack.parking_changed", self._dialog_changed)
+                self.dialog_unsubscribe = phone_state_observer(self.hass).subscribe(
+                    lambda dialogs: self._notify_dialog_changes(dialogs=dialogs), kind="dialog")
             return result
         return SipRequestResult(405, "Method Not Allowed")
 
@@ -202,18 +208,21 @@ class SipApplicationMethods:
         async def action():
             return await calls.refer_call(target_dialog.call_id, target, source_client=client)
 
-        async def report(status, terminal):
-            reason = "Trying" if status == 100 else "OK" if status < 300 else "Transfer Failed"
+        async def send(headers, body):
             result = SipRequestResult(to_tag=tag, follow_up_dialog=state,
+                follow_up_credentials=self._subscriber_credentials(subscriber),
                 follow_up=SipFollowUpRequest(method="NOTIFY", cseq=state.next_cseq(),
-                    headers=sip_transfer.refer_event_headers(sequence.number, terminal=terminal),
-                    body=f"SIP/2.0 {status} {reason}\r\n".encode(), content_type="message/sipfrag"))
+                    headers=headers, body=body, content_type="message/sipfrag"))
             return await sender(request, addr, result)
+
+        notifier = sip_transfer.ReferNotifier(state, sequence.number, send)
+        subscription.refer_notifier = notifier
 
         async def run():
             try:
-                await sip_transfer.run_refer_action(action, report)
+                await sip_transfer.run_refer_action(action, notifier.report)
             finally:
+                await notifier.close()
                 if self.subscriptions.get(key) is subscription:
                     self.subscriptions.pop(key, None)
 
@@ -417,12 +426,14 @@ class SipApplicationMethods:
         expires: int,
         terminated: bool = False,
         termination_reason: str = "timeout",
+        dialog_states: tuple | None = None,
     ) -> SipRequestResult:
         if subscription.event == "dialog":
             from .dialog_info import document, snapshot
             from .runtime_data import require_runtime_data
 
-            states = snapshot(require_runtime_data(self.hass), subscription.dialog_endpoint_id, subscription.dialog_filter)
+            states = (snapshot(require_runtime_data(self.hass), subscription.dialog_endpoint_id, subscription.dialog_filter)
+                      if dialog_states is None else dialog_states)
             body = document(subscription.request.uri, subscription.dialog_version, states)
             subscription.dialog_snapshot = states
             content_type = "application/dialog-info+xml"
@@ -453,7 +464,39 @@ class SipApplicationMethods:
             ),
             follow_up_lock=subscription.notify_lock,
             follow_up_dialog=subscription.dialog,
+            follow_up_credentials=self._subscriber_credentials(subscription.subscriber),
         )
+
+    def dialog_credentials(self, call_id, address, transport):
+        account = self.registrar.account_for_source(address, transport)
+        if account is not None:
+            return SipDigestCredentials(account.username, account.password)
+        from .runtime_data import require_runtime_data
+        runtime = require_runtime_data(self.hass)
+        session = runtime.sip.get_session(runtime.sip.resolve_session_id(call_id)) if runtime.sip is not None else None
+        identity = session.metadata.get("inbound_trunk_id", "") if session is not None else ""
+        return self._subscriber_credentials("trunk:" + identity) if identity else None
+
+    def _subscriber_credentials(self, subscriber):
+        if subscriber.startswith("trunk:"):
+            from .runtime_data import sip_trunks
+            trunk = sip_trunks(self.hass).get(subscriber.removeprefix("trunk:"))
+            config = trunk.config if trunk is not None else None
+            return (SipDigestCredentials(config.username, config.password, config.auth_username)
+                    if config is not None and config.username else None)
+        account = self.registrar.accounts.get(subscriber.casefold())
+        return SipDigestCredentials(account.username, account.password) if account is not None and account.enabled else None
+
+    def _end_subscription(self, subscription, *, reason="timeout", notify=True):
+        """Remove an event usage once, retaining its terminal sender until done."""
+        if self.subscriptions.get(subscription.key) is not subscription:
+            return
+        self.subscriptions.pop(subscription.key)
+        self._cancel_timer(self.subscription_timers, subscription.key)
+        if notify:
+            self._schedule_notification(subscription, self._notification_result(
+                subscription, expires=0, terminated=True, termination_reason=reason))
+        self._release_dialog_observers_if_unused()
 
     def _publication(self, target: str) -> "SipPresencePublication | None":
         publications = self.publications
@@ -486,13 +529,14 @@ class SipApplicationMethods:
     def _dialog_endpoint_changed(self, event) -> None:
         self._notify_dialog_changes(event.endpoint.endpoint_id)
 
-    def _notify_dialog_changes(self, endpoint_id=""):
+    def _notify_dialog_changes(self, endpoint_id="", *, dialogs=None):
         if self.dialog_unsubscribe is None or not self.subscriptions:
             return
-        from .dialog_info import snapshot
+        from .dialog_info import snapshot_all, filter_dialogs
         from .runtime_data import require_runtime_data
 
         runtime = require_runtime_data(self.hass)
+        dialogs = snapshot_all(runtime) if dialogs is None else dialogs
         for subscription in tuple((self.subscriptions or {}).values()):
             if subscription.event != "dialog" or (endpoint_id and endpoint_id != subscription.dialog_endpoint_id):
                 continue
@@ -500,14 +544,15 @@ class SipApplicationMethods:
             if subscription.dialog_endpoint_id.startswith("parking:"):
                 from .parking import parking_address
                 removed = parking_address(self.hass, subscription.dialog_endpoint_id.removeprefix("parking:")) is None
-            if not removed and snapshot(runtime, subscription.dialog_endpoint_id, subscription.dialog_filter) == subscription.dialog_snapshot:
+            states = filter_dialogs(dialogs.get(subscription.dialog_endpoint_id, ()), subscription.dialog_filter)
+            if not removed and states == subscription.dialog_snapshot:
                 continue
             if removed:
                 self.subscriptions.pop(subscription.key, None)
                 self._cancel_timer(self.subscription_timers, subscription.key)
             result = self._notification_result(
                 subscription, expires=0 if removed else max(0, int(subscription.expires_at - time.time())),
-                terminated=removed, termination_reason="noresource",
+                terminated=removed, termination_reason="noresource", dialog_states=states,
             )
             self._schedule_notification(subscription, result)
         self._release_dialog_observers_if_unused()
@@ -543,8 +588,7 @@ class SipApplicationMethods:
         now = time.time()
         for key, subscription in tuple(subscriptions.items()):
             if subscription.expires_at <= now:
-                subscriptions.pop(key, None)
-                self._cancel_timer(self.subscription_timers, key)
+                self._end_subscription(subscription)
                 continue
             if subscription.event != event or subscription.target.lower() != target.lower():
                 continue
@@ -581,10 +625,7 @@ class SipApplicationMethods:
             return
         if current.expires_at > time.time():
             return
-        subscriptions.pop(key, None)
-        self._release_dialog_observers_if_unused()
-        result = self._notification_result(current, expires=0, terminated=True)
-        self._schedule_notification(current, result)
+        self._end_subscription(current)
         if current.notify_task is not None:
             await asyncio.shield(current.notify_task)
 
@@ -616,12 +657,15 @@ class SipApplicationMethods:
                         follow_up = replace(follow_up, body=body)
                     pending = replace(pending, follow_up=follow_up, follow_up_scheduler=None)
                     response = await subscription.sender(subscription.request, subscription.addr, pending)
-                    if response is None or int(response.status_code or 0) in {404, 405, 410, 416, 480, 481, 482, 483, 484, 485, 489, 501, 604}:
-                        if self.subscriptions.get(subscription.key) is subscription:
-                            self.subscriptions.pop(subscription.key, None)
-                            self._cancel_timer(self.subscription_timers, subscription.key)
+                    if response is None or int(response.status_code or 0) in {401, 403, 404, 405, 407, 410, 416, 480, 481, 482, 483, 484, 485, 489, 501, 604}:
+                        self._end_subscription(subscription, notify=False)
                         subscription.pending_notification = None
                         subscription.notify_terminated = True
+            except Exception:
+                self._end_subscription(subscription, notify=False)
+                subscription.pending_notification = None
+                subscription.notify_terminated = True
+                raise
             finally:
                 subscription.notify_task = None
                 self.notifiers.pop(id(subscription), None)
@@ -847,6 +891,9 @@ class SipApplicationMethods:
         self.event_clients.clear()
         self.notifiers.clear()
         if self.subscriptions is not None:
+            for subscription in tuple(self.subscriptions.values()):
+                if subscription.refer_notifier is not None:
+                    await subscription.refer_notifier.close()
             self.subscriptions.clear()
         if self.publications is not None:
             self.publications.clear()
@@ -896,6 +943,7 @@ class SipEventSubscription:
     notify_task: asyncio.Task | None = None
     pending_notification: SipRequestResult | None = None
     notify_terminated: bool = False
+    refer_notifier: sip_transfer.ReferNotifier | None = None
 
 
 def _publication_expires(value: str) -> int:

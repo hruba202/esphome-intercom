@@ -495,3 +495,45 @@ firmware-to-PBX path; HA can continue providing the device's Assist features.
 - [Automation cookbook](AUTOMATION_DIALPLAN.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](ARCHITECTURE.md)
+
+## Phone state in automations
+
+Use **VoIP Stack: Get phone state** (`voip_stack.get_phone_state`) and choose
+**Phone** with the device picker. The action returns availability, DND, active
+calls, their participants and mailbox counters in a response variable. Reading
+state never answers or changes a call.
+
+For ordinary automations, use the native **Phone state changed** or
+**Phone mailbox changed** trigger instead of polling that action. Choose the
+phone in the editor. **Phone is in state**, **Phone has a ringing call**, and
+**Phone has voicemail** provide native conditions without templates.
+
+The state comes from the PBX call registry. An unavailable phone is not an idle
+phone, and an external address is not assumed idle merely because HA cannot
+observe calls on its remote PBX. Voicemail counters distinguish new and read
+messages and do not count conversation recordings.
+
+### Recover a ringing call from an automation
+
+In the automation editor, choose **VoIP Stack: Phone state changed**, select
+**Phone**, and set the new state to **Ringing**. Add **VoIP Stack: Phone is in
+state** as a condition, select the phone that should answer and choose **Idle**.
+Then add **VoIP Stack: Pick up call** and select that phone under
+**Recovering phone**. The native trigger carries the ringing call's identity
+into the action, so no call-ID template is needed.
+
+A SIP or ESPHome recovering phone rings normally and connects when answered.
+A browser phone needs an open card with its audio connection ready. The
+**Wait for answer** field limits how long the action waits for the recovering
+phone. Another member answering a ring group first remains the winner; an old
+automation execution cannot recover a newer call on the same phone.
+
+For a button, script or another trigger, also choose **Ringing phone** in the
+action. To retrieve a parked caller, choose **Parking slot** instead. When a
+phone has several ringing calls, the advanced call and leg selectors identify
+which one to recover. See the [action reference](SERVICES.md#voip_stackpickup).
+
+**Call picked up** reports a completed recovery. It is emitted by the PBX after
+ownership is committed, including when the action's caller stops waiting after
+the group has already chosen the recovering phone. An unsuccessful attempt does
+not emit that trigger.

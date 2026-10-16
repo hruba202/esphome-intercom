@@ -440,6 +440,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Libero",
+        "unavailable": "Non disponibile",
+        "calling": "Sta chiamando",
+        "ringing": "Sta squillando",
+        "in_call": "In conversazione",
+        "held": "In attesa"
+      }
     }
   },
   "system_health": {
@@ -846,6 +856,36 @@
           "description": "Filtro telefono facoltativo. Lascia vuoto per tutte le caselle."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Stato del telefono cambiato",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "from": {
+          "name": "Da"
+        },
+        "to": {
+          "name": "A"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Casella vocale del telefono cambiata",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Chiamata recuperata",
+      "fields": {
+        "destination": {
+          "name": "Destinazione"
+        }
+      }
     }
   },
   "conditions": {
@@ -886,6 +926,74 @@
         "digits": {
           "name": "Cifre attese",
           "description": "Vuoto: qualsiasi sequenza ricevuta."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Il telefono è nello stato",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "state": {
+          "name": "Stato"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Il telefono ha una chiamata in squillo",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Il telefono ha messaggi vocali",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "unread_only": {
+          "name": "Solo messaggi non ascoltati"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Leggi stato del telefono",
+      "description": "Leggi stato, chiamate e contatori della casella vocale del telefono selezionato.",
+      "fields": {
+        "device_id": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Recupera chiamata",
+      "description": "Recupera sul telefono selezionato una chiamata che squilla o è parcheggiata.",
+      "fields": {
+        "device_id": {
+          "name": "Telefono che recupera"
+        },
+        "target_device_id": {
+          "name": "Telefono che squilla"
+        },
+        "slot": {
+          "name": "Posto di parcheggio"
+        },
+        "answer_timeout": {
+          "name": "Attesa della risposta"
+        },
+        "call_id": {
+          "name": "ID chiamata"
+        },
+        "expected_generation": {
+          "name": "Generazione della chiamata"
+        },
+        "leg_id": {
+          "name": "Ramo della chiamata"
         }
       }
     }

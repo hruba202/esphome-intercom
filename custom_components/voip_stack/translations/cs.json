@@ -440,6 +440,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Nečinný",
+        "unavailable": "Nedostupný",
+        "calling": "Volá",
+        "ringing": "Vyzvání",
+        "in_call": "V hovoru",
+        "held": "Přidržený"
+      }
     }
   },
   "system_health": {
@@ -846,6 +856,36 @@
           "description": "Volitelný filtr telefonu. Pro všechny schránky ponechte prázdné."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Změna stavu telefonu",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "from": {
+          "name": "Ze stavu"
+        },
+        "to": {
+          "name": "Do stavu"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Změna hlasové schránky telefonu",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Hovor převzat",
+      "fields": {
+        "destination": {
+          "name": "Cíl"
+        }
+      }
     }
   },
   "conditions": {
@@ -886,6 +926,74 @@
         "digits": {
           "name": "Očekávané číslice",
           "description": "Ponechte prázdné, aby odpovídalo jakýmkoli přijatým číslicím."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Telefon je ve stavu",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "state": {
+          "name": "Stav"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Telefon má vyzvánějící hovor",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Telefon má hlasové zprávy",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "unread_only": {
+          "name": "Pouze nepřečtené zprávy"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Získat stav telefonu",
+      "description": "Načíst stav, hovory a počty zpráv ve schránce vybraného telefonu.",
+      "fields": {
+        "device_id": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Převzít hovor",
+      "description": "Převzít vyzvánějící nebo zaparkovaný hovor na vybraném telefonu.",
+      "fields": {
+        "device_id": {
+          "name": "Přebírající telefon"
+        },
+        "target_device_id": {
+          "name": "Vyzvánějící telefon"
+        },
+        "slot": {
+          "name": "Parkovací pozice"
+        },
+        "answer_timeout": {
+          "name": "Čekat na přijetí"
+        },
+        "call_id": {
+          "name": "ID hovoru"
+        },
+        "expected_generation": {
+          "name": "Generace hovoru"
+        },
+        "leg_id": {
+          "name": "Větev hovoru"
         }
       }
     }

@@ -246,6 +246,9 @@ class ReferCorrelationTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(target.local_tag, "peer")
             self.assertEqual(target.remote_tag, sip.extract_tag(invite.header("From")))
             self.assertIn("tdialog", sip.option_tags(refer, "Require"))
+            peer.notify(invite, addr, 10, f"refer;id={sip.parse_cseq(refer.header('CSeq')).number}")
+            self.assertEqual((await peer.receive())[0].status_code, 481)
+            self.assertFalse(transfer.done())
             peer.notify(refer, addr, 1, "refer", 100)
             self.assertEqual((await peer.receive())[0].status_code, 200)
             peer.answer(refer, addr, 200)
@@ -298,6 +301,13 @@ class ReferCorrelationTest(unittest.IsolatedAsyncioTestCase):
             target = sip_transfer.request_target_dialog(refer)
             self.assertEqual((target.call_id, target.local_tag, target.remote_tag), ("listener-modern", "peer", "ha"))
             peer.answer(refer, addr, 200)
+            wrong_dialog = sip.parse_message(sip.build_request("REFER", "sip:peer@127.0.0.1", [
+                ("From", "<sip:HA@127.0.0.1>;tag=ha"), ("To", original.header("From")),
+                ("Call-ID", original.header("Call-ID")),
+            ]))
+            peer.notify(wrong_dialog, addr, 10, f"refer;id={sip.parse_cseq(refer.header('CSeq')).number}")
+            self.assertEqual((await peer.receive())[0].status_code, 481)
+            self.assertFalse(task.done())
             peer.notify(refer, addr, 1, "refer", 100)
             self.assertEqual((await peer.receive())[0].status_code, 200)
             bye = sip.build_request("BYE", "sip:HA@127.0.0.1", [
@@ -318,5 +328,129 @@ class ReferCorrelationTest(unittest.IsolatedAsyncioTestCase):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             local_transport.close()
+            await endpoint.wait_closed()
+            transport.close()
+
+    async def test_refer_unsubscribe_stops_notifications_not_the_accepted_action(self):
+        loop = asyncio.get_running_loop()
+        transport, peer = await loop.create_datagram_endpoint(Peer, local_addr=("127.0.0.1", 0))
+        port = transport.get_extra_info("sockname")[1]
+        audio = sdp.RtpPcmFormat(0, "PCMU", 8000, 1, 20)
+        client = sip_client.SipCallClient(local_ip="127.0.0.1", local_name="HA", local_sip_port=0,
+            local_rtp_port=41000, supported_send_rtp_formats=(audio,), supported_recv_rtp_formats=(audio,))
+        entered, release = asyncio.Event(), asyncio.Event()
+        completed = []
+        async def action(_target):
+            entered.set()
+            await release.wait()
+            completed.append(True)
+            return 200
+        client.on_refer = action
+        tasks = []
+        try:
+            task = asyncio.create_task(client.invite(target="peer", remote_host="127.0.0.1", remote_sip_port=port))
+            tasks.append(task)
+            invite, addr = await peer.receive("INVITE")
+            peer.answer(invite, addr, 200, b"v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=test\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 45000 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=sendrecv\r\n")
+            self.assertEqual(await task, "in_call")
+            await peer.receive("ACK")
+            tasks.append(asyncio.create_task(client.wait_for_dialog_termination()))
+            def send(method, sequence, extra):
+                headers = [("Via", f"SIP/2.0/UDP 127.0.0.1:{port};branch=z9hG4bKusage{sequence}"),
+                    ("From", invite.header("To") + ";tag=peer"), ("To", invite.header("From")),
+                    ("Call-ID", invite.header("Call-ID")), ("CSeq", f"{sequence} {method}"),
+                    ("Contact", f"<sip:peer@127.0.0.1:{port}>"), *extra]
+                transport.sendto(sip.build_request(method, "sip:HA@127.0.0.1", headers), addr)
+            send("REFER", 100, [("Refer-To", "<sip:next@127.0.0.1>")])
+            seen = []
+            while len(seen) < 2:
+                message, source = await peer.receive()
+                seen.append(message)
+                if message.method == "NOTIFY":
+                    peer.answer(message, source, 200)
+            self.assertTrue(any(item.status_code == 200 for item in seen))
+            await asyncio.wait_for(entered.wait(), 1)
+            for sequence, expiry in ((101, 20), (102, 0)):
+                send("SUBSCRIBE", sequence, [("Event", "refer;id=100"), ("Expires", str(expiry))])
+                response = notification = None
+                while response is None or notification is None:
+                    message, source = await peer.receive()
+                    if message.method == "NOTIFY":
+                        notification = message
+                        peer.answer(message, source, 200)
+                    elif message.is_response and sip.parse_cseq(message.header("CSeq")).method == "SUBSCRIBE":
+                        response = message
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.header("Expires"), str(expiry))
+                self.assertEqual(notification.header("Event"), "refer;id=100")
+                self.assertEqual(notification.header("Subscription-State").startswith("terminated"), expiry == 0)
+            self.assertFalse(completed)
+            operation = client._incoming_refer_task
+            release.set()
+            await asyncio.wait_for(operation, 1)
+            self.assertEqual(completed, [True])
+            self.assertFalse(client._refer_notifiers)
+        finally:
+            release.set()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await client.close()
+            transport.close()
+
+    async def test_listener_refer_unsubscribe_preserves_accepted_operation(self):
+        loop = asyncio.get_running_loop()
+        transport, peer = await loop.create_datagram_endpoint(Peer, local_addr=("127.0.0.1", 0))
+        port = transport.get_extra_info("sockname")[1]
+        entered, release = asyncio.Event(), asyncio.Event()
+        completed = []
+        async def action(call_id, target):
+            self.assertEqual(call_id, "refresh-uas")
+            entered.set()
+            await release.wait()
+            completed.append(target.uri)
+            return 200
+        endpoint = sip_listener.SipUdpEndpoint(local_ip="127.0.0.1", local_sip_port=0, local_rtp_port=41000,
+            supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)],
+            on_invite=lambda _: None, on_refer=action)
+        local, _ = await loop.create_datagram_endpoint(lambda: endpoint, local_addr=("127.0.0.1", 0))
+        address = local.get_extra_info("sockname")
+        def request(method, sequence, extra=()):
+            return sip.build_request(method, "sip:HA@127.0.0.1", [
+                ("Via", f"SIP/2.0/UDP 127.0.0.1:{port};branch=z9hG4bKrefresh{sequence}"),
+                ("From", "<sip:peer@127.0.0.1>;tag=peer"), ("To", "<sip:HA@127.0.0.1>;tag=ha"),
+                ("Call-ID", "refresh-uas"), ("CSeq", f"{sequence} {method}"),
+                ("Contact", f"<sip:peer@127.0.0.1:{port}>"), *extra])
+        dialog = sip_listener._ActiveDialog(request=sip.parse_message(request("INVITE", 1)),
+            addr=("127.0.0.1", port), to_tag="ha", cseq=1, transport="UDP",
+            remote_uri=f"sip:peer@127.0.0.1:{port}", remote_target_uri=f"sip:peer@127.0.0.1:{port}")
+        endpoint.active_dialogs["refresh-uas"] = dialog
+        try:
+            for method, sequence, extra, terminal in (
+                ("REFER", 2, (("Refer-To", "<sip:next@127.0.0.1>"),), False),
+                ("SUBSCRIBE", 3, (("Event", "refer;id=2"), ("Expires", "20")), False),
+                ("SUBSCRIBE", 4, (("Event", "refer;id=2"), ("Expires", "0")), True),
+            ):
+                transport.sendto(request(method, sequence, extra), address)
+                response = notification = None
+                while response is None or notification is None:
+                    message, source = await peer.receive()
+                    if message.method == "NOTIFY":
+                        notification = message
+                        peer.answer(message, source, 200)
+                    elif message.is_response and message.header("CSeq") == f"{sequence} {method}":
+                        response = message
+                        self.assertEqual(response.status_code, 200)
+                self.assertEqual(notification.header("Subscription-State").startswith("terminated"), terminal)
+            await asyncio.wait_for(entered.wait(), 1)
+            self.assertFalse(completed)
+            operation = dialog.refer_task
+            release.set()
+            await asyncio.wait_for(operation, 1)
+            self.assertEqual(completed, ["sip:next@127.0.0.1"])
+            self.assertIsNone(dialog.refer_notifier)
+        finally:
+            release.set()
+            local.close()
             await endpoint.wait_closed()
             transport.close()

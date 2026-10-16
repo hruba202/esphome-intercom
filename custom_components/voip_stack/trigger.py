@@ -28,6 +28,7 @@ TRIGGER_EVENTS = {
     "route_requested": frozenset({"route_requested"}),
     "call_connected": frozenset({"answered", "connected"}),
     "call_ended": frozenset({"ended", "missed", "failed"}),
+    "call_picked_up": frozenset({"picked_up"}),
     "dtmf_received": frozenset({"dtmf"}),
 }
 _LOGGER = logging.getLogger(__name__)
@@ -269,4 +270,91 @@ class VoicemailReceivedTrigger(Trigger):
 
 
 async def async_get_triggers(hass):
-    return {**dict.fromkeys(TRIGGER_EVENTS, VoipCallTrigger), "voicemail_received": VoicemailReceivedTrigger}
+    return {**dict.fromkeys(TRIGGER_EVENTS, VoipCallTrigger), "voicemail_received": VoicemailReceivedTrigger,
+            "phone_state_changed": PhoneStateTrigger, "mailbox_changed": PhoneStateTrigger}
+
+
+class PhoneStateTrigger(Trigger):
+    """Expose committed phone and mailbox transitions through native HA triggers."""
+
+    def __init__(self, hass, config):
+        super().__init__(hass, config)
+        self._options = config.options or {}
+        self._kind = config.key.rsplit(".", 1)[-1]
+
+    @classmethod
+    async def async_validate_config(cls, hass, config):
+        return vol.Schema(
+            {
+                vol.Required("options"): {
+                    vol.Required("phone"): cv.string,
+                    vol.Optional("from"): vol.In(
+                        ["idle", "unavailable", "calling", "ringing", "in_call", "held"]
+                    ),
+                    vol.Optional("to"): vol.In(
+                        ["idle", "unavailable", "calling", "ringing", "in_call", "held"]
+                    ),
+                }
+            }
+        )(config)
+
+    async def async_attach_runner(self, run_action, did_not_trigger=None):
+        from .phone_state import phone_state_observer, resolve_phone
+        from homeassistant.exceptions import ServiceValidationError
+
+        observer = phone_state_observer(self._hass)
+
+        @callback
+        def changed(payload, context=None):
+            try:
+                endpoint = resolve_phone(self._hass, self._options["phone"])
+            except ServiceValidationError:
+                return
+            if endpoint.endpoint_id != payload["endpoint_id"]:
+                return
+            before, after = payload["previous"] or {}, payload["phone"] or {}
+            field = "mailbox" if self._kind == "mailbox_changed" else "state"
+            if before.get(field) == after.get(field):
+                return
+            if self._kind == "phone_state_changed" and any(
+                self._options.get(key) is not None and self._options[key] != value
+                for key, value in (
+                    ("from", before.get("state")),
+                    ("to", after.get("state")),
+                )
+            ):
+                return
+            call = payload.get("call") if self._kind == "phone_state_changed" else None
+            if (
+                self._kind == "phone_state_changed"
+                and call is None
+                and len(after.get("calls", ())) == 1
+            ):
+                call = after["calls"][0]
+            execution = None
+            if call is not None and call.get("call_id") and call.get("generation"):
+                snapshot = {
+                    **call,
+                    "endpoint_id": endpoint.endpoint_id,
+                    "device_id": endpoint.device_id,
+                }
+                execution = CallExecution(
+                    CallToken(call["call_id"], call["generation"]), snapshot
+                )
+            binding = current_execution.set(execution)
+            try:
+                task = run_action(
+                    deepcopy({"phone": after, "previous": before, "call": call}),
+                    self._kind,
+                    context,
+                )
+                if execution is not None:
+
+                    def finished(_task):
+                        execution.active = False
+
+                    task.add_done_callback(finished)
+            finally:
+                current_execution.reset(binding)
+
+        return observer.subscribe(changed)

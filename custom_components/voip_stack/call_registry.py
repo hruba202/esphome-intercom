@@ -1102,9 +1102,11 @@ class CallRuntimeApi:
             source_call_id,
             role=source_role,
             state=source_state or state,
+            endpoint_id=str(session.metadata.get("source_endpoint_id") or ""),
         )
         self.add_leg(
-            source_call_id, dest_call_id, role=dest_role, state=dest_state or state
+            source_call_id, dest_call_id, role=dest_role, state=dest_state or state,
+            endpoint_id=str(session.metadata.get("dest_endpoint_id") or session.metadata.get("target_endpoint_id") or ""),
         )
         self.attach_sip_client(
             source_call_id,

@@ -71,7 +71,7 @@ class SessionTimerDriver:
         while deadline := self.deadline:
             await asyncio.sleep(max(0.0, deadline - self.now()))
             outcome = await self.advance()
-            if outcome != "refreshed":
+            if outcome not in {"refreshed", "waiting"}:
                 return outcome
         return "disabled"
 

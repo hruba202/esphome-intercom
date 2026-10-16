@@ -1236,7 +1236,7 @@ def _set_ha_softphone_call_state(
         store["sip_state"] = state
         store["terminal_reason"] = ""
         for key, value in extra.items():
-            if key == "video_failure_reason":
+            if key in {"video_failure_reason", "target_device_id", "target_endpoint_id"}:
                 store[key] = str(value or "")
             elif value not in (None, ""):
                 store[key] = value
@@ -1247,7 +1247,11 @@ def _set_ha_softphone_call_state(
         "session_device_id": session_device_id or "",
     }
     payload.update(canonical)
-    payload.update({k: v for k, v in extra.items() if v not in (None, "")})
+    payload.update({
+        key: str(value or "") if key in {"target_device_id", "target_endpoint_id"} else value
+        for key, value in extra.items()
+        if value not in (None, "") or key in {"target_device_id", "target_endpoint_id"}
+    })
     if terminal and store.get("terminal_reason"):
         payload["terminal_reason"] = store["terminal_reason"]
     if terminal and store.get("last_terminal_dialed_target"):
@@ -1610,28 +1614,17 @@ def websocket_subscribe_call_events(
                 return
         connection.send_event(msg_id, {"event_type": CALL_EVENT, "data": event.data})
 
-    from .dialog_info import activity_snapshot
-    from .parking import PARKING_CHANGED
-
-    last_activity = None
+    from .phone_state import phone_state_observer
 
     @callback
-    def forward_activity(_event=None):
-        nonlocal last_activity
-        current = activity_snapshot(runtime_data(hass))
-        if current != last_activity:
-            last_activity = current
-            connection.send_event(msg_id, {"event_type": f"{DOMAIN}.activity", "data": current})
+    def forward_activity(activity):
+        connection.send_event(msg_id, {"event_type": f"{DOMAIN}.activity", "data": activity})
 
     listeners = [hass.bus.async_listen(CALL_EVENT, forward_call_event)]
+    observer = None
     if msg.get("include_activity", False):
-        listeners.extend((
-            hass.bus.async_listen(CALL_EVENT, forward_activity),
-            hass.bus.async_listen(PARKING_CHANGED, forward_activity),
-        ))
-        runtime = runtime_data(hass)
-        if runtime is not None:
-            listeners.append(runtime.endpoints.subscribe(forward_activity))
+        observer = phone_state_observer(hass)
+        listeners.append(observer.subscribe(forward_activity, kind="activity"))
 
     @callback
     def unsubscribe():
@@ -1640,8 +1633,8 @@ def websocket_subscribe_call_events(
 
     connection.subscriptions[msg_id] = unsubscribe
     connection.send_result(msg_id)
-    if msg.get("include_activity", False):
-        forward_activity()
+    if observer is not None:
+        forward_activity(observer.activity)
 
 
 @websocket_api.websocket_command(

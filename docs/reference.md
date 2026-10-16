@@ -205,6 +205,8 @@ permission are independent.
 - `voip_stack.hangup`
 - `voip_stack.forward`
 - `voip_stack.transfer`
+- `voip_stack.pickup`: recover a ringing call or parking slot on a selected phone.
+- `voip_stack.get_phone_state`: read phone, call and mailbox state into an action response.
 - `voip_stack.route`
 - `voip_stack.select_inbound_destination`
 - `voip_stack.set_deadline`

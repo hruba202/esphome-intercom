@@ -15,4 +15,4 @@ voluptuous>=0.15.2,<=0.16.0
 websockets==17.0
 
 # GRUU temporary-instance tokens use authenticated encryption.
-cryptography==50.0.1
+cryptography>=48.0.1,<51

@@ -70,3 +70,44 @@ class SubscriptionRoutingTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(*tasks, return_exceptions=True)
             target.close()
             await target.wait_closed()
+
+    async def test_udp_notify_authenticates_and_follows_updated_contact(self):
+        from .test_refer_correlation import Peer
+        from custom_components.voip_stack.core.sip_auth import SipDigestCredentials, verify_digest_authorization
+        loop = asyncio.get_running_loop()
+        transport, peer = await loop.create_datagram_endpoint(Peer, local_addr=("127.0.0.1", 0))
+        port = transport.get_extra_info("sockname")[1]
+        endpoint = sip_listener.SipUdpEndpoint(local_ip="127.0.0.1", local_sip_port=0, local_rtp_port=41000,
+            supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)], on_invite=lambda _: None)
+        local, _ = await loop.create_datagram_endpoint(lambda: endpoint, local_addr=("127.0.0.1", 0))
+        request = sip.parse_message(sip.build_request("SUBSCRIBE", "sip:desk@127.0.0.1", [
+            ("From", "<sip:watcher@127.0.0.1>;tag=watcher"), ("To", "<sip:desk@127.0.0.1>"),
+            ("Contact", f"<sip:watcher@127.0.0.1:{port}>"), ("Call-ID", "notify-auth"), ("CSeq", "1 SUBSCRIBE")]))
+        state = SubscriptionDialog.from_request(request, "notifier")
+        result = sip_listener.SipRequestResult(to_tag="notifier", follow_up_dialog=state,
+            follow_up_credentials=SipDigestCredentials("watcher", "test-only"),
+            follow_up=sip_listener.SipFollowUpRequest(method="NOTIFY", cseq=state.next_cseq(),
+                headers=(("Event", "presence"), ("Subscription-State", "active;expires=60")), body=b"state"))
+        task = asyncio.create_task(endpoint._send_application_follow_up(request, ("127.0.0.1", port), result))
+        try:
+            first, addr = await peer.receive("NOTIFY")
+            headers = [(key, first.header(key)) for key in ("Via", "From", "To", "Call-ID", "CSeq")]
+            headers.append(("WWW-Authenticate", 'Digest realm="watcher", nonce="challenge", qop="auth"'))
+            transport.sendto(sip.build_response(401, "Unauthorized", headers), addr)
+            retry, addr = await peer.receive("NOTIFY")
+            self.assertEqual(sip.parse_cseq(retry.header("CSeq")).number, 2)
+            self.assertNotEqual(retry.header("Via"), first.header("Via"))
+            verify_digest_authorization(authorization_header=retry.header("Authorization"), username="watcher",
+                password="test-only", method="NOTIFY", uri=retry.uri, realm="watcher", nonce="challenge")
+            headers = [(key, retry.header(key)) for key in ("Via", "From", "To", "Call-ID", "CSeq")]
+            headers.append(("Contact", "<sip:watcher@127.0.0.9:5090>"))
+            transport.sendto(sip.build_response(200, "OK", headers), addr)
+            self.assertEqual((await task).status_code, 200)
+            self.assertEqual(state.remote_target_uri, "sip:watcher@127.0.0.9:5090")
+            self.assertEqual(state.local_cseq, 3)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            local.close()
+            await endpoint.wait_closed()
+            transport.close()

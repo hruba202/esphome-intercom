@@ -88,6 +88,7 @@ class DialCandidate:
     order: int = 0
     endpoint_id: str = ""
     control: bool = False
+    confirm: Callable[[], Awaitable[bool]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +96,77 @@ class ForkResult:
     outcome: DialOutcome
     winner: DialCandidate | None = None
     attempted: tuple[str, ...] = ()
+
+
+@dataclass(slots=True)
+class ExternalForkAnswer:
+    endpoint_id: str
+    selected: asyncio.Future
+    committed: asyncio.Future
+    payload: object | None = None
+
+    @property
+    def accepted(self) -> bool:
+        return (self.selected.done() and not self.selected.cancelled() and self.selected.result()
+                and self.committed.done() and not self.committed.cancelled() and self.committed.result())
+
+    def finish(self, success: bool):
+        if not success and not self.selected.done():
+            self.selected.set_result(False)
+        if not self.committed.done():
+            self.committed.set_result(success)
+
+
+class ForkAnswerGate:
+    """Admit one prepared external answer through the existing fork arbiter."""
+
+    def __init__(self, *, attempts=None, browser_legs=None, invite=None, on_leg_state=None):
+        self.attempts = attempts if attempts is not None else []
+        self.browser_legs = browser_legs if browser_legs is not None else []
+        self.invite = invite
+        self.on_leg_state = on_leg_state
+        self.pending = asyncio.Queue(maxsize=1)
+        self.current = None
+        self.closed = False
+
+    @property
+    def endpoint_id(self):
+        return self.current.endpoint_id if self.current is not None else ""
+
+    def submit(self, endpoint_id):
+        if self.closed or self.pending.full() or (self.current is not None and not self.current.committed.done()):
+            raise RuntimeError("The ringing fork is unavailable for pickup")
+        loop = asyncio.get_running_loop()
+        answer = ExternalForkAnswer(endpoint_id, loop.create_future(), loop.create_future())
+        self.pending.put_nowait(answer)
+        return answer
+
+    async def dial(self):
+        self.current = await self.pending.get()
+        return DialOutcome(DialDisposition.ANSWERED)
+
+    async def confirm(self):
+        answer = self.current
+        if answer is None:
+            return False
+        if answer.committed.done() and not answer.committed.result():
+            return False
+        if not answer.selected.done():
+            answer.selected.set_result(True)
+        if answer.committed.done():
+            return bool(answer.committed.result())
+        return await asyncio.shield(answer.committed)
+
+    async def reject(self, _mode):
+        if self.current is not None:
+            self.current.finish(False)
+
+    async def close(self, _reason=""):
+        self.closed = True
+        await self.reject(LegCloseMode.CLOSE)
+        while not self.pending.empty():
+            self.pending.get_nowait().finish(False)
+
 
 
 class DialForkController:
@@ -531,6 +603,21 @@ class DialForkController:
                 )
                 if answered_control is not None:
                     winner, winner_outcome = answered_control
+                    if winner.confirm is not None:
+                        try:
+                            async with asyncio.timeout_at(deadline):
+                                confirmed = await winner.confirm()
+                        except TimeoutError:
+                            confirmed = False
+                        if not confirmed:
+                            await self._close_candidates((winner,), LegCloseMode.CLOSE)
+                            for completed in tuple(control_tasks):
+                                if control_tasks[completed] is winner and completed.done():
+                                    control_tasks.pop(completed)
+                            retry = asyncio.create_task(winner.dial(), name=f"voip-dial-fork-control-{winner.candidate_id}")
+                            control_tasks[retry] = winner
+                            pending_controls.add(retry)
+                            continue
                     await _stop_branches()
                     await self._close_candidates(
                         (

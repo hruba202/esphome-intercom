@@ -440,6 +440,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Frei",
+        "unavailable": "Nicht verfügbar",
+        "calling": "Wählt",
+        "ringing": "Klingelt",
+        "in_call": "Im Gespräch",
+        "held": "Gehalten"
+      }
     }
   },
   "system_health": {
@@ -846,6 +856,36 @@
           "description": "Optionaler Telefonfilter. Leer lassen für alle Postfächer."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Telefonstatus geändert",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "from": {
+          "name": "Von"
+        },
+        "to": {
+          "name": "Nach"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Telefon-Mailbox geändert",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Anruf übernommen",
+      "fields": {
+        "destination": {
+          "name": "Ziel"
+        }
+      }
     }
   },
   "conditions": {
@@ -886,6 +926,74 @@
         "digits": {
           "name": "Erwartete Ziffern",
           "description": "Leer lassen, um jede empfangene Ziffernfolge zu akzeptieren."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Telefon hat Status",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "state": {
+          "name": "Status"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Telefon hat einen klingelnden Anruf",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Telefon hat Sprachnachrichten",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "unread_only": {
+          "name": "Nur ungelesene Nachrichten"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Telefonstatus abrufen",
+      "description": "Status, Anrufe und Mailbox-Zähler des ausgewählten Telefons lesen.",
+      "fields": {
+        "device_id": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Anruf übernehmen",
+      "description": "Einen klingelnden oder geparkten Anruf auf dem ausgewählten Telefon übernehmen.",
+      "fields": {
+        "device_id": {
+          "name": "Übernehmendes Telefon"
+        },
+        "target_device_id": {
+          "name": "Klingelndes Telefon"
+        },
+        "slot": {
+          "name": "Parkplatz"
+        },
+        "answer_timeout": {
+          "name": "Auf Antwort warten"
+        },
+        "call_id": {
+          "name": "Anruf-ID"
+        },
+        "expected_generation": {
+          "name": "Anrufgeneration"
+        },
+        "leg_id": {
+          "name": "Anrufzweig"
         }
       }
     }

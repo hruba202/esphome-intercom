@@ -32,6 +32,8 @@ def _load_module(name: str):
     core_pkg.__path__ = [str(PKG_DIR / "core")]
     sys.modules.setdefault(f"{PKG_NAME}.core", core_pkg)
     full_name = f"{PKG_NAME}.core.{name}"
+    if full_name in sys.modules:
+        return sys.modules[full_name]
     spec = importlib.util.spec_from_file_location(
         full_name, PKG_DIR / "core" / f"{name}.py"
     )

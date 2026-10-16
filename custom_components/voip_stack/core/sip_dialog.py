@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from . import sip
 from ..session_cleanup import async_wait_for_cleanup
+
+
+_MediaContract = TypeVar("_MediaContract")
+_LOGGER = logging.getLogger(__name__)
+
+
+def notify_media_commit(callback: Callable[[_MediaContract], None] | None, contract: _MediaContract) -> None:
+    """Notify observers only after the signaling owner publishes its contract."""
+    if callback is not None:
+        try:
+            callback(contract)
+        except Exception:
+            _LOGGER.exception("Committed SIP media observer failed")
 
 
 async def apply_remote_offer_media(

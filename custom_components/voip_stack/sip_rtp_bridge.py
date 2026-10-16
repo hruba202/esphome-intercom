@@ -213,7 +213,7 @@ class SipRtpRelay:
     """
 
     @classmethod
-    def splice_audio(cls, source, source_side: str, destination, destination_side: str, *, merge_reservations=None):
+    def splice_audio(cls, source, source_side: str, destination, destination_side: str, *, merge_reservations=None, commit_owner=None):
         """Move two established audio legs into one relay without rebinding UDP.
 
         Call ownership must be committed by the caller in the same event-loop
@@ -221,6 +221,8 @@ class SipRtpRelay:
         reservations move together and are released when this relay stops.
         A pool-backed caller may merge its reservations after transport
         preparation, returning the release callback for the retained pair.
+        An optional synchronous owner commit runs before reservation transfer;
+        callers must protect registry mutations with their session handoff.
         """
         if source is destination or source_side not in {"left", "right"} or destination_side not in {"left", "right"}:
             raise ValueError("splice requires two distinct relay legs")
@@ -252,6 +254,8 @@ class SipRtpRelay:
             right_protocol.connection_made(right)
             left.set_protocol(left_protocol)
             right.set_protocol(right_protocol)
+            if commit_owner is not None:
+                commit_owner(result)
             merged_release = merge_reservations(
                 ((source.left_port, source.right_port), (destination.left_port, destination.right_port)),
                 (result.left_port, result.right_port),

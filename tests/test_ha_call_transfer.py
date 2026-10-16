@@ -216,3 +216,11 @@ def test_transfer_uses_address_contact_route_not_current_peer(destination):
     )
     target = call_transfer._blind_target(runtime, "sip:old@192.0.2.20:5060", destination)
     assert target.uri == "sip:room-speaker@192.0.2.30:5070;transport=udp"
+
+
+def test_attended_transfer_addresses_the_known_gruu_instance():
+    consultation = _established("consult", "remote", "desk")
+    consultation.dialog.remote_target_uri = "sip:desk@pbx.example;gr=instance-a"
+    target = call_transfer._attended_target(consultation)
+    assert target.uri == "sip:desk@pbx.example;gr=instance-a"
+    assert target.replaces.call_id == "consult"

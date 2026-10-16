@@ -58,6 +58,7 @@ async def test_blf_tracks_ringing_answer_multiple_calls_and_final_idle(lab, blf)
     first = lab.calls.upsert("first", state="ringing", owner="router", route_kind="sip",
                              source_endpoint_id="other", dest_endpoint_id="sip:bedroom0")
     lab.calls.claim_endpoint(first.call_id, "sip:bedroom0", role="destination")
+    publish_bridge_projection(lab.hass, first)
     ringing = ElementTree.fromstring((await asyncio.wait_for(notifications.get(), 1)).body)
     assert ringing.find("d:dialog/d:state", NS).text == "early"
     lab.calls.transition(first.call_id, state="in_call")
@@ -74,9 +75,11 @@ async def test_blf_tracks_ringing_answer_multiple_calls_and_final_idle(lab, blf)
     concurrent = ElementTree.fromstring((await asyncio.wait_for(notifications.get(), 1)).body)
     assert len(concurrent.findall("d:dialog", NS)) == 2
     await lab.calls.terminate_call_wait(first.call_id, reason="remote_hangup")
+    publish_bridge_projection(lab.hass, first, intent=first.termination_intent)
     remaining = ElementTree.fromstring((await asyncio.wait_for(notifications.get(), 1)).body)
     assert len(remaining.findall("d:dialog", NS)) == 1
     await lab.calls.terminate_call_wait(second.call_id, reason="remote_hangup")
+    publish_bridge_projection(lab.hass, second, intent=second.termination_intent)
     idle = ElementTree.fromstring((await asyncio.wait_for(notifications.get(), 1)).body)
     assert not idle.findall("d:dialog", NS)
     assert [int(item.attrib["version"]) for item in (root, ringing, answered, concurrent, remaining, idle)] == list(range(6))
@@ -153,8 +156,21 @@ async def test_sipp_observes_baresip_ring_answer_hangup_and_resource_removal(reg
     lab = trunks
     registrar = lab.calls.component("registrar")
     registrar.update_accounts([*registrar.accounts.values(), SipAccount("blfwatch", "BLF watcher", "isolated-test-only")])
-    lab.runtime.endpoints.update("transfer_c", extension="101")
+    lab.runtime.endpoints.update("transfer_c", extension="101", device_id="blf-phone-device")
     methods = lab.calls.component("sip_application")
+    from homeassistant.helpers.trigger import TriggerConfig
+    from custom_components.voip_stack.trigger import PhoneStateTrigger
+    from custom_components.voip_stack.automation_context import current_execution
+    native, native_tasks = [], []
+    subject = PhoneStateTrigger(lab.hass, TriggerConfig("voip_stack.phone_state_changed",
+        options={"phone": "blf-phone-device", "to": "held"}))
+    def run(payload, _description, _context):
+        async def observe():
+            native.append((current_execution.get().token, payload["phone"]["state"]))
+        task = asyncio.create_task(observe())
+        native_tasks.append(task)
+        return task
+    detach = await subject.async_attach_runner(run)
     scenario = Path(__file__).parent / "fixtures/sipp/dialog-subscription.xml"
     messages = tmp_path / "dialog-messages.log"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
@@ -182,6 +198,18 @@ async def test_sipp_observes_baresip_ring_answer_hangup_and_resource_removal(reg
         await asyncio.to_thread(destination.command, "/accept")
         await asyncio.to_thread(caller.wait_for, "Call established", 3)
         await wait_for(lambda: "confirmed</state>" in captured())
+        before_hold=len(captured())
+        await asyncio.to_thread(destination.command, "/hold")
+        await wait_for(lambda: 'pname="+sip.rendering" pval="no"' in captured()[before_hold:])
+        from custom_components.voip_stack.phone_state import phone_states
+        assert phone_states(lab.hass)["transfer_c"]["state"] == "held"
+        await asyncio.gather(*native_tasks)
+        assert native == [(next(iter(lab.calls.sessions.values())).token, "held")]
+        before_resume=len(captured())
+        await asyncio.to_thread(destination.command, "/resume")
+        await wait_for(lambda: "confirmed</state>" in captured()[before_resume:])
+        assert 'pname="+sip.rendering" pval="no"' not in captured()[before_resume:]
+        assert phone_states(lab.hass)["transfer_c"]["state"] == "in_call"
         await asyncio.to_thread(caller.hangup)
         await wait_for(lambda: not lab.calls.sessions)
         lab.runtime.endpoints.remove("transfer_c")
@@ -195,6 +223,7 @@ async def test_sipp_observes_baresip_ring_answer_hangup_and_resource_removal(reg
         assert not documents[0].findall("d:dialog", NS) and not documents[-1].findall("d:dialog", NS)
         assert not methods.subscriptions
     finally:
+        detach()
         if process.returncode is None:
             process.terminate()
             await process.communicate()
@@ -236,6 +265,7 @@ async def test_activity_projection_tracks_dialogs_and_occupied_slots(lab, blf):
                                source_endpoint_id="other", dest_endpoint_id="sip:bedroom0")
     lab.calls.claim_endpoint(session.call_id, "sip:bedroom0", role="destination")
     assert activity_snapshot(lab.runtime)["phones"][0]["state"] == "ringing"
+    assert activity_snapshot(lab.runtime)["phones"][0]["call_ids"] == [session.call_id]
     lab.calls.transition(session.call_id, state="in_call")
     assert activity_snapshot(lab.runtime)["phones"][0]["state"] == "busy"
     lot = ParkingLot(("701", "702"))
@@ -271,8 +301,9 @@ async def test_activity_subscription_updates_and_unsubscribes(lab, blf, monkeypa
     assert activity["parked"] == ["701"] and activity["phones"][0]["state"] == "busy"
     lot.release(parked)
     await lab.calls.terminate_call_wait(session.call_id, reason="remote_hangup")
+    publish_bridge_projection(lab.hass, session, intent=session.termination_intent)
     await lab.hass.async_block_till_done()
-    assert events[-1]["data"] == {"parked": [], "phones": []}
+    assert [event["data"] for event in events if event["event_type"] == "voip_stack.activity"][-1] == {"parked": [], "phones": []}
     connection.subscriptions[77]()
     count = len(events)
     lab.hass.bus.async_fire(PARKING_CHANGED)
@@ -288,3 +319,33 @@ async def test_activity_subscription_updates_and_unsubscribes(lab, blf, monkeypa
     await lab.hass.async_block_till_done()
     assert events[-1] == {"event_type": websocket_api.CALL_EVENT, "data": {"type": "example"}}
     connection.subscriptions[78]()
+
+
+async def test_browser_dialog_tags_use_the_observed_local_phone_perspective(lab):
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint
+    from .test_ha_call_transfer import _established
+    from custom_components.voip_stack.dialog_info import snapshot
+    phone=PhoneEndpoint(endpoint_id='browser-blf',name='Browser',kind='browser',device_id='browser-device')
+    lab.runtime.endpoints.register(phone)
+    client=_established('browser-dialog','peer-tag','desk')
+    session=lab.calls.upsert('browser-dialog',state='in_call',owner='ha_softphone',source_endpoint_id=phone.endpoint_id)
+    lab.calls.observe_leg(session.call_id,session.call_id,role='ha_softphone',state='in_call',endpoint_id=phone.endpoint_id,dialog=client)
+    observed=snapshot(lab.runtime,phone.endpoint_id)[0]
+    assert (observed.local_tag,observed.remote_tag)==(client.dialog_ids.local_tag,'peer-tag')
+
+
+async def test_blf_hold_uses_negotiated_media_and_contact_with_rfc_parameter_names(lab):
+    from .test_ha_call_transfer import _established
+    from custom_components.voip_stack.dialog_info import snapshot,document
+    client=_established('held-dialog','phone-tag','desk')
+    client.dialog.remote_audio_direction='sendonly'
+    client.dialog.local_audio_direction='recvonly'
+    client.dialog.remote_target_uri='sip:desk@127.0.0.4:5090'
+    session=lab.calls.upsert('held-dialog',state='in_call',owner='bridge',dest_endpoint_id='sip:bedroom0')
+    lab.calls.observe_leg(session.call_id,session.call_id,role='callee',state='in_call',endpoint_id='sip:bedroom0',dialog=client)
+    states=snapshot(lab.runtime,'sip:bedroom0')
+    assert len(states)==1 and states[0].held
+    root=ElementTree.fromstring(document('sip:101@127.0.0.1',1,states))
+    target=root.find('d:dialog/d:local/d:target',NS)
+    assert target.attrib['uri']==client.dialog.remote_target_uri
+    assert target.find('d:param',NS).attrib=={'pname':'+sip.rendering','pval':'no'}

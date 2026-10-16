@@ -2074,11 +2074,14 @@ class VoipStackCard extends HTMLElement {
     const ownId = this._getSoftphoneEndpointId() || this._activeDeviceInfo?.endpoint_id;
     const deviceId = this._getConfigDeviceId();
     const activity = this._phoneActivity || {};
-    const peer = ["calling", "connecting", "remote_ringing", "ringing", "incoming", "answering", "in_call", "terminating"]
-      .includes(this._softphoneSnapshot?.state) ? this._activeSoftphonePeerDevice() : null;
+    const active = ["calling", "connecting", "remote_ringing", "ringing", "incoming", "answering", "in_call", "terminating"]
+      .includes(this._softphoneSnapshot?.state);
+    const peer = active ? this._activeSoftphonePeerDevice() : null;
+    const callId = active ? String(this._softphoneSnapshot?.call_id || "") : "";
     const parked = (activity.parked || []).map(slot => `${this._t("Parked in slot")}: ${slot}`);
     const phones = (activity.phones || [])
-      .filter(phone => phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId) &&
+      .filter(phone => (!callId || !(phone.call_ids || []).includes(callId)) &&
+        phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId) &&
         (!peer?.device_id || phone.device_id !== peer.device_id) &&
         (!peer?.endpoint_id || phone.endpoint_id !== peer.endpoint_id))
       .map(phone => `${phone.name}: ${this._t({ringing: "Ringing", calling: "Calling", busy: "Busy"}[phone.state] || "Busy")}`);

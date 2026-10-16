@@ -2549,7 +2549,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         )
         transport = FakeTransport()
         client.transport = transport  # type: ignore[assignment]
-        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2")  # type: ignore[assignment]
+        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2", session_timer=sip.SipSessionTimer())  # type: ignore[assignment]
         client.dialog_ids.remote_tag = "remote"
         call_id = client.dialog_ids.call_id
 
@@ -2591,6 +2591,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         transport = FakeTransport()
         client.transport = transport  # type: ignore[assignment]
         client.dialog = types.SimpleNamespace(
+            session_timer=sip.SipSessionTimer(),
             remote_host="127.0.0.2",
             remote_sip_port=5060,
             remote_target_uri="sip:ESP@127.0.0.2:5060",
@@ -3376,6 +3377,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             local_sdp_body=local_sdp,
         )
         committed: list[int] = []
+        published: list[object] = []
 
         async def on_media_update(_previous, updated, method):
             self.assertEqual(method, "INVITE")
@@ -3383,7 +3385,11 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             async def commit() -> None:
                 committed.append(updated.remote_rtp_port)
 
-            return commit
+            def on_committed(actual):
+                self.assertIs(actual, client.dialog)
+                published.append(actual)
+
+            return sip_client.PreparedDialogMediaUpdate(commit, on_committed=on_committed)
 
         client.on_media_update = on_media_update
 
@@ -3432,6 +3438,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(committed, [43000])
+        self.assertEqual(published, [client.dialog])
         self.assertIsNotNone(client.dialog)
         assert client.dialog is not None
         self.assertEqual(client.dialog.remote_rtp_port, 43000)
@@ -4457,6 +4464,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
     async def test_inbound_dialog_commits_offerless_reinvite_answer_from_ack(self) -> None:
         sent: list[bytes] = []
         committed: list[int] = []
+        published: list[object] = []
         pcm = audio_format.AudioFormat(16000, "s16le", 1, 20)
 
         def answer(invite):
@@ -4480,7 +4488,11 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
             async def commit() -> None:
                 committed.append(updated.remote_rtp_port)
 
-            return sip_listener.SipInviteResult(200, "OK", commit=commit)
+            def on_committed(actual):
+                self.assertIs(actual, endpoint.active_dialogs[call_id].invite)
+                published.append(actual)
+
+            return sip_listener.SipInviteResult(200, "OK", commit=commit, on_committed=on_committed)
 
         endpoint = sip_listener.SipUdpEndpoint(
             local_ip="127.0.0.1",
@@ -4569,6 +4581,7 @@ class SipProtocolBugFixAsyncTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(committed, [43000])
+        self.assertEqual(published, [endpoint.active_dialogs[call_id].invite])
         self.assertIsNone(endpoint.active_dialogs[call_id].delayed_offer)
         await endpoint._handle_datagram(
             request("BYE", 3, "z9hG4bKbye", to_tag=local_tag),

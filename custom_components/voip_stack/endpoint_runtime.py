@@ -312,6 +312,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         sip_uri_transport=_sip_uri_transport,
         enable_reused_tcp_connection=_enable_reused_sip_tcp_connection,
     )
+    pbx_runtime.adopt_component("endpoint_dialer", endpoint_dialer)
     _browser_leg_for_member = endpoint_dialer.browser_leg_for_member
     _prepare_outbound_leg = endpoint_dialer.prepare_outbound_leg
 
@@ -844,13 +845,22 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         updated: SipInvite,
         method: str,
     ) -> SipInviteResult:
-        return await async_prepare_media_update(
-            hass,
-            local_ip,
-            previous,
-            updated,
-            method,
-        )
+        session = registry.get_session(registry.resolve_session_id(updated.call_id))
+        result = await async_prepare_media_update(hass, local_ip, previous, updated, method)
+        if session is None or not 200 <= result.status < 300:
+            return result
+        prior_notification = result.on_committed
+        def published(actual):
+            from .core.sip_dialog import notify_media_commit
+            from .call_projection import publish_bridge_projection
+            notify_media_commit(prior_notification, actual)
+            manager = sip_endpoint_manager(hass)
+            if (registry.get_session(session.call_id, generation=session.generation) is session
+                    and session.live and manager is not None
+                    and registry.resolve_session_id(actual.call_id) == session.call_id
+                    and manager.invite_for_call(actual.call_id) is actual):
+                publish_bridge_projection(hass, session, event_type="state_changed")
+        return replace(result, on_committed=published)
 
     async def _on_refer(call_id, target, *, source_client=None) -> int:
         from .call_transfer import async_transfer_target

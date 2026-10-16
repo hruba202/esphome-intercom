@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import hashlib
 import hmac
 import re
@@ -28,6 +30,15 @@ class DigestChallengeResponse(Protocol):
     status_code: int | None
 
     def header_values(self, name: str) -> list[str]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SipDigestCredentials:
+    """Credentials selected by an authenticated account or owned trunk."""
+
+    username: str
+    password: str = field(repr=False)
+    auth_username: str = ""
 
 
 class DigestChallengeTracker:

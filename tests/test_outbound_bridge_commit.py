@@ -50,6 +50,7 @@ def _fixture():
     session = SimpleNamespace(generation=1, state="connecting", create_task=asyncio.create_task, cleanup_waits_for=lambda _task: False)
     registry = SimpleNamespace(
         register_bridge=MagicMock(return_value=session),
+        observe_leg=MagicMock(),
         resource_for=MagicMock(return_value=None),
         is_generation_current=MagicMock(return_value=True),
         request_termination=MagicMock(return_value=None),
