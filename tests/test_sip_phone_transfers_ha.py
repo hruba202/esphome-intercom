@@ -93,7 +93,7 @@ module_app account.so
     finally:
         for peer in peers:
             if peer.proc.poll() is None:
-                await asyncio.to_thread(peer.hangup)
+                await asyncio.to_thread(peer.command, "/hangupall")
         try:
             async with asyncio.timeout(3):
                 while lab.calls.sessions:
@@ -370,7 +370,7 @@ async def test_local_transfer_keeps_legacy_caller_dialog_and_echoed_audio(regist
     trace = tmp_path / "legacy-sip.log"
     process = await asyncio.create_subprocess_exec(
         executable, *([f'127.0.0.1:{lab.runtime.transport_config["sip_port"]}'] if origin == "caller" else []), "-sf", str(scenario),
-        "-i", "127.0.0.1", "-p", str(port), "-mi", "127.0.0.1", "-mp", str(media_port), "-rtp_echo", "-m", "1",
+        "-i", "127.0.0.1", "-p", str(port), "-mi", "127.0.0.1", "-min_rtp_port", str(media_port), "-rtp_echo", "-m", "1",
         "-trace_msg", "-message_file", str(trace), "-trace_err", "-error_file", str(tmp_path / "legacy-errors.log"),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, cwd=tmp_path,
     )
