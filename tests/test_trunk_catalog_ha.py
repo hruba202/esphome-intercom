@@ -638,3 +638,39 @@ async def test_trunk_rejects_invalid_outbound_media_address(hass, catalog, addre
         assert result['errors']['trunk_outbound_media_address'] == 'trunk_media_address_invalid'
     finally:
         hass.config_entries.subentries.async_abort(form['flow_id'])
+
+
+@pytest.mark.parametrize("register", [False, True])
+async def test_native_first_trunk_keeps_client_ready_with_eager_entry_listener(hass, catalog, registrar, monkeypatch, register):
+    from custom_components.voip_stack import trunk_flow
+    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
+
+    monkeypatch.setattr(trunk_flow, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+    for subentry_id in tuple(catalog.subentries):
+        hass.config_entries.async_remove_subentry(catalog, subentry_id)
+    hass.config_entries.async_update_entry(catalog, data={})
+    catalog.runtime_data.trunk_configs = {}
+    catalog.runtime_data.default_trunk_id = ""
+    unsubscribe = catalog.add_update_listener(async_reconcile_trunks)
+    try:
+        form = await hass.config_entries.subentries.async_init(
+            (catalog.entry_id, "trunk"), context={"source": "user"})
+        form = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+            "name": "First live trunk", "trunk_enabled": True, "trunk_register": register,
+        })
+        result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+            "trunk_server": "127.0.0.1",
+            **({"trunk_username": "ha", "trunk_password": "test-only", "trunk_port": registrar[1]}
+               if register else {"trunk_allowed_ips": ["127.0.0.1"]}),
+            "trunk_inbound_default_target": "Kitchen",
+        })
+        assert result["type"] == "create_entry", result
+        await hass.async_block_till_done()
+        identity = result["data"]["trunk_id"]
+        client = sip_trunk(hass, identity)
+        assert client is not None and client.ready
+        assert catalog.runtime_data.sip.component(f"pending_trunk:{identity}") is None
+    finally:
+        unsubscribe()
+        await async_stop_sip_trunk(hass)

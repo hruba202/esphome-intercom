@@ -70,6 +70,14 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
         entry = self._get_entry()
         data = {**normalized_trunk_config(data), "trunk_id": self._identity, "name": self._name}
         self._make_default = self._make_default or not trunk_subentries(entry)
+        runtime = runtime_data(self.hass)
+        if self._candidate is not None and runtime is not None and runtime.sip is not None:
+            # Entry listeners may reconcile eagerly while HA persists the result.
+            # Publish the validated candidate before they can create a second one.
+            runtime.sip.adopt_component(
+                f"pending_trunk:{self._identity}", self._candidate,
+                closer=self._candidate.stop,
+            )
         if self._current is not None:
             result = self.async_update_and_abort(entry, self._current, data=data, title=self._name)
         else:
@@ -130,11 +138,15 @@ class TrunkSubentryFlowHandler(TrunkFormMixin, ConfigSubentryFlow):
                     and self._identity in configs and trunk_client_config(configs[self._identity]) == candidate.config):
                 name = f"pending_trunk:{self._identity}"
                 previous = runtime.sip.component(name)
-                if previous is not None:
-                    runtime.sip.release_component(name, previous)
-                    self.hass.async_create_task(previous.stop())
-                runtime.sip.adopt_component(name, candidate, closer=candidate.stop)
+                if previous is candidate or runtime.sip.component(f"trunk:{self._identity}") is candidate:
+                    pass
+                elif previous is None:
+                    runtime.sip.adopt_component(name, candidate, closer=candidate.stop)
+                else:
+                    self.hass.async_create_task(candidate.stop())
             else:
+                if runtime is not None and runtime.sip is not None:
+                    runtime.sip.release_component(f"pending_trunk:{self._identity}", candidate)
                 self.hass.async_create_task(candidate.stop())
         super().async_remove()
         if self._saved:
