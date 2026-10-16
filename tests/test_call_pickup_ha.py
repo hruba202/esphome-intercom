@@ -574,7 +574,7 @@ async def test_sip_pickup_negotiates_video_and_forwards_decodable_frames(registe
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
 @pytest.mark.parametrize("registered_phones", [{"manual": "transfer_b"}], indirect=True)
-@pytest.mark.parametrize("mixed", [False, True])
+@pytest.mark.parametrize("mixed", [False, True, "browser_only"])
 @pytest.mark.parametrize("via_service", [False, True])
 async def test_sip_pickup_wins_a_ringing_group_without_redialing_caller(registered_phones, trunks, mixed, via_service):
     from custom_components.voip_stack.roster import RosterEntry
@@ -582,7 +582,7 @@ async def test_sip_pickup_wins_a_ringing_group_without_redialing_caller(register
     runtime = trunks
     entry = config_entry(runtime.hass)
     runtime.hass.config_entries.async_update_entry(entry, data={**entry.data, "parking": {"enabled": True}})
-    members = ["transfer_b"]
+    members = [] if mixed == "browser_only" else ["transfer_b"]
     if mixed:
         runtime.runtime.endpoints.register(PhoneEndpoint(endpoint_id="group-browser", name="Group browser",
             device_id="group-browser-device", kind=EndpointKind.BROWSER, availability="available"))
@@ -598,15 +598,18 @@ async def test_sip_pickup_wins_a_ringing_group_without_redialing_caller(register
     await wait_for(lambda: any(runtime.calls.resource_for(s.call_id, "fork_answer") is not None for s in runtime.calls.sessions.values()))
     session = next(iter(runtime.calls.sessions.values()))
     from custom_components.voip_stack.dialog_info import snapshot
-    await wait_for(lambda: any(item.state == "early" for item in snapshot(runtime.runtime, "transfer_b")))
+    await wait_for(lambda: any(item.state == "early" for item in snapshot(runtime.runtime, "group-browser" if mixed == "browser_only" else "transfer_b")))
+    pickup_target = "group-browser" if mixed == "browser_only" else "transfer_b"
+    if mixed == "browser_only":
+        assert runtime.calls.resource_for(session.call_id, "fork_answer").attempts == []
     if via_service:
         runtime.runtime.endpoints.update("transfer_c", device_id="pickup-device")
         result = await runtime.hass.services.async_call("voip_stack", "pickup", {
-            "device_id": "pickup-device", "target_device_id": "transfer_b", "answer_timeout": 3,
+            "device_id": "pickup-device", "target_device_id": pickup_target, "answer_timeout": 3,
         }, blocking=True, return_response=True)
         assert result["call_id"] == session.call_id
     else:
-        await asyncio.to_thread(picker.dial, "pickup.transfer_b")
+        await asyncio.to_thread(picker.dial, "pickup." + pickup_target)
     await wait_for(lambda: session.state == "in_call")
     assert caller.read().count("Call established") == 1
     assert "Call established" not in ringing.read()
@@ -914,3 +917,65 @@ async def test_pickup_rollback_survives_repeated_cancellation(trunks, registered
         assert not runtime.runtime.rtp_port_pool['used']
     finally:
         release.set()
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("registered_phones", [{"manual": "transfer_b"}], indirect=True)
+async def test_declined_browser_pickup_preserves_real_group_and_next_call(trunks, registered_phones):
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint
+    from custom_components.voip_stack.phone_state import phone_states
+    from custom_components.voip_stack.roster import RosterEntry
+    from homeassistant.exceptions import ServiceValidationError
+
+    runtime = trunks
+    caller = registered_phones[0]
+    browsers = []
+    for name in ("group-a", "group-b"):
+        endpoint = PhoneEndpoint(endpoint_id=name, name=name, device_id=name + "-device",
+                                 kind="browser", availability="available", capabilities=frozenset({"audio", "dtmf"}))
+        runtime.runtime.endpoints.register(endpoint)
+        runtime.roster.append(RosterEntry(name, metadata={"local_ha": True, "endpoint_id": name}))
+        browsers.append(endpoint)
+    runtime.roster.append(RosterEntry("BrowserGroup", metadata={"group_type": "ring", "members": [e.name for e in browsers]}))
+    a, b = browsers
+
+    async def wait_for(predicate):
+        async with asyncio.timeout(5):
+            while not predicate():
+                await asyncio.sleep(.01)
+
+    await asyncio.to_thread(caller.command, "/dial BrowserGroup")
+    await wait_for(lambda: all(phone_states(runtime.hass)[e.endpoint_id]["state"] == "ringing" for e in browsers))
+    session = next(iter(runtime.calls.sessions.values()))
+    route = session.artifacts.pending_route
+    await runtime.hass.services.async_call("voip_stack", "decline", {
+        "device_id": a.device_id, "call_id": session.call_id,
+    }, blocking=True)
+    await wait_for(lambda: phone_states(runtime.hass)[a.endpoint_id]["state"] == "idle")
+    members = route["ring_group_endpoint_ids"]
+    for _ in range(3):
+        with pytest.raises(ServiceValidationError):
+            await runtime.hass.services.async_call("voip_stack", "pickup", {
+                "device_id": a.device_id, "target_device_id": b.device_id,
+                "call_id": session.call_id, "media_client_id": "test-a", "answer_timeout": 1,
+            }, blocking=True, return_response=True)
+        assert phone_states(runtime.hass)[a.endpoint_id]["state"] == "idle"
+        assert phone_states(runtime.hass)[b.endpoint_id]["state"] == "ringing"
+        assert route["ring_group_endpoint_ids"] == members
+        assert a.endpoint_id not in session.endpoint_claims
+        assert not route["future"].done()
+    await runtime.hass.services.async_call("voip_stack", "answer", {
+        "device_id": b.device_id, "call_id": session.call_id, "media_client_id": "test-b",
+    }, blocking=True)
+    await wait_for(lambda: session.state == "in_call" and "Call established" in caller.read())
+    await runtime.hass.services.async_call("voip_stack", "hangup", {"device_id": b.device_id}, blocking=True)
+    await wait_for(lambda: not runtime.calls.sessions)
+    await asyncio.to_thread(caller.command, "/dial " + a.name)
+    await wait_for(lambda: phone_states(runtime.hass)[a.endpoint_id]["state"] == "ringing")
+    await runtime.hass.services.async_call("voip_stack", "answer", {
+        "device_id": a.device_id, "media_client_id": "test-a",
+    }, blocking=True)
+    await wait_for(lambda: caller.read().count("Call established") == 2)
+    await runtime.hass.services.async_call("voip_stack", "hangup", {"device_id": a.device_id}, blocking=True)
+    await wait_for(lambda: not runtime.calls.sessions)
+    assert not runtime.runtime.rtp_port_pool.get("used")

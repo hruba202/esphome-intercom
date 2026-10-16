@@ -123,8 +123,15 @@ the replacement media owner.
 
 Use an identified phone connected to this HA PBX. For a dashboard phone, enter
 the same address in its card or use `voip_stack.call` with that phone selected.
-Pickup currently targets individual ringing audio calls, not a conference,
-a group branch, an active video call or an Automation-owned announcement.
+Pickup can target a ringing member of an audio ring group, including a group
+containing only HA browser phones. The group confirms the recovering phone
+before retiring its other answerers. If preparation fails and the caller is
+still connected, another member can answer or another phone can try pickup.
+A phone that already declined this group call cannot recover that same call;
+its failed attempt does not make it ring again. Later calls remain available.
+
+Conferences, active video calls and Automation-owned announcements are not
+supported pickup targets.
 
 ## Current verification boundary
 

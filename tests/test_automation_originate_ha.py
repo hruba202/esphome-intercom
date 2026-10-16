@@ -177,6 +177,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     await services.async_register_services(hass, {
         "call": voip_stack._handle_sip_call_target_service,
         "answer": voip_stack._handle_sip_answer_service,
+        "decline": voip_stack._handle_sip_decline_service,
         "forward": voip_stack._handle_sip_forward_service,
         "transfer": voip_stack._handle_sip_transfer_service,
         "park": async_park_call,

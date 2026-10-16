@@ -219,6 +219,11 @@ async def prepare_sip_pickup(hass, incoming, target, local_ip, *, call_id="", ge
             or registry.resource_for(session.call_id, "pickup") is not claim
         ):
             raise ServiceValidationError("The call was answered or its route changed")
+        if fork_answer is not None and (
+            fork_gate.closed or fork_gate.current is not fork_answer
+            or (fork_answer.committed.done() and not fork_answer.accepted)
+        ):
+            raise ServiceValidationError("The group withdrew this pickup attempt")
         if native is not None:
             native.validate()
         previous_client = (
@@ -641,7 +646,9 @@ async def async_pickup_call(call):
 async def _pickup_group_phone(call, endpoint, session):
     """Add an operator to the existing fork, retaining its original branches."""
     from homeassistant.core import ServiceCall, callback
-    from .call_projection import observe_phone_leg_projection
+    from .call_projection import observe_phone_leg_projection, publish_phone_projection
+    from .route_decisions import ensure_ring_group_phone_not_declined
+    from .endpoint_session import LegPhase
     from .websocket_api import CALL_EVENT
     from .outbound_attempts import BrowserLeg, async_close_outbound_leg
     from .softphone_answer import async_answer_browser_call
@@ -676,6 +683,10 @@ async def _pickup_group_phone(call, endpoint, session):
     unsubscribe = call.hass.bus.async_listen(CALL_EVENT, changed)
     attempt = ticket = dial_task = browser_leg = None
     selected = False
+    route = previous_candidate = projected_leg = previous_leg_state = None
+    route_member_added = session_member_added = claim_added = False
+    controller_before = {}
+    missing = object()
     try:
         async with asyncio.timeout(float(call.data.get("answer_timeout", 30))):
             if endpoint.kind.is_softphone:
@@ -684,6 +695,14 @@ async def _pickup_group_phone(call, endpoint, session):
                     raise ServiceValidationError(
                         "The ringing group already selected an answer"
                     )
+                ensure_ring_group_phone_not_declined(route, endpoint.endpoint_id)
+                previous_candidate = next(
+                    (leg for leg in gate.browser_legs if leg.endpoint_id == endpoint.endpoint_id), None
+                )
+                leg_id = f"browser:{endpoint.endpoint_id}"
+                prior_leg = session.legs.get(leg_id)
+                if prior_leg is not None:
+                    previous_leg_state = (prior_leg.state, prior_leg.phase, prior_leg.role, prior_leg.endpoint_id)
                 browser_leg = BrowserLeg(
                     endpoint.name,
                     endpoint.endpoint_id,
@@ -691,30 +710,35 @@ async def _pickup_group_phone(call, endpoint, session):
                     endpoint.device_id,
                     pickup=True,
                 )
+                claim_added = endpoint.endpoint_id not in session.endpoint_claims
                 registry.claim_endpoint(
                     session.call_id, endpoint.endpoint_id, role="group_candidate"
                 )
-                gate.browser_legs.append(browser_leg)
-                route["ring_group_endpoint_ids"] = (
-                    *route.get("ring_group_endpoint_ids", ()),
-                    endpoint.endpoint_id,
-                )
-                session.update_metadata(
-                    ring_endpoint_ids=(
-                        *session.metadata.get("ring_endpoint_ids", ()),
+                if previous_candidate is None:
+                    gate.browser_legs.append(browser_leg)
+                else:
+                    gate.browser_legs[gate.browser_legs.index(previous_candidate)] = browser_leg
+                route_member_added = endpoint.endpoint_id not in route.get("ring_group_endpoint_ids", ())
+                if route_member_added:
+                    route["ring_group_endpoint_ids"] = (*route.get("ring_group_endpoint_ids", ()), endpoint.endpoint_id)
+                session_member_added = endpoint.endpoint_id not in session.metadata.get("ring_endpoint_ids", ())
+                if session_member_added:
+                    session.update_metadata(ring_endpoint_ids=(
+                        *session.metadata.get("ring_endpoint_ids", ()), endpoint.endpoint_id
+                    ))
+                try:
+                    observe_phone_leg_projection(
+                        call.hass,
+                        registry,
+                        session,
                         endpoint.endpoint_id,
+                        "ringing",
+                        leg_id=f"browser:{endpoint.endpoint_id}",
+                        peer_name=session.caller,
+                        direction="incoming",
                     )
-                )
-                observe_phone_leg_projection(
-                    call.hass,
-                    registry,
-                    session,
-                    endpoint.endpoint_id,
-                    "ringing",
-                    leg_id=f"browser:{endpoint.endpoint_id}",
-                    peer_name=session.caller,
-                    direction="incoming",
-                )
+                finally:
+                    projected_leg = session.legs.get(leg_id)
                 answer = ServiceCall(
                     call.hass,
                     "voip_stack",
@@ -733,6 +757,12 @@ async def _pickup_group_phone(call, endpoint, session):
                     endpoint_id=endpoint.endpoint_id,
                     endpoint=endpoint,
                 )
+                if (not session.owns(token) or gate.closed or route["future"].done()
+                        or session.artifacts.pending_route is not route):
+                    raise ServiceValidationError("The ringing group already selected an answer")
+                ensure_ring_group_phone_not_declined(route, endpoint.endpoint_id)
+                controller_before = {key: session.metadata.get(key, missing)
+                                     for key in ("ha_context", "controller_user_id")}
                 await async_answer_browser_call(call.hass, answer, command)
                 selected = True
             else:
@@ -834,7 +864,38 @@ async def _pickup_group_phone(call, endpoint, session):
                     registry.remove_leg(
                         session.call_id, attempt.client.dialog_ids.call_id
                     )
-            if browser_leg is not None and browser_leg in gate.browser_legs:
-                gate.browser_legs.remove(browser_leg)
-            if session.live:
+            current = registry.get_session(token.call_id, generation=token.generation) is session and session.owns(token)
+            owned_browser = next((i for i, leg in enumerate(gate.browser_legs) if leg is browser_leg), None)
+            if browser_leg is not None and owned_browser is not None:
+                if previous_candidate is None:
+                    gate.browser_legs.pop(owned_browser)
+                else:
+                    gate.browser_legs[owned_browser] = previous_candidate
+                if current:
+                    if route_member_added and session.artifacts.pending_route is route:
+                        route["ring_group_endpoint_ids"] = tuple(
+                            item for item in route["ring_group_endpoint_ids"] if item != endpoint.endpoint_id
+                        )
+                    if session_member_added:
+                        session.update_metadata(ring_endpoint_ids=tuple(
+                            item for item in session.metadata.get("ring_endpoint_ids", ()) if item != endpoint.endpoint_id
+                        ))
+                    if claim_added:
+                        registry.release_endpoint_claim(session.call_id, endpoint.endpoint_id)
+                    if session.state != "in_call":
+                        for key, expected in (("ha_context", call.context), ("controller_user_id", call.context.user_id)):
+                            if controller_before.get(key) is missing and session.metadata.get(key) == expected:
+                                session.metadata.pop(key, None)
+                    leg_id = f"browser:{endpoint.endpoint_id}"
+                    if projected_leg is not None and session.legs.get(leg_id) is projected_leg and projected_leg.state == "ringing":
+                        if previous_leg_state is not None:
+                            (projected_leg.state, projected_leg.phase, projected_leg.role, projected_leg.endpoint_id) = previous_leg_state
+                        else:
+                            projected_leg.state = "idle"
+                            projected_leg.phase = LegPhase.CLOSED
+                        publish_phone_projection(call.hass, session, endpoint.endpoint_id, leg_id=leg_id)
+                        if previous_leg_state is None:
+                            registry.remove_leg(session.call_id, leg_id)
+
+            elif browser_leg is None and current and attempt is not None:
                 registry.release_endpoint_claim(session.call_id, endpoint.endpoint_id)

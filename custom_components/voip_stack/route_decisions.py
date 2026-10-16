@@ -19,6 +19,15 @@ from .service_errors import service_error as _service_error
 _LOGGER = logging.getLogger(__name__)
 
 
+def ensure_ring_group_phone_not_declined(route: dict, endpoint_id: str) -> None:
+    """Keep explicit decline policy identical for answering and pickup admission."""
+    if endpoint_id in route.get("declined_endpoint_ids", set()):
+        raise _service_error(
+            "this phone endpoint has already declined the ring-group call",
+            "ring_group_phone_already_declined",
+        )
+
+
 def set_pending_route_decision(hass: HomeAssistant, data: dict) -> None:
     """Apply an automation dial-plan decision to a pending inbound SIP route."""
     call_id = str(data.get("call_id") or "").strip()
@@ -100,11 +109,7 @@ def set_pending_route_decision(hass: HomeAssistant, data: dict) -> None:
                 "ring-group answer requires one of its ringing phone endpoints",
                 "ring_group_phone_required",
             )
-        if endpoint_id in route.get("declined_endpoint_ids", set()):
-            raise _service_error(
-                "this phone endpoint has already declined the ring-group call",
-                "ring_group_phone_already_declined",
-            )
+        ensure_ring_group_phone_not_declined(route, endpoint_id)
     if (
         ring_endpoint_ids
         and endpoint_id in ring_endpoint_ids
