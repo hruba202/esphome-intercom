@@ -230,10 +230,13 @@ on those entities before choosing this mode.
 
 If you want VoIP Stack on HA to keep discovering and controlling this phone,
 leave its HA integration enabled and put the PBX destinations in HA's managed
-phonebook as direct SIP contacts. Use a SIP URI such as
-`sip:700@192.168.1.20:5060;transport=udp` and leave **Bridge via HA** disabled for
-the direct path. This avoids competing firmware and HA definitions for the
-same contact.
+phonebook as direct SIP contacts. Set the contact ID to the PBX destination
+(for example `6002`), Address to `192.168.1.20`, SIP port to `5060`, Transport to
+UDP, and leave **Bridge via HA** disabled. You may give it a friendly name such
+as Office. A SIP URI alone does not supply the direct address to the ESP's
+phonebook. This avoids competing firmware and HA definitions for one contact.
+Choose an ID that does not collide with an HA phone or reserved feature code;
+`700`, for example, may already be the HA parking access code.
 
 For an installation with no HA API client, either omit `api:` or set its
 `reboot_timeout: 0s`; otherwise ESPHome's normal API timeout can reboot the
@@ -263,6 +266,72 @@ Answer on the ESP and speak in both directions before hanging up. Add a static
 ESP contact named `6002`, with PBX address `192.168.1.20` and SIP port `5060`, to
 call the registered phone from the ESP. Asterisk converts between the phone's
 G.711 audio and the ESP's L16 PCM; the two legs need not use the same codec.
+
+## Make a call from the ESP through the PBX
+
+The ESP must call the **PBX address**, with the destination extension in the SIP
+URI. It must not call the registered phone's current IP address. For example,
+`sip:6002@192.168.1.20:5060` asks the PBX to find and ring extension `6002`.
+The PBX resolves that phone's registration and bridges the conversation.
+
+With the firmware-managed phonebook described above, add this item to the
+existing `static_contacts:` list:
+
+```yaml
+voip_stack:
+  # Merge into the existing component configuration.
+  static_contacts:
+    - name: "6002"
+      ip: 192.168.1.20
+      port: 5060
+      transport: udp
+```
+
+Select `6002` using the device's contact selector and press its call control.
+Alternatively, add a button to the existing ESPHome `button:` list:
+
+```yaml
+button:
+  - platform: template
+    name: Call office phone
+    on_press:
+      - voip_stack.call:
+          target: "6002"
+```
+
+The same ESPHome action can be used by a physical button's `on_press` automation.
+It uses the existing phone call engine; no REGISTER, browser or separate media
+player is involved. Use the answer and end-call controls shown earlier to
+answer incoming calls or hang up.
+
+If HA supplies the phonebook, use these contact fields:
+
+| Field | Example | Purpose |
+| --- | --- | --- |
+| Name | Office | Label shown on the ESP |
+| ID | `6002` | Destination user sent to the PBX |
+| Address | `192.168.1.20` | PBX address, not the called phone's address |
+| SIP port | `5060` | PBX listener |
+| Transport | UDP | SIP signalling transport |
+| Bridge via HA | Disabled | ESP calls the PBX directly |
+
+Select Office on the ESP and press Call. Do not add a competing static contact
+to firmware in this mode. HA supplies the contact; the ESP sends the SIP call
+to the PBX. Supplying only a SIP URI leaves this contact routed through HA;
+that is a different call path.
+
+The PBX must also permit the destination in the ESP's incoming context:
+
+- **Asterisk:** the `from-esp-bedroom` route to `6002` shown above uses
+  `Dial(PJSIP/6002,30)`.
+- **FreeSWITCH:** the `from-esp-bedroom` context below bridges `6002` using
+  `user/6002@$${domain}`.
+
+For another internal number, add the corresponding contact and dialplan route.
+For an external telephone number, the PBX needs an outgoing route through its
+own provider trunk and that route must be allowed for the ESP's context.
+Adding a contact alone does not create an outgoing trunk route. The ESP still
+calls the PBX, and the PBX handles provider authentication and codec conversion.
 
 ## Keep microphone and playback rates independent
 

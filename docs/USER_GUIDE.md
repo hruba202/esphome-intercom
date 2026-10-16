@@ -431,10 +431,15 @@ calls. See the [action reference](SERVICES.md#voip_stacktransfer).
 For two SIP audio calls already controlled by HA, the backend can join the
 remaining participants locally when appropriate, including static SIP peers.
 This is not a guarantee that every handset supports every REFER target or media
-change. The tested ESP firmware currently rejects REFER on TCP dialogs, and a
-UDP transfer to an HA browser failed during media negotiation. Do not rely on
-that ESP transfer path until it has been corrected and qualified. The original
-call remains available when the peer rejects a transfer.
+change. The updated ESP development firmware supports blind audio transfers
+between IPv4 SIP endpoints over UDP or TCP. Rebuild and install the firmware;
+updating HA alone cannot add this support to an ESP. Spotpear Ball V2 FULL has
+been tested with HA browser phones in all four UDP/TCP transport combinations,
+including busy, timeout and cancellation. The replacement call retains its
+active TX codec, so the tested Spotpear transfer uses L16/16 kHz both ways.
+Video transfers, hostname targets and attended REFER with Replaces are outside
+this ESP receiver's supported scope. The original call remains available when
+a transfer fails, provided its caller has not already hung up.
 
 ## Voicemail
 
