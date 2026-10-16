@@ -591,3 +591,128 @@ async def test_browser_answer_ready_before_confirmation_deadline_is_not_discarde
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("strategy", [ForkStrategy.PARALLEL, ForkStrategy.SEQUENTIAL])
+@pytest.mark.parametrize("composition,ordinary_answers", [("mixed", True), ("mixed", False), ("browser", False)])
+@pytest.mark.parametrize("action", ["forward", "bridge", "cancel"])
+@pytest.mark.parametrize("failure", ["rejected", "deadline"])
+async def test_ready_route_control_precedes_answer_after_failed_pickup(
+    trunks, strategy, composition, ordinary_answers, action, failure, monkeypatch
+):
+    from unittest.mock import AsyncMock, Mock
+    from custom_components.voip_stack.core.sip import parse_sip_uri
+
+    runtime = trunks
+    session, route, old_gate, _ = prepare_browser_group(runtime)
+    await old_gate.close()
+    session.release_resource("fork_answer:" + session.call_id, value=old_gate)
+    # No media projection is needed to exercise the actual route decision.
+    route["invite"] = None
+    ready = asyncio.Event()
+    async def invite(**kwargs):
+        await ready.wait()
+        return "in_call"
+    client = SimpleNamespace(invite=AsyncMock(side_effect=invite), dialog=object(),
+        dialog_ids=SimpleNamespace(call_id="ordinary"), terminate=AsyncMock(), close=AsyncMock())
+    from custom_components.voip_stack import media_ports
+    release_pair = Mock(wraps=media_ports.release_sip_rtp_port_pair)
+    monkeypatch.setattr(media_ports, "release_sip_rtp_port_pair", release_pair)
+    ports = media_ports.RtpPortReservation.allocate(runtime.hass) if composition == "mixed" else None
+    attempts = [OutboundLeg("ordinary", parse_sip_uri("sip:ordinary@127.0.0.1:5090"), client, ports,
+                            candidate_id="sip:ordinary", endpoint_id="ordinary")] if composition == "mixed" else []
+    candidates, payloads, decision = build_ring_group_fork(
+        sip_port=5060, route_future=route["future"], attempts=attempts,
+        browser_legs=old_gate.browser_legs, preflight_failures=[])
+    commits = []
+    task = asyncio.create_task(run_owned_ring_group_fork(
+        session, candidates, payloads, invite=None, attempts=attempts,
+        browser_legs=old_gate.browser_legs, on_leg_state=None,
+        commit_winner=lambda candidate, _: commits.append(candidate.candidate_id) or True,
+        strategy=strategy, overall_timeout=.1 if failure == "deadline" else 1))
+    try:
+        await until(lambda: runtime.calls.resource_for(session.call_id, "fork_answer") is not None)
+        gate = runtime.calls.resource_for(session.call_id, "fork_answer")
+        branch_task = next(t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-branches")
+        ticket = gate.submit("picker")
+        assert await asyncio.shield(ticket.selected)
+        assert not ticket.committed.done()
+        set_pending_route_decision(runtime.hass, {"call_id": session.call_id, "action": action,
+            "destination": "Alternate" if action != "cancel" else "", "endpoint_id": "caller"})
+        await until(lambda: bool(decision))
+        assert decision["action"] == action
+        if ordinary_answers:
+            ready.set()
+            await until(branch_task.done)
+            assert branch_task.result().winner.candidate_id == "sip:ordinary"
+        if failure == "rejected":
+            ticket.finish(False)
+        result, _ = await task
+        expected = DialDisposition.SOURCE_CANCELLED if action == "cancel" else DialDisposition.REROUTE
+        assert result.outcome.disposition is expected, "accepted route control must precede the prepared SIP winner"
+        assert not commits and result.winner is None and not ticket.accepted
+        if attempts:
+            # Pending-leg cancellation may request idempotent transport cleanup
+            # again. The actual reservation must nevertheless be released once.
+            assert client.close.await_count >= 1
+            if ordinary_answers:
+                client.terminate.assert_awaited_once()
+                client.close.assert_awaited_once()
+            assert ports.released
+            release_pair.assert_called_once()
+            assert not runtime.runtime.rtp_port_pool.get("used")
+        assert runtime.calls.resource_for(session.call_id, "fork_answer") is None
+        assert not any(
+            pending.get_name().startswith(("voip-dial-fork", "voip-fork-confirm"))
+            for pending in asyncio.all_tasks()
+            if not pending.done()
+        )
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("ending", ["cancel_task", "terminate", "normal"])
+async def test_prepared_sip_branch_is_owned_during_external_confirmation(ending):
+    from custom_components.voip_stack.dial_fork import DialForkController, DialCandidate, DialOutcome, ForkAnswerGate
+    from custom_components.voip_stack.endpoint_session import TerminationIntent
+    session = EndpointCallSession("prepared", 1)
+    ready = asyncio.Event()
+    closed = []
+    async def dial():
+        await ready.wait()
+        return DialOutcome(DialDisposition.ANSWERED)
+    async def close(mode):
+        closed.append(mode)
+    gate = ForkAnswerGate()
+    commits = []
+    task = asyncio.create_task(DialForkController(session, [
+        DialCandidate("sip:ordinary", dial, close),
+        DialCandidate("external", gate.dial, gate.reject, control=True, confirm=gate.confirm),
+    ]).run(lambda candidate, _: commits.append(candidate.candidate_id) or True))
+    try:
+        ticket = gate.submit("picker")
+        assert await asyncio.shield(ticket.selected)
+        branch_task = next(t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-branches")
+        ready.set()
+        await until(branch_task.done)
+        if ending == "cancel_task":
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        elif ending == "terminate":
+            await session.terminate(TerminationIntent("cancelled"))
+            result = await task
+            assert result.outcome.disposition is DialDisposition.CANCELLED
+        else:
+            ticket.finish(False)
+            result = await asyncio.wait_for(task, .5)
+            assert result.winner.candidate_id == "sip:ordinary"
+        assert commits == (["sip:ordinary"] if ending == "normal" else [])
+        assert len(closed) == (0 if ending == "normal" else 1)
+        assert not ticket.accepted
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await gate.close()

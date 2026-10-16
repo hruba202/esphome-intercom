@@ -979,3 +979,109 @@ async def test_declined_browser_pickup_preserves_real_group_and_next_call(trunks
     await runtime.hass.services.async_call("voip_stack", "hangup", {"device_id": a.device_id}, blocking=True)
     await wait_for(lambda: not runtime.calls.sessions)
     assert not runtime.runtime.rtp_port_pool.get("used")
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("registered_phones", [{"manual": "transfer_b"}], indirect=True)
+async def test_route_forward_invalidates_real_sip_pickup_before_ordinary_answer_commit(
+    trunks, registered_phones, monkeypatch
+):
+    from custom_components.voip_stack.dial_fork import ForkAnswerGate
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint
+    from custom_components.voip_stack.roster import RosterEntry
+
+    runtime = trunks
+    entry = config_entry(runtime.hass)
+    runtime.hass.config_entries.async_update_entry(entry, data={**entry.data, "parking": {"enabled": True}})
+    caller, _, picker = registered_phones
+    ordinary, alternate = runtime.phones
+    ordinary.auto_answer = False
+    for index, phone in enumerate(runtime.phones):
+        name = f"bedroom{index}"
+        runtime.runtime.endpoints.update("sip:" + name, availability="available")
+        runtime.roster.append(RosterEntry(name,
+            sip_uri=f"sip:{name}@127.0.0.1:{phone.transport.get_extra_info('sockname')[1]}",
+            metadata={"endpoint_id": "sip:" + name, "endpoint_kind": "sip_account", "registered": True}))
+    browser = PhoneEndpoint(endpoint_id="route-browser", name="Route browser", device_id="route-browser-device",
+                            kind="browser", availability="available", capabilities=frozenset({"audio", "dtmf"}))
+    runtime.runtime.endpoints.register(browser)
+    runtime.roster.append(RosterEntry(browser.name, metadata={"local_ha": True, "endpoint_id": browser.endpoint_id}))
+    runtime.roster.append(RosterEntry("RouteGroup", metadata={"group_type": "ring", "members": ["bedroom0", browser.name]}))
+    from custom_components.voip_stack.store import store_manual_roster_entries
+    store_manual_roster_entries(runtime.hass, runtime.roster)
+    events = []
+    commands = []
+    tickets = []
+    original_submit = ForkAnswerGate.submit
+    route_requested = runtime.hass.loop.create_future()
+    session = None
+    route = None
+
+    def submit(gate, endpoint_id):
+        ticket = original_submit(gate, endpoint_id)
+        tickets.append(ticket)
+        def selected(done):
+            if done.cancelled() or not done.result():
+                return
+            # HA starts jobs eagerly by default. This callback only issues the
+            # public command and the peer's real UDP answer; it does not delay
+            # the controller or replace prepare_sip_pickup/validate/rollback.
+            commands.append(runtime.hass.async_create_task(runtime.hass.services.async_call(
+                "voip_stack", "forward", {"device_id": browser.device_id,
+                    "call_id": session.call_id, "destination": "bedroom1"}, blocking=True)))
+            route_requested.set_result(route["future"].done())
+            ordinary.answer()
+        ticket.selected.add_done_callback(selected)
+        return ticket
+
+    monkeypatch.setattr(ForkAnswerGate, "submit", submit)
+    async def wait_for(predicate):
+        async with asyncio.timeout(5):
+            while not predicate():
+                await asyncio.sleep(.001)
+    try:
+        await asyncio.to_thread(caller.command, "/dial RouteGroup")
+        await asyncio.wait_for(ordinary.invited.wait(), 5)
+        session = next(iter(runtime.calls.sessions.values()))
+        route = session.artifacts.pending_route
+        await wait_for(lambda: runtime.calls.resource_for(session.call_id, "fork_answer") is not None)
+        controls = [t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-control-browser:route-control"]
+        branches = [t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-branches"]
+        assert len(controls) == len(branches) == 1
+        controls[0].add_done_callback(lambda _: events.append("route_read"))
+        branches[0].add_done_callback(lambda t: events.append("ordinary_answered" if not t.cancelled() and t.result().winner else "ordinary_closed"))
+        await asyncio.to_thread(picker.command, "/dial pickup.bedroom0")
+        assert await asyncio.wait_for(route_requested, 5), "real forward must be accepted while confirmation is pending"
+        await wait_for(lambda: commands[0].done() or session.state == "in_call")
+        assert session.metadata.get("dest_endpoint_id") != "sip:bedroom0", (
+            "the old SIP answer must not commit after an accepted forward"
+        )
+        await asyncio.wait_for(commands[0], 6)
+        await wait_for(lambda: alternate.invited.is_set() and session.state == "in_call")
+        assert session.metadata["dest_endpoint_id"] == "sip:bedroom1"
+        assert not tickets[0].accepted
+        assert runtime.calls.resource_for(session.call_id, "pickup") is None
+        assert runtime.calls.resource_for(session.call_id, "fork_answer") is None
+        assert events.index("route_read") < events.index("ordinary_answered")
+        assert ordinary.bye.is_set() and len(alternate.invites) == 1
+        assert caller.read().count("Call established") == 1
+        await asyncio.to_thread(caller.hangup)
+        await wait_for(lambda: not runtime.calls.sessions)
+        assert not runtime.runtime.rtp_port_pool.get("used")
+        # Immediate next call uses the same caller and destination normally.
+        await asyncio.to_thread(caller.command, "/dial bedroom1")
+        await wait_for(lambda: len(alternate.invites) == 2 and caller.read().count("Call established") == 2)
+        await asyncio.to_thread(caller.hangup)
+        await wait_for(lambda: not runtime.calls.sessions)
+        assert not runtime.runtime.rtp_port_pool.get("used")
+        assert not any(
+            task.get_name().startswith(("voip-dial-fork", "voip-fork-confirm"))
+            for task in asyncio.all_tasks() if not task.done()
+        )
+    finally:
+        for command in commands:
+            if not command.done():
+                command.cancel()
+        await asyncio.gather(*commands, return_exceptions=True)
+        for peer in registered_phones:
+            await asyncio.to_thread(peer.command, "/hangupall")

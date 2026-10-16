@@ -405,6 +405,11 @@ async def run_ring_group_call(
             )
             handoff = route.get("forward_handoff")
             if handoff is not None and not handoff.done():
+                if not ha_origin:
+                    # The forwarding owner still needs the unanswered source
+                    # after the group's pending route has been retired.
+                    registry.set_pending_invite(invite.call_id, invite)
+                    authoritative_session.artifacts.caller_invite = invite
                 handoff.set_result(dict(reroute_decision))
             return
         if winner is not None:
