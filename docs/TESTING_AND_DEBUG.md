@@ -30,6 +30,32 @@ find custom_components/voip_stack/frontend -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 ```
 
+### Repeat a coordinated CI source set
+
+The software CI job uploads `coordinated-sources.json`, containing the actual
+backend commit and the four component commits checked out for that run.
+Default runs continue following the coordinated `dev`/`main` branches. To repeat
+an exact run, select its backend revision and supply the complete artifact JSON
+as the manual workflow's `component_manifest` input.
+
+For an isolated local checkout, use an empty component parent directory:
+
+```bash
+python scripts/coordinated_sources.py --root /path/to/component-parent \
+  --manifest coordinated-sources.json --output replayed-sources.json
+```
+
+The script rejects partial manifests, mutable commit references, mismatched
+backend revisions and existing component directories. It never resets a local
+checkout. This checkout manifest complements the local `candidate-lock.json`,
+which also records toolchain and dependency identities.
+
+The ESP component's `contract` job uploads `native.xml`. Its permanent REFER
+socket regressions exercise production response dispatch and retired-transaction
+replay with real loopback UDP/TCP sockets. These tests substitute scheduling and
+hardware media, so their results do not qualify physical audio or video. A full
+board build and an explicitly authorized hardware session are separate gates.
+
 ## Candidate qualification
 
 Live device qualification is a separate, explicitly started operation. CI runs
