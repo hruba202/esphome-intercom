@@ -32,7 +32,7 @@ Open **Settings > Devices & services > VoIP Stack**. In the integration's
 three-dot menu, choose **Add SIP trunk**. HA also offers a shortcut with the same
 name at the top of its integration page.
 
-![VoIP Stack integration menu with Add SIP trunk](images/pbx-add-trunk-menu.png)
+![VoIP Stack integration menu with Add SIP trunk](images/pbx-add-trunk-menu-dark.png)
 
 Each trunk now has a separate named entry, a device and a readiness entity.
 Provider credentials are no longer edited in the integration's main
@@ -40,7 +40,7 @@ Provider credentials are no longer edited in the integration's main
 See the [migration instructions](BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries)
 before updating an existing installation.
 
-![First step for adding a named SIP trunk](images/pbx-add-trunk.png)
+![First step for adding a named SIP trunk](images/pbx-add-trunk-dark.png)
 
 The first line becomes the default automatically. The screenshot shows adding
 another line, which also offers **Use as the default outgoing trunk**.

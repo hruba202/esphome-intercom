@@ -41,9 +41,9 @@ has an **Add SIP trunk** shortcut. Each line is a separate configuration subentr
 with its own device and readiness entity. Use its configuration control to edit
 it; the main integration's Reconfigure flow no longer contains provider settings.
 
-![Integration menu: Add SIP trunk](images/pbx-add-trunk-menu.png)
+![Integration menu: Add SIP trunk](images/pbx-add-trunk-menu-dark.png)
 
-![Add a named SIP trunk](images/pbx-add-trunk.png)
+![Add a named SIP trunk](images/pbx-add-trunk-dark.png)
 
 The screenshot shows adding an additional line to an existing installation.
 Give the line a name, such as Home or Work, and choose **Register the trunk** if

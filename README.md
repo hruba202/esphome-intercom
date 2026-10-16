@@ -86,7 +86,7 @@ independently. Existing enabled single-trunk settings are migrated automatically
 Read the [migration instructions](docs/BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries)
 before upgrading.
 
-![Add SIP trunk in the VoIP Stack integration menu](docs/images/pbx-add-trunk-menu.png)
+![Add SIP trunk in the VoIP Stack integration menu](docs/images/pbx-add-trunk-menu-dark.png)
 
 - **[Phone routing defaults](docs/PHONE_ROUTING.md):** optional forwarding, busy/unavailable destinations
   and a ringing timeout. An accepted automation action can override the default
