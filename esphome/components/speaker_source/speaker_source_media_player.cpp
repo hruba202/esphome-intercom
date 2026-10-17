@@ -193,8 +193,14 @@ void SpeakerSourceMediaPlayer::handle_media_state_changed_(uint8_t pipeline, med
       ps.last_source = ps.active_source;
       ps.active_source = nullptr;
 
-      // Finish the speaker to ensure it's ready for the next playback
-      ps.speaker->finish();
+      // Explicit cancellation discards this pipeline's outstanding output.
+      // Only natural EOF drains it; during maintenance those frames may already
+      // have been discarded by the hardware and can never complete.
+      if (was_stopping) {
+        ps.speaker->stop();
+      } else {
+        ps.speaker->finish();
+      }
 
       // Only advance the playlist if the track finished naturally (not stopped by the orchestrator)
       if (!was_stopping) {
@@ -538,7 +544,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
   }
 }
 
-// THREAD CONTEXT: Called from main loop only (via process_control_queue_)
+// THREAD CONTEXT: Main loop only, from the queue or immediate STOP control.
 void SpeakerSourceMediaPlayer::handle_player_command_(media_player::MediaPlayerCommand player_command,
                                                       uint8_t pipeline) {
   PipelineContext &ps = this->pipelines_[pipeline];
@@ -721,6 +727,25 @@ void SpeakerSourceMediaPlayer::handle_player_command_(media_player::MediaPlayerC
   }
 }
 
+// Control and deferred source requests share the main-loop owner. Removing
+// superseded commands is bounded by the existing queue size; other pipelines
+// retain their original order and URI ownership.
+void SpeakerSourceMediaPlayer::discard_pipeline_commands_(uint8_t pipeline) {
+  MediaPlayerControlCommand command{};
+  for (uint32_t remaining = uxQueueMessagesWaiting(this->media_control_command_queue_); remaining != 0; --remaining) {
+    if (xQueueReceive(this->media_control_command_queue_, &command, 0) != pdTRUE)
+      break;
+    if (command.pipeline != pipeline) {
+      // Receiving one item guarantees room; no other producer runs in this
+      // main-loop-only section.
+      xQueueSend(this->media_control_command_queue_, &command, 0);
+    } else if (command.type == MediaPlayerControlCommand::PLAY_URI ||
+               command.type == MediaPlayerControlCommand::ENQUEUE_URI) {
+      delete command.data.uri;
+    }
+  }
+}
+
 // THREAD CONTEXT: Called from main loop only. Entry points:
 // - HA/automation commands (direct)
 // - handle_play_uri_request_() via make_call().perform() (deferred from source tasks)
@@ -780,6 +805,12 @@ void SpeakerSourceMediaPlayer::control(const media_player::MediaPlayerCall &call
   auto cmd = call.get_command();
   if (cmd.has_value()) {
     switch (cmd.value()) {
+      case media_player::MEDIA_PLAYER_COMMAND_STOP:
+        // Cancellation must reach an opening/active source now, even when a
+        // queued PLAY_CURRENT cannot progress or OTA is about to block loop().
+        this->discard_pipeline_commands_(control_command.pipeline);
+        this->handle_player_command_(cmd.value(), control_command.pipeline);
+        return;
       case media_player::MEDIA_PLAYER_COMMAND_MUTE:
         this->set_mute_state_(true);
         break;

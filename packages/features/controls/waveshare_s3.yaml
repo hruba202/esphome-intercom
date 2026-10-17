@@ -1,0 +1,13 @@
+# Telephone keys on the Waveshare S3 Audio GPIO expander.
+packages:
+  primary: !include 'primary_button.yaml'
+binary_sensor:
+- id: !extend 'key1'
+  on_press:
+    then: ${ _fw_primary_phone if _fw_voip else [] }
+- id: !extend 'key2'
+  on_press:
+    then: ${ _fw_next_contact if _fw_voip else [] }
+- id: !extend 'key3'
+  on_press:
+    then: ${ _fw_decline_or_previous if _fw_voip else [] }

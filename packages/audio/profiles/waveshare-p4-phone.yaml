@@ -1,0 +1,105 @@
+# Physical audio/backend configuration; local GMF selection is explicit.
+esp_audio_stack:
+  audio_task_stack_in_psram: false
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 48000
+  output_sample_rate: 16000
+  processor_id: afe_processor
+  audio_effects:
+    rate_cvt_complexity: 3
+    rate_cvt_perf_type: speed
+  codec:
+    i2c_id: internal_i2c
+    input:
+      type: es7210
+      address: 64
+      mic_selected: 15
+      gain_db: 30.0
+      ref_channel: 1
+      ref_gain_db: 24.0
+    output:
+      type: es8311
+      address: 24
+      use_mclk: true
+      no_dac_ref: true
+  slot_bit_width: 16
+  use_tdm_reference: true
+  tdm_total_slots: 4
+  tdm_mic_slots:
+  - 0
+  - 2
+  tdm_ref_slot: 1
+  buffers_in_psram: true
+  on_amplifier_required:
+  - script.stop: videophone_speaker_idle_powerdown
+  - if:
+      condition:
+        switch.is_off: speaker_mute
+      then:
+      - output.turn_on: speaker_enable
+  on_amplifier_idle:
+  - script.execute: videophone_speaker_idle_powerdown
+esp_afe:
+  id: afe_processor
+  task_priority: ${p4_afe_task_priority}
+  feed_task_priority: ${p4_afe_feed_task_priority}
+  fetch_task_priority: ${p4_afe_fetch_task_priority}
+  type: fd
+  mode: high_perf
+  mic_num: 2
+  aec_enabled: true
+  aec_filter_length: 4
+  aec_nlp_level: normal
+  se_enabled: true
+  ns_enabled: true
+  vad_enabled: false
+  continuous_vad: false
+  agc_enabled: false
+  feed_buf_in_psram: false
+  feed_ring_in_psram: false
+  fetch_ring_in_psram: false
+microphone:
+- platform: esp_audio_stack
+  id: mic_main
+script:
+- id: videophone_speaker_idle_powerdown
+  mode: restart
+  then:
+  - delay: ${audio_stack_speaker_idle_delay}
+  - if:
+      condition:
+        switch.is_off: speaker_mute
+      then:
+      - output.turn_off: speaker_enable
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 48000
+  bits_per_sample: 16
+  timeout: 1s
+  buffer_duration: 128ms
+switch:
+- platform: esp_afe
+  esp_afe_id: afe_processor
+  aec:
+    id: aec_switch
+    name: Echo Cancellation
+    icon: mdi:ear-hearing
+    restore_mode: ALWAYS_ON
+packages:
+  speaker_mute: !include '../../voip/speaker_mute.yaml'
+  controls: !include '../../esp_audio_stack/controls.yaml'
+  playback: !include '../../media_player/playback_compat.yaml'
+  gmf_source: !include '../gmf_source.yaml'
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_afe
+- source: ${ext_components_source}
+  components:
+  - speaker

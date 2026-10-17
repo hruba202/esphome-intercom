@@ -5,4 +5,4 @@ esphome:
 
 external_components:
   - source: ${ext_components_source}
-    components: [mixer, speaker_source]
+    components: [audio, mixer, speaker_source]

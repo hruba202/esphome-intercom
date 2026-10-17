@@ -65,7 +65,7 @@ The same icons are used in audio and video mode.
 | Keypad (nine dots) | Enter a number, contact name or SIP URI. During a call, send DTMF digits. The icon changes to Contacts when it can return you to the phonebook. |
 | Voicemail (two linked circles) | Open this phone's messages. It appears when messages are available and the phone is idle, not during dialing, ringing or an active call. |
 | Transfer (handset with arrow) | Open the existing contact/keypad view to choose where to send the current call. Confirm with **Transfer**. |
-| P | Park the established audio call. Enable parking in the integration first. The returned slot is the number to dial to retrieve it. |
+| P | Park the established audio call. The returned slot is the number to dial to retrieve it. |
 | Options (sliders) | Open this phone's answer, DND, mailbox, audio/video and routing settings. |
 | Call / Hang up | Start the selected call or end the current conversation. In video mode, use the handset icon in the translucent bottom bar. |
 
@@ -443,13 +443,18 @@ a transfer fails, provided its caller has not already hung up.
 
 ## Voicemail
 
+PBX functions are available by default. There are no global parking or voicemail
+enable switches. Configure resources as needed; registering a function does not
+create mailboxes, record calls or start playback.
+
 A **mailbox** is the message inbox belonging to one phone. Voicemail is the PBX
 feature that answers a call, plays a greeting and records the caller.
 
 ### Enable the mailbox and its routing rule
 
-1. In the VoIP Stack integration configuration, enable **Voicemail** and choose
-   an HA TTS provider, language and voice for the spoken menus. TTS is required.
+1. For spoken mailbox menus, open **VoIP Stack > Reconfigure > Voicemail voice**
+   and choose an HA TTS provider, language and voice. Message deposits use a
+   recording tone or the mailbox greeting and do not require TTS.
 2. Open the phone card's **Options** and enable **Enable this phone's mailbox**.
 3. If unanswered calls should leave a message, configure **Call routing >
    Ringing timeout > Voicemail** and save it.
@@ -516,7 +521,7 @@ and must refresh before expiry.
 
 ### Continue a conversation on another phone
 
-Enable parking in the integration configuration first. During an audio call,
+Parking is available by default. During an audio call,
 press **P** on the card. The phone is released and the left-hand list shows the
 assigned slot, for example **701**.
 

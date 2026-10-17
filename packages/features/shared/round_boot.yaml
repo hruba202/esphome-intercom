@@ -1,0 +1,39 @@
+# Shared round-board startup and HA fallback. Display initialization is board-specific.
+defaults:
+  _spotpear_boot_display: ${ firmware_boot_display_actions | default(_spotpear_default_display) }
+  _spotpear_boot_wake_word:
+  - micro_wake_word.stop: null
+  _spotpear_boot_delay:
+  - delay: 1s
+  _spotpear_boot_phone:
+  - lambda: id(peer_name) = id(phone).get_current_destination();
+  _spotpear_boot_wait:
+  - delay: 30s
+  _spotpear_boot_fallback_state:
+  - globals.set:
+      id: init_in_progress
+      value: 'false'
+  _spotpear_boot_fallback_display:
+  - script.execute: draw_display
+  _spotpear_boot_fallback_wake_word:
+  - script.execute: start_mww_when_ready
+  _spotpear_boot_fallback:
+  - if:
+      condition:
+        lambda: return id(init_in_progress);
+      then: ${ _spotpear_boot_fallback_state + (_spotpear_boot_fallback_display if _fw_display else []) + (_spotpear_boot_fallback_wake_word
+        if _fw_wake_word else []) }
+  _spotpear_default_display:
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  - lambda: |-
+      id(g_settings_pages).clear();
+      id(g_settings_pages).push_back(id(settings_continuous_page)->obj);
+  - script.execute: backlight_timer
+esphome:
+  on_boot:
+    priority: 600
+    then: ${ (_spotpear_boot_display if _fw_display else []) + (_spotpear_boot_wake_word if _fw_wake_word else [])
+      + _spotpear_boot_delay + (_spotpear_boot_phone if _fw_display and _fw_voip else []) + _spotpear_boot_wait
+      + _spotpear_boot_fallback }

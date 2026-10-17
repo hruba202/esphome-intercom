@@ -1,9 +1,10 @@
 # Headless Voice Assistant runtime. Supply va microphone and speaker_media_player.
 # The media ducking adapter additionally requires media_mixer_input.
 packages:
-  controller: !include ../../../esphome-runtime-controller/packages/runtime_controller/base.yaml
-  voice_policy: !include ../../../esphome-runtime-controller/packages/runtime_controller/voice.yaml
-  media_policy: !include ../../../esphome-runtime-controller/packages/runtime_controller/media.yaml
+  controller: !include ../features/shared/controller.yaml
+  voice_policy: !include ../features/voice/runtime.yaml
+  media_observer: !include ../features/shared/player_observer.yaml
+  media_policy: !include ../features/music/runtime.yaml
   media_globals: !include ../runtime/media_globals.yaml
   voice_commands: !include ../voice_assistant/local_commands.yaml
   lifecycle: !include ../runtime/lifecycle_globals.yaml

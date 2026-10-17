@@ -26,11 +26,9 @@ def resolve_phone(hass, selector):
 
 def mailbox_state(hass, endpoint_id, archive=None):
     from .mailbox import mailbox_settings
-    from .voicemail_config import voicemail_config
 
     enabled = bool(
-        voicemail_config(hass).get("enabled")
-        and mailbox_settings(hass, endpoint_id).get("enabled")
+        mailbox_settings(hass, endpoint_id).get("enabled")
     )
     runtime = require_runtime_data(hass)
     if archive is None and runtime.sip is not None:
@@ -170,6 +168,7 @@ class PhoneStateObserver:
         self.unsubscribers.clear()
         self.previous = {}
         self.dialogs = {}
+        self.activity = {"phones": [], "parked": []}
 
     @staticmethod
     def _deliver(listeners, *args):

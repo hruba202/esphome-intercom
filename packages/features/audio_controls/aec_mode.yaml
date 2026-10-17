@@ -1,0 +1,63 @@
+# Standalone AEC reconfiguration uses its existing synchronous mode action.
+defaults:
+  aec_mode_options: ${ aec_mode_options | default(["fd_low_cost", "fd_high_perf"]) }
+  aec_initial_mode: ${ aec_initial_mode | default("fd_high_perf") }
+  aec_mode_restore_value: ${ aec_mode_restore_value | default(true) }
+  _fw_aec_voice_busy:
+    voice_assistant.is_running: {}
+  _fw_aec_phone_busy:
+    not:
+      voip_stack.is_idle: {}
+  _fw_aec_no_busy:
+    lambda: return false;
+  _fw_aec_stop_wake_word:
+  - micro_wake_word.stop: {}
+  _fw_aec_resume_wake_word:
+  - if:
+      condition:
+        switch.is_off: mute
+      then:
+      - micro_wake_word.start: {}
+      - script.execute: boost_mww_priority
+  _fw_aec_change:
+  - esp_audio_stack.stop: {}
+  - wait_until:
+      condition:
+        esp_audio_stack.is_idle: {}
+      timeout: 2s
+  - esp_aec.set_mode:
+      id: aec_processor
+      mode: !lambda |-
+        return x;
+  - esp_audio_stack.start: {}
+  - delay: 300ms
+substitutions:
+  aec_initial_mode: ${aec_initial_mode}
+  aec_mode_restore_value: ${aec_mode_restore_value}
+select:
+- platform: template
+  name: AEC Mode
+  id: aec_mode_select
+  icon: mdi:tune-vertical
+  options: ${aec_mode_options}
+  initial_option: ${aec_initial_mode}
+  optimistic: false
+  restore_value: ${aec_mode_restore_value}
+  set_action:
+  - if:
+      condition:
+        lambda: return id(init_in_progress);
+      then:
+      - logger.log: 'AEC mode select: skipping during boot'
+      else:
+      - if:
+          condition:
+            or: ${ ([_fw_aec_voice_busy] if _fw_voice else []) + ([_fw_aec_phone_busy] if _fw_voip else []) + [_fw_aec_no_busy]
+              }
+          then:
+          - logger.log:
+              level: WARN
+              format: Cannot switch AEC mode during active VA/VoIP
+          else: ${ (_fw_aec_stop_wake_word if _fw_wake_word else []) + _fw_aec_change + (_fw_aec_resume_wake_word
+            if _fw_wake_word else []) }
+  - lambda: id(aec_mode_select).publish_state(id(aec_processor).get_mode_name());

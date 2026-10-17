@@ -6,7 +6,7 @@ import subprocess
 
 def test_call_buttons_consume_both_edges_and_keep_idle_guards(tmp_path):
     root = Path(__file__).resolve().parents[1]
-    text = (root / 'yamls/experimental/home-assistant-voice-pe/home-assistant-voice-pe-voip.yaml').read_text()
+    text = (root / 'packages/features/voip/devices/voice_pe.yaml').read_text()
     body = text.split('static bool voip_press_consumed = false;', 1)[1].split('return x;',1)[0] + 'return x;'
     body = re.sub(r'id\((\w+)\)', r'\1', body)
     source = r'''

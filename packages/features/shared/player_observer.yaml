@@ -1,0 +1,6 @@
+# Playback state is also needed for announcement-only voice responses.
+runtime_controller:
+  features:
+  - media_player
+  observe:
+    media_player: speaker_media_player

@@ -11,6 +11,8 @@ import subprocess
 import pytest
 import yaml
 
+from tests.native_profile import profile as native_profile, action_id
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILES = (
@@ -46,7 +48,8 @@ def _scripts(package):
 
 @pytest.fixture(scope="module")
 def regression_binary(tmp_path_factory):
-    projection = _scripts(_load("packages/runtime/lvgl_ui_projection.yaml"))
+    projection = _scripts(_load("packages/features/presentation/phase.yaml"))
+    projection |= _scripts(_load("packages/features/voip/presentation/lifecycle.yaml"))
     connectivity = _load("packages/runtime/ha_connectivity.yaml")
     presence = _scripts(connectivity)
     voip_callbacks = _load("packages/voip/full_runtime_callbacks.yaml")["voip_stack"]
@@ -237,27 +240,24 @@ def test_runtime_lifecycle_regressions(regression_binary, scenario):
 
 
 @pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.timeout(240)
 def test_lvgl_profiles_delegate_semantics_to_common_adapter(profile):
-    config = _load("yamls/" + profile)
+    config = native_profile("yamls/" + profile)
     scripts = _scripts(config)
-    assert "lvgl_ui_projection.yaml" in config["packages"]["runtime_ui_projection"]
-    assert scripts["render_ui_state"]["then"][0] == {
-        "script.execute": "runtime_project_ui_phase"
-    }
-    assert scripts["ui_call_started"]["then"][0] == {
-        "script.execute": "runtime_ui_call_begin"
-    }
-    assert scripts["ui_call_ended"]["then"][0] == {
-        "script.execute": "runtime_ui_call_end"
-    }
+    assert "runtime_project_ui_phase" in scripts
+    assert action_id(scripts["render_ui_state"]["then"][0], "script.execute") == "runtime_project_ui_phase"
+    assert action_id(scripts["ui_call_started"]["then"][0], "script.execute") == "runtime_ui_call_begin"
+    assert action_id(scripts["ui_call_ended"]["then"][0], "script.execute") == "runtime_ui_call_end"
 
     # Hooks may update response content, but no board automation may assign a
     # semantic VA phase or resurrect MWW from a screen redraw.
-    actions = yaml.safe_dump(config["script"])
+    actions = yaml.safe_dump([script for script in config["script"] if script["id"] != "runtime_project_ui_phase"])
     assert not re.search(r"id\(voice_assistant_phase\)\s*=(?!=)", actions)
     assert not re.search(r"globals\.set:\n\s+id: voice_assistant_phase", actions)
     assert "start_mww_when_ready" not in yaml.safe_dump(scripts["draw_display"])
     assert "api::global_api_server->is_connected()" not in yaml.safe_dump(
         scripts["draw_display"]
     )
-    assert "set_idle_or_mute_phase" not in scripts
+    alias = scripts["set_idle_or_mute_phase"]["then"]
+    assert len(alias) == 1
+    assert action_id(alias[0], "script.execute") == "runtime_project_ui_phase"

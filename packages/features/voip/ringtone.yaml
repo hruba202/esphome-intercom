@@ -1,0 +1,4 @@
+packages:
+  runtime: !include 'ringtone_runtime.yaml'
+  playback: !include '../../runtime/voip_ringtone_orchestration.yaml'
+  asset: !include '../../voip/ringtone_asset.yaml'

@@ -25,8 +25,8 @@ def test_timer_cancellation_and_announcement_priority(tmp_path):
     ]
     play_guard = timer["then"][0]["while"]["then"][0]["if"]["condition"]["lambda"]
     controller = (
-        ROOT.parent
-        / "esphome-runtime-controller/packages/runtime_controller/timers.yaml"
+        ROOT
+        / "packages/features/timers/runtime.yaml"
     )
     policy = yaml.load(controller.read_text(), Loader=PackageLoader)[
         "runtime_controller"

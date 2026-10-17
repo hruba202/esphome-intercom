@@ -1,0 +1,74 @@
+# Single settings projection with optional phone and wake-word controls.
+script:
+- id: settings_p4_sync_widgets
+  then: ${ _p4_sync_0 + _p4_sync_1 + _p4_sync_2 + _p4_sync_3 + (_p4_sync_4 if _p4_settings_phone else []) + (_p4_sync_5
+    if _p4_settings_phone else []) + _p4_sync_6 + _p4_sync_7 + _p4_sync_8 + (_p4_sync_9 if _p4_settings_wake_word
+    else []) }
+interval:
+- interval: 1s
+  then:
+  - if:
+      condition:
+        lambda: return lv_disp_get_scr_act(nullptr) == id(settings_p4_page)->obj;
+      then:
+      - script.execute: settings_p4_sync_widgets
+defaults:
+  _p4_settings_phone: ${ _fw_voip | default(true) }
+  _p4_settings_wake_word: ${ _fw_wake_word | default(true) }
+  _p4_sync_0:
+  - lvgl.slider.update:
+      id: ui_speaker_vol_slider
+      value: !lambda |-
+        return id(master_volume).state;
+  _p4_sync_1:
+  - lvgl.slider.update:
+      id: ui_mic_vol_slider
+      value: !lambda |-
+        return id(mic_gain).state;
+  _p4_sync_2:
+  - lvgl.switch.update:
+      id: ui_speaker_mute_sw
+      state:
+        checked: !lambda |-
+          return id(speaker_mute).state;
+  _p4_sync_3:
+  - lvgl.switch.update:
+      id: ui_mic_mute_sw
+      state:
+        checked: !lambda |-
+          return id(mute).state;
+  _p4_sync_4:
+  - lvgl.switch.update:
+      id: ui_auto_answer_sw
+      state:
+        checked: !lambda |-
+          return id(auto_answer_switch).state;
+  _p4_sync_5:
+  - lvgl.switch.update:
+      id: ui_dnd_sw
+      state:
+        checked: !lambda |-
+          return id(dnd_switch).state;
+  _p4_sync_6:
+  - lvgl.switch.update:
+      id: ui_aec_sw
+      state:
+        checked: !lambda |-
+          return id(aec_switch).state;
+  _p4_sync_7:
+  - lvgl.dropdown.update:
+      id: ui_aec_mode_dd
+      selected_text: !lambda |-
+        return id(aec_mode_select).current_option();
+  _p4_sync_8:
+  - lvgl.switch.update:
+      id: ui_vad_sw
+      state:
+        checked: !lambda |-
+          return id(vad_switch).state;
+  _p4_sync_9:
+  - lvgl.switch.update:
+      id: ui_wake_word_sw
+      state:
+        checked: !lambda |-
+          return id(wake_word_switch).state;

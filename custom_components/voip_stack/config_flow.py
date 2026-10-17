@@ -28,6 +28,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from .config_validation import entry_route_mappings as _entry_route_mappings
 from .trunk_policy import EXTERNAL_CALL_BLOCKED_ENDPOINTS, trusted_networks
 from .config_validation import extension_conflicts, route_namespace_conflicts, mailbox_route_aliases, mailbox_namespace_conflicts
 from .phone_config import (
@@ -52,7 +53,6 @@ from .phone_config import (
     persisted_phone_policy,
     new_browser_endpoint_id,
     new_sip_account_endpoint_id,
-    phone_subentries,
 )
 from .phone_endpoint import EndpointKind, OfflinePolicy
 from .sip_registrar import generate_password, normalize_username
@@ -104,50 +104,6 @@ def _group_route_values(*values: object) -> list[str]:
     ]
 
 
-def _entry_route_mappings(
-    entry: ConfigEntry | None,
-    data: Mapping[str, Any],
-    *,
-    exclude_subentry_id: str = "",
-    include_assist: bool = True,
-) -> list[Mapping[str, Any]]:
-    """Build the complete persisted routing namespace for flow validation."""
-    from .contact_config import contact_dicts
-
-    mappings: list[Mapping[str, Any]] = (
-        contact_dicts(entry) if entry is not None else list(data.get(CONF_PHONEBOOK_CONTACTS, []) or [])
-    )
-    if data.get("voicemail", {}).get("enabled"):
-        mappings.append({"mailbox_feature_routes": True})
-    if data.get("parking", {}).get("enabled"):
-        mappings.append({"parking_feature_routes": data["parking"]})
-    mappings.extend(
-        item
-        for item in data.get("sip_accounts", []) or []
-        if isinstance(item, Mapping)
-    )
-    if entry is not None:
-        mappings.extend(
-            subentry.data
-            for subentry in phone_subentries(entry)
-            if subentry.subentry_id != exclude_subentry_id
-        )
-    runtime = getattr(entry, "runtime_data", None) if entry is not None else None
-    endpoints = getattr(getattr(runtime, "endpoints", None), "endpoints", ())
-    mappings.extend(
-        {"id": endpoint.sip_uri_user, "name": endpoint.name, "extension": endpoint.extension}
-        for endpoint in endpoints if endpoint.kind is EndpointKind.ESPHOME
-    )
-    assist_extension = str(data.get(CONF_ASSIST_EXTENSION) or "").strip()
-    if include_assist and data.get(CONF_ASSIST_ENDPOINT_ENABLED) and assist_extension:
-        mappings.append(
-            {
-                "id": "assist",
-                "name": "Assist",
-                "extension": assist_extension,
-            }
-        )
-    return mappings
 
 
 def _port_selector():
@@ -466,7 +422,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for VoIP Stack."""
 
     VERSION = 6
-    MINOR_VERSION = 3
+    MINOR_VERSION = 4
     _base_input: dict | None = None
 
     @classmethod
@@ -494,6 +450,11 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
         current_entry, _existing = self._current_entry_data()
         if current_entry is not None:
             data = {**current_entry.data, **data}
+        for feature in ("parking", "voicemail"):
+            if feature in data:
+                settings = dict(data[feature])
+                settings.pop("enabled", None)
+                data[feature] = settings
         if current_entry is None or current_entry.version >= 6:
             data.pop(CONF_PHONEBOOK_CONTACTS, None)
         if current_entry is not None:
@@ -515,7 +476,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(self, user_input=None):
         """Reconfigure the existing VoIP Stack entry from HA's native menu."""
-        return await self.async_step_user(user_input)
+        return self.async_show_menu(step_id="reconfigure", menu_options=["user", "parking", "voicemail"])
 
     async def async_step_user(self, user_input=None):
         """Handle install/reconfigure of the single VoIP Stack entry.
@@ -568,8 +529,6 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_REGISTRAR_ENABLED, default=defaults[CONF_REGISTRAR_ENABLED]
                 ): BooleanSelector(),
-                vol.Optional("voicemail_enabled", default=bool(existing.get("voicemail", {}).get("enabled", False))): BooleanSelector(),
-                vol.Optional("parking_enabled", default=bool(existing.get("parking", {}).get("enabled", False))): BooleanSelector(),
             }
         )
         errors: dict[str, str] = {}
@@ -720,19 +679,14 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
     async def _finish_optional_features(self, data):
-        self._base_input = data
-        _entry, existing = self._current_entry_data()
-        enabled = data.pop("voicemail_enabled", bool(existing.get("voicemail", {}).get("enabled", False)))
-        if enabled:
-            return await self.async_step_voicemail()
-        data["voicemail"] = {**existing.get("voicemail", {}), "enabled": False}
-        return await self._finish_parking(data)
+        return self._store_entry(data)
 
     async def async_step_voicemail(self, user_input=None):
-        """Choose the shared IVR voice before enabling any mailbox service."""
+        """Configure the shared IVR voice independently of basic phone setup."""
         from .voicemail_config import voice_engine, prompt_languages
 
         _entry, existing = self._current_entry_data()
+        self._base_input = self._base_input or {}
         current = existing.get("voicemail", {})
         errors = {}
         if user_input is not None:
@@ -770,12 +724,12 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
             elif mailbox_namespace_conflicts(_entry_route_mappings(_entry, existing)):
                 errors["base"] = "voicemail_route_conflict"
             else:
-                self._base_input["voicemail"] = {"enabled": True, "tts_entity_id": self._voicemail_tts,
+                self._base_input["voicemail"] = {"tts_entity_id": self._voicemail_tts,
                                                   "language": language}
                 voices = getattr(entity, "async_get_supported_voices", lambda _language: None)(language)
                 if voices:
                     return await self.async_step_voicemail_voice()
-                return await self._finish_parking(dict(self._base_input))
+                return self._store_entry(dict(self._base_input))
         return self.async_show_form(step_id="voicemail_language", errors=errors, data_schema=vol.Schema({
             vol.Required("language", default=default or ""):
                 SelectSelector(SelectSelectorConfig(options=languages, mode="dropdown")),
@@ -809,28 +763,19 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                     settings["voice"] = voice
                 else:
                     settings.pop("voice", None)
-                return await self._finish_parking(dict(self._base_input))
+                return self._store_entry(dict(self._base_input))
         return self.async_show_form(step_id="voicemail_voice", errors=errors, data_schema=vol.Schema({
             vol.Required("voice", default=current if current in valid else ""):
                 SelectSelector(SelectSelectorConfig(options=choices, mode="dropdown")),
         }))
 
 
-    async def _finish_parking(self, data):
-        self._base_input = data
-        _entry, existing = self._current_entry_data()
-        enabled = data.pop("parking_enabled", bool(existing.get("parking", {}).get("enabled", False)))
-        if enabled:
-            return await self.async_step_parking()
-        if "parking" in existing:
-            data["parking"] = {**existing["parking"], "enabled": False}
-        return self._store_entry(data)
-
     async def async_step_parking(self, user_input=None):
         from .parking_config import DEFAULT_SLOTS, normalize_parking_config, parking_namespace_conflicts
         from .runtime_data import runtime_data
 
         entry, existing = self._current_entry_data()
+        self._base_input = self._base_input or {}
         current = existing.get("parking", {})
         slots = current.get("slots") or DEFAULT_SLOTS
         options = [{"value": "", "label": "Phone that parked the call"}]
@@ -841,7 +786,7 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 candidate = normalize_parking_config({
-                    "enabled": True, "access": user_input["access"],
+                    "access": user_input["access"],
                     "slots": str(user_input["slots"]).replace("\n", ",").split(","),
                     "timeout": user_input["timeout"], "return_timeout": user_input["return_timeout"],
                     "return_destination": user_input.get("return_destination", ""),
@@ -849,7 +794,11 @@ class VoipStackConfigFlow(ConfigFlow, domain=DOMAIN):
                         user_input.get("hold_media", {}).get("media_content_id", current.get("hold_media", "")),
                 })
                 mappings = _entry_route_mappings(entry, existing)
-                if parking_namespace_conflicts(candidate, mappings):
+                owner = runtime.sip if runtime is not None else None
+                lot = owner.component("parking") if owner is not None else None
+                if lot is not None and any(slot not in candidate["slots"] for slot in lot.calls):
+                    errors["base"] = "parking_slots_in_use"
+                elif parking_namespace_conflicts(candidate, mappings):
                     errors["base"] = "parking_route_conflict"
                 else:
                     self._base_input["parking"] = candidate
@@ -972,8 +921,7 @@ class PhoneSubentryFlowHandler(ConfigSubentryFlow):
                     ): BooleanSelector(),
                 }
             )
-        if self._get_entry().data.get("voicemail", {}).get("enabled"):
-            fields[vol.Optional("voicemail_enabled", default=bool(current.get("voicemail", {}).get("enabled")))] = BooleanSelector()
+        fields[vol.Optional("voicemail_enabled", default=bool(current.get("voicemail", {}).get("enabled")))] = BooleanSelector()
         return vol.Schema(fields)
 
     def _validate_aliases(

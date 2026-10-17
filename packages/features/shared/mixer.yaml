@@ -1,0 +1,8 @@
+# One mixer implementation for every composed playback path.
+packages:
+  mixer: !include '../../audio/mono_mixer_48k.yaml'
+external_components:
+- source: ${ext_components_source}
+  components:
+  - audio
+  - mixer

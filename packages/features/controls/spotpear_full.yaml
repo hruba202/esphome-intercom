@@ -1,0 +1,91 @@
+# Page-aware physical gestures for the complete Spotpear interface.
+binary_sensor:
+- id: !extend 'main_button'
+  on_multi_click:
+  - timing:
+    - ON for 10ms to 500ms
+    - OFF for at least 400ms
+    then: ${ _spotpear_first_with_timer if _fw_timers else _spotpear_first_without_timer }
+  - timing:
+    - ON for 50ms to 500ms
+    - OFF for 50ms to 400ms
+    - ON for 50ms to 500ms
+    - OFF for at least 400ms
+    then:
+    - if:
+        condition:
+          and:
+          - lambda: return id(current_mode) == 1;
+          - voip_stack.is_ringing: null
+        then:
+        - voip_stack.decline_call: null
+        else:
+        - if:
+            condition:
+              lambda: |-
+                return id(current_mode) == 1 &&
+                       id(phone).is_idle() &&
+                       id(voip_dialer_active);
+            then:
+            - script.execute: voip_dial_backspace
+            else:
+            - if:
+                condition:
+                  and:
+                  - lambda: return id(current_mode) == 1;
+                  - voip_stack.is_idle: null
+                then:
+                - voip_stack.next_contact: null
+  - timing:
+    - ON for 1s to 3s
+    then:
+    - if:
+        condition:
+          and:
+          - lambda: return id(current_mode) == 1;
+          - voip_stack.is_idle: null
+        then:
+        - script.execute: switch_to_va
+        else:
+        - script.execute: switch_to_voip
+defaults:
+  _spotpear_first_with_timer:
+  - if:
+      condition:
+        runtime_controller.is_active:
+          id: runtime
+          activity: timer_ringing
+      then:
+      - runtime_controller.event:
+          id: runtime
+          event: timer_stopped
+      else: &id001
+      - if:
+          condition:
+            lambda: |-
+              return id(current_mode) == 1 &&
+                     id(phone).is_idle() &&
+                     id(voip_dialer_active);
+          then:
+          - script.execute: voip_dial_call
+          else:
+          - if:
+              condition:
+                and:
+                - lambda: return id(current_mode) == 1;
+                - voip_stack.is_idle: null
+              then:
+              - voip_stack.call_toggle: null
+              else:
+              - if:
+                  condition:
+                    and:
+                    - lambda: return id(current_mode) == 1;
+                    - voip_stack.is_active: null
+                  then:
+                  - voip_stack.call_toggle: null
+                  else:
+                  - runtime_controller.event:
+                      id: runtime
+                      event: manual_voice_toggle
+  _spotpear_first_without_timer: *id001

@@ -378,10 +378,9 @@ def test_advanced_assist_context_is_opt_in_and_persisted_by_config_flow() -> Non
 
 def test_phone_and_assist_flows_share_one_complete_route_namespace() -> None:
     flow_source = CONFIG_FLOW.read_text()
-    mappings = flow_source[
-        flow_source.index("def _entry_route_mappings(") :
-        flow_source.index("def _port_selector(")
-    ]
+    shared_source = CONFIG_FLOW.with_name("config_validation.py").read_text()
+    mappings = shared_source[shared_source.index("def entry_route_mappings(") :]
+    assert "entry_route_mappings as _entry_route_mappings" in flow_source
     assist_node = next(node for node in ast.walk(ast.parse(flow_source))
                        if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_step_assist")
     assist = ast.get_source_segment(flow_source, assist_node)

@@ -19,6 +19,12 @@ beyond the project overview in the [top-level README](../README.md).
 Historical release notes and migration entries describe their named versions.
 Do not use an old release example as the current installation procedure.
 
+For ESP firmware, use a separate progression: [choose and build your board](../yamls/README.md#how-to-use),
+then [edit its feature selection](../packages/README.md#work-through-a-full-profile),
+and only then explore the [board/audio/module map](../packages/README.md#find-the-implementation).
+The [migration checklist](BREAKING_CHANGES.md#development-firmware-new-device-packages)
+explains how to carry settings from an older YAML into the new device packages.
+
 ## Pick your path
 
 | Need | Document |
@@ -28,6 +34,7 @@ Do not use an old release example as the current installation procedure.
 | Build greetings, keypad menus and call routing in the HA editor | [Automation as dialplan cookbook](AUTOMATION_DIALPLAN.md) |
 | Review the current release | [Release history](../CHANGELOG.md) |
 | Choose a board and maintained YAML | [Deployment guide](DEPLOYMENT_GUIDE.md) |
+| Start simple and add ESP voice, calls, music or presentation | [Package walkthrough](../packages/README.md#work-through-a-full-profile) |
 | Complete the shortest supported setup | [Quick start](../README.md#fastest-start) |
 | Update an existing installation | [Breaking changes](BREAKING_CHANGES.md) |
 | Connect ESP firmware to a classic PBX | [Static SIP peers without REGISTER](CLASSIC_PBX.md) |

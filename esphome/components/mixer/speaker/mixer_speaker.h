@@ -11,7 +11,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/static_task.h"
 
-#include <ducking.h>  // esp-audio-libs
+#include <gain.h>  // esp-audio-libs
 
 #include <freertos/event_groups.h>
 
@@ -109,7 +109,7 @@ class SourceSpeaker final : public speaker::Speaker, public Component {
 
   bool pause_state_{false};
 
-  esp_audio_libs::ducking::DuckingState ducking_state_{};
+  esp_audio_libs::gain::GainRamp ducking_ramp_{};
 
   PlaybackTimeline playback_;
   PlaybackTimeline::Completion completion_{};

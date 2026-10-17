@@ -3,9 +3,11 @@
 # Include this only when the device runs a busy full runtime graph and MWW must
 # keep scheduling precedence over low-priority UI/media work.
 
-substitutions:
-  mww_task_priority: "8"
+defaults:
+  mww_task_priority: '${ mww_task_priority | default("8") }'
 
+substitutions:
+  mww_task_priority: ${mww_task_priority}
 script:
   - id: !extend boost_mww_priority
     then:

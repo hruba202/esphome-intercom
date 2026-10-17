@@ -110,7 +110,6 @@ class SipApplicationMethods:
             if event == "message-summary":
                 from .mailbox import get_archive, mailbox_settings, EVENT_VOICEMAIL_CHANGED
                 from .runtime_data import endpoint_directory
-                from .voicemail_config import voicemail_config
 
                 try:
                     target = sip.parse_sip_uri(request.uri).user
@@ -119,8 +118,7 @@ class SipApplicationMethods:
                 if target.casefold() != account.username.casefold():
                     return SipRequestResult(403, "Forbidden")
                 endpoint = endpoint_directory(self.hass).by_username(account.username)
-                if (endpoint is None or not voicemail_config(self.hass).get("enabled")
-                        or not mailbox_settings(self.hass, endpoint.endpoint_id).get("enabled")):
+                if (endpoint is None or not mailbox_settings(self.hass, endpoint.endpoint_id).get("enabled")):
                     return SipRequestResult(404, "Not Found")
                 self.mailbox_archive = await get_archive(self.hass)
                 mailbox_id = endpoint.endpoint_id

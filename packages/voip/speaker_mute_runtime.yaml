@@ -23,15 +23,12 @@ switch:
           tag: mute
           format: "Speaker mute ON"
       - speaker.mute_on: hw_speaker
-      - runtime_controller.event:
-          id: runtime
-          event: speaker_muted
     on_turn_off:
       - logger.log:
           level: INFO
           tag: mute
           format: "Speaker mute OFF"
       - speaker.mute_off: hw_speaker
-      - runtime_controller.event:
-          id: runtime
-          event: speaker_unmuted
+runtime_controller:
+  observe:
+    speaker_mute: speaker_mute

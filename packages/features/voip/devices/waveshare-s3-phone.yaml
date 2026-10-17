@@ -1,0 +1,120 @@
+# Complete telephone binding and local controls, without a voice/media coordinator.
+audio_file:
+- id: voip_ringing_sound
+  file: ${assets_base}assets/sounds/ringtone.flac
+media_source:
+- platform: audio_file
+  id: ringtone_file_source
+media_player:
+- platform: speaker_source
+  id: speaker_media_player
+  name: None
+  internal: true
+  volume_initial: 1.0
+  volume_min: 1.0
+  volume_max: 1.0
+  announcement_pipeline:
+    speaker: ringtone_speaker
+    format: FLAC
+    sample_rate: 48000
+    num_channels: 1
+    sources:
+    - ringtone_file_source
+voip_stack:
+  task_stacks_in_psram: true
+  audio_task_stacks_in_psram: true
+  buffers_in_psram: true
+  signaling_buffers_in_psram: true
+  audio:
+    tx:
+      codec: ${voip_audio_codec}
+      sample_rate: ${voip_tx_sample_rate}
+      pcm_format: s16le
+      channels: 1
+      frame_ms: ${voip_frame_ms}
+    rx:
+      codec: ${voip_audio_codec}
+      sample_rate: ${voip_rx_sample_rate}
+      pcm_format: s16le
+      channels: 1
+      frame_ms: ${voip_frame_ms}
+  microphone: mic_main
+  speaker: voip_speaker_input
+  dc_offset_removal: false
+  delete_contact_missing_from:
+    updates_number: 1
+  use_ha_as_first_contact: true
+select:
+- platform: template
+  name: AEC Mode
+  id: aec_mode_select
+  icon: mdi:tune-vertical
+  options:
+  - voip_low_cost
+  - voip_high_perf
+  initial_option: voip_high_perf
+  optimistic: false
+  restore_value: true
+  set_action:
+  - if:
+      condition:
+        not:
+          voip_stack.is_idle: null
+      then:
+      - logger.log:
+          level: WARN
+          format: Cannot switch AEC mode during active VoIP call
+      else:
+      - logger.log:
+          format: Switching AEC mode to %s
+          args:
+          - x.c_str()
+      - esp_audio_stack.stop: null
+      - esp_aec.set_mode:
+          id: aec_processor
+          mode: !lambda |-
+            return x;
+      - esp_audio_stack.start: null
+  - lambda: id(aec_mode_select).publish_state(id(aec_processor).get_mode_name());
+script:
+- id: !extend 'update_status'
+  then:
+  - if:
+      condition:
+        voip_stack.is_ringing: null
+      then:
+      - script.execute: voip_ringing_loop
+      else:
+      - script.stop: voip_ringing_loop
+      - media_player.stop:
+          announcement: true
+- id: voip_ringing_loop
+  mode: restart
+  then:
+  - while:
+      condition:
+        voip_stack.is_ringing: null
+      then:
+      - media_player.play_media:
+          id: speaker_media_player
+          media_url: audio-file://voip_ringing_sound
+          announcement: true
+      - wait_until:
+          condition:
+            media_player.is_announcing: null
+          timeout: 2s
+      - wait_until:
+          condition:
+            not:
+              media_player.is_announcing: null
+          timeout: 5s
+      - delay: 1s
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+packages:
+  callbacks: !include '../../../voip/callbacks.yaml'
+  voip_entities_full_duplex: !include '../../../voip/entities_full_duplex.yaml'
+  call_settings: !include '../../../voip/call_settings.yaml'
+  voip_transport: !include '../../../voip/transport.yaml'

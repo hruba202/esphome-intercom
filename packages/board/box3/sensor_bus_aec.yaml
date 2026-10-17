@@ -1,0 +1,9 @@
+# I2C wiring for the optional BOX-3 sensor dock.
+i2c:
+- id: external_i2c
+  sda: GPIO41
+  scl: GPIO40
+  scan: true
+  sda_pullup_enabled: true
+  scl_pullup_enabled: true
+  frequency: 50kHz

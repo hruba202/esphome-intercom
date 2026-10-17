@@ -1,0 +1,720 @@
+# P4 telephone screen and optional video surface; frame-arrival gates remain unchanged.
+packages:
+  call_media_route: ${ _p4_phone_route if _p4_phone_has_video else {} }
+font:
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 700
+  id: videophone_title_font
+  size: 48
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 600
+  id: videophone_body_font
+  size: 30
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 400
+  id: videophone_small_font
+  size: 22
+  glyphsets:
+  - GF_Latin_Core
+globals:
+- id: videophone_peer
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+- id: videophone_dial_buffer
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+- id: videophone_terminal_notice
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+script: ${ _p4_phone_scripts + (_p4_phone_video_scripts if _p4_phone_has_video else []) }
+lvgl:
+  displays:
+  - main_display
+  touchscreens:
+  - main_touch
+  color_depth: 16
+  byte_order: little_endian
+  log_level: WARN
+  rotation: 270
+  on_boot: ${ _p4_phone_video_boot if _p4_phone_has_video else [] }
+  pages: ${ _p4_phone_pages + (_p4_phone_video_pages if _p4_phone_has_video else []) }
+wifi:
+  on_connect:
+  - logger.log: WiFi connected
+  - script.execute: update_status
+  on_disconnect:
+  - logger.log: WiFi disconnected
+  - script.execute: update_status
+voip_stack:
+  on_calling:
+  - lambda: !lambda |-
+      id(videophone_terminal_notice).clear();
+      id(videophone_peer) = peer;
+  - script.execute: update_status
+  on_ringing:
+  - lambda: !lambda |-
+      id(videophone_terminal_notice).clear();
+      id(videophone_peer) = peer;
+  - script.execute: show_phone_page
+  on_dest_ringing:
+  - lambda: !lambda |-
+      id(videophone_peer) = peer;
+  - script.execute: update_status
+  on_in_call:
+  - lambda: !lambda |-
+      id(videophone_terminal_notice).clear();
+      id(videophone_peer) = peer;
+  - script.execute: update_status
+  on_idle:
+  - script.execute: show_phone_page
+  on_hangup:
+  - lambda: !lambda |-
+      id(videophone_peer) = peer;
+      id(videophone_terminal_notice) =
+          std::string("CALL ENDED: ") + reason;
+  - script.execute: show_phone_page
+  - script.execute: clear_videophone_terminal_notice
+  on_call_failed:
+  - lambda: !lambda |-
+      id(videophone_peer) = peer;
+      id(videophone_terminal_notice) =
+          std::string("CALL FAILED: ") + reason;
+  - script.execute: show_phone_page
+  - script.execute: clear_videophone_terminal_notice
+  on_phonebook_update:
+  - lambda: !lambda |-
+      id(videophone_peer) = destination;
+  - script.execute: update_status
+  on_destination_changed:
+  - lambda: !lambda |-
+      id(videophone_peer) = destination;
+  - script.execute: update_status
+esphome:
+  on_boot:
+  - priority: -100
+    then:
+    - output.set_level:
+        id: backlight_pwm
+        level: 100%
+    - lambda: !lambda |-
+        id(videophone_peer) =
+            id(phone).get_current_destination();
+    - script.execute: update_status
+    - script.execute: update_videophone_settings
+defaults:
+  _p4_phone_has_video: ${ 'video' in firmware_features if firmware_features is defined else true }
+  _p4_phone_video_pages:
+  - id: videophone_video_page
+    bg_color: 0
+    widgets:
+    - obj:
+        id: videophone_video_surface
+        align: TOP_MID
+        width: 1280
+        height: 720
+        bg_color: 0
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+    - obj:
+        align: BOTTOM_MID
+        width: 1280
+        height: 80
+        bg_color: 1054759
+        border_width: 0
+        pad_all: 8
+        scrollable: false
+        widgets:
+        - label:
+            id: videophone_video_peer_label
+            align: LEFT_MID
+            x: 28
+            y: -15
+            width: 840
+            text: Video call
+            text_color: 16777215
+            text_font: videophone_small_font
+            long_mode: DOT
+        - label:
+            id: p4_video_media_route_label
+            align: LEFT_MID
+            x: 28
+            y: 15
+            width: 840
+            text: ''
+            text_color: 9741240
+            text_font: videophone_small_font
+            long_mode: DOT
+        - button:
+            align: RIGHT_MID
+            x: -28
+            width: 260
+            height: 60
+            bg_color: 14427686
+            radius: 12
+            on_click:
+            - voip_stack.call_toggle: null
+            widgets:
+            - label:
+                align: CENTER
+                text: HANG UP
+                text_color: 16777215
+                text_font: videophone_small_font
+  _p4_phone_pages:
+  - id: videophone_page
+    bg_color: 461588
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 42
+        text: P4 VIDEOPHONE
+        text_color: 6333946
+        text_font: videophone_title_font
+    - label:
+        id: videophone_state_label
+        align: TOP_MID
+        y: 145
+        width: 1000
+        text: READY
+        text_align: CENTER
+        text_color: 9741240
+        text_font: videophone_body_font
+        long_mode: DOT
+    - label:
+        id: p4_call_media_route_label
+        align: TOP_MID
+        y: 190
+        width: 1000
+        text: ''
+        text_align: CENTER
+        text_color: 9741240
+        text_font: videophone_small_font
+    - label:
+        id: videophone_peer_label
+        align: CENTER
+        y: -55
+        width: 1080
+        text: No contact selected
+        text_align: CENTER
+        text_color: 16777215
+        text_font: videophone_title_font
+        long_mode: DOT
+    - label:
+        align: CENTER
+        y: 30
+        text: Swipe the contact or use the arrows
+        text_color: 6583435
+        text_font: videophone_small_font
+    - obj:
+        align: CENTER
+        y: -20
+        width: 1000
+        height: 260
+        bg_opa: TRANSP
+        border_width: 0
+        clickable: true
+        gesture_bubble: false
+        on_swipe_left:
+        - lambda: !lambda |-
+            id(videophone_terminal_notice).clear();
+        - voip_stack.next_contact: null
+        on_swipe_right:
+        - lambda: !lambda |-
+            id(videophone_terminal_notice).clear();
+        - voip_stack.prev_contact: null
+    - button:
+        align: BOTTOM_LEFT
+        x: 90
+        y: -125
+        width: 180
+        height: 100
+        bg_color: 1976635
+        radius: 16
+        on_click:
+        - lambda: !lambda |-
+            id(videophone_terminal_notice).clear();
+        - voip_stack.prev_contact: null
+        widgets:
+        - label:
+            align: CENTER
+            text: <
+            text_color: 16777215
+            text_font: videophone_title_font
+    - button:
+        id: videophone_call_button
+        align: BOTTOM_MID
+        y: -105
+        width: 300
+        height: 140
+        bg_color: 1483594
+        radius: 24
+        on_click:
+        - lambda: !lambda |-
+            id(videophone_terminal_notice).clear();
+        - voip_stack.call_toggle: null
+        - script.execute: update_status
+        widgets:
+        - label:
+            id: videophone_call_label
+            align: CENTER
+            text: CALL
+            text_color: 16777215
+            text_font: videophone_body_font
+    - button:
+        align: BOTTOM_RIGHT
+        x: -90
+        y: -125
+        width: 180
+        height: 100
+        bg_color: 1976635
+        radius: 16
+        on_click:
+        - lambda: !lambda |-
+            id(videophone_terminal_notice).clear();
+        - voip_stack.next_contact: null
+        widgets:
+        - label:
+            align: CENTER
+            text: '>'
+            text_color: 16777215
+            text_font: videophone_title_font
+    - button:
+        align: BOTTOM_LEFT
+        x: 90
+        y: -24
+        width: 220
+        height: 72
+        bg_color: 3359061
+        radius: 12
+        on_click:
+        - lvgl.page.show:
+            id: videophone_keypad_page
+            animation: MOVE_RIGHT
+            time: 180ms
+        widgets:
+        - label:
+            align: CENTER
+            text: KEYPAD
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: BOTTOM_RIGHT
+        x: -90
+        y: -24
+        width: 220
+        height: 72
+        bg_color: 3359061
+        radius: 12
+        on_click:
+        - script.execute: update_videophone_settings
+        - lvgl.page.show:
+            id: videophone_settings_page
+            animation: MOVE_LEFT
+            time: 180ms
+        widgets:
+        - label:
+            align: CENTER
+            text: SETTINGS
+            text_color: 16777215
+            text_font: videophone_small_font
+  - id: videophone_keypad_page
+    bg_color: 461588
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 28
+        text: KEYPAD
+        text_color: 6333946
+        text_font: videophone_body_font
+    - label:
+        id: videophone_keypad_value
+        align: TOP_MID
+        y: 88
+        width: 900
+        text: Enter extension or number
+        text_align: CENTER
+        text_color: 16777215
+        text_font: videophone_body_font
+        long_mode: DOT
+    - buttonmatrix:
+        align: CENTER
+        y: 15
+        width: 660
+        height: 470
+        bg_opa: TRANSP
+        border_width: 0
+        pad_row: 10
+        pad_column: 10
+        items:
+          bg_color: 1976635
+          text_color: 16777215
+          text_font: videophone_body_font
+          radius: 14
+        rows:
+        - buttons:
+          - text: '1'
+          - text: '2'
+          - text: '3'
+        - buttons:
+          - text: '4'
+          - text: '5'
+          - text: '6'
+        - buttons:
+          - text: '7'
+          - text: '8'
+          - text: '9'
+        - buttons:
+          - text: '*'
+          - text: '0'
+          - text: '#'
+        on_click:
+        - lambda: !lambda |-
+            static constexpr char KEYS[] = "123456789*0#";
+            if (x >= 12 ||
+                id(videophone_dial_buffer).size() >= 32) return;
+            id(videophone_dial_buffer).push_back(KEYS[x]);
+            lv_label_set_text(id(videophone_keypad_value),
+                              id(videophone_dial_buffer).c_str());
+    - button:
+        align: BOTTOM_LEFT
+        x: 80
+        y: -28
+        width: 220
+        height: 72
+        bg_color: 3359061
+        radius: 12
+        on_click:
+        - lambda: !lambda |-
+            id(videophone_dial_buffer).clear();
+            lv_label_set_text(id(videophone_keypad_value),
+                              "Enter extension or number");
+        - lvgl.page.show:
+            id: videophone_page
+            animation: MOVE_LEFT
+            time: 180ms
+        widgets:
+        - label:
+            align: CENTER
+            text: CONTACTS
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: BOTTOM_MID
+        y: -28
+        width: 260
+        height: 72
+        bg_color: 1483594
+        radius: 12
+        on_click:
+        - if:
+            condition:
+              lambda: !lambda |-
+                return !id(videophone_dial_buffer).empty();
+            then:
+            - voip_stack.call:
+                target: !lambda |-
+                  return id(videophone_dial_buffer);
+            - lambda: !lambda |-
+                id(videophone_peer) =
+                    id(videophone_dial_buffer);
+                id(videophone_dial_buffer).clear();
+                lv_label_set_text(id(videophone_keypad_value),
+                                  "Enter extension or number");
+            - script.execute: show_phone_page
+        widgets:
+        - label:
+            align: CENTER
+            text: CALL
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: BOTTOM_RIGHT
+        x: -80
+        y: -28
+        width: 220
+        height: 72
+        bg_color: 3359061
+        radius: 12
+        on_click:
+        - lambda: !lambda |-
+            if (!id(videophone_dial_buffer).empty())
+              id(videophone_dial_buffer).pop_back();
+            lv_label_set_text(
+                id(videophone_keypad_value),
+                id(videophone_dial_buffer).empty()
+                    ? "Enter extension or number"
+                    : id(videophone_dial_buffer).c_str());
+        widgets:
+        - label:
+            align: CENTER
+            text: DELETE
+            text_color: 16777215
+            text_font: videophone_small_font
+  - id: videophone_settings_page
+    bg_color: 988970
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 28
+        text: SETTINGS
+        text_color: 6333946
+        text_font: videophone_body_font
+    - label:
+        align: TOP_LEFT
+        x: 100
+        y: 115
+        text: Master volume
+        text_color: 16777215
+        text_font: videophone_small_font
+    - slider:
+        id: videophone_volume_slider
+        align: TOP_LEFT
+        x: 100
+        y: 165
+        width: 500
+        height: 28
+        min_value: 0
+        max_value: 100
+        value: !lambda |-
+          return id(master_volume).state;
+        on_release:
+        - number.set:
+            id: master_volume
+            value: !lambda |-
+              return x;
+    - label:
+        align: TOP_RIGHT
+        x: -100
+        y: 115
+        text: Microphone gain
+        text_color: 16777215
+        text_font: videophone_small_font
+    - slider:
+        id: videophone_mic_gain_slider
+        align: TOP_RIGHT
+        x: -100
+        y: 165
+        width: 500
+        height: 28
+        min_value: -20
+        max_value: 30
+        value: !lambda |-
+          return id(mic_gain).state;
+        on_release:
+        - number.set:
+            id: mic_gain
+            value: !lambda |-
+              return x;
+    - button:
+        align: TOP_LEFT
+        x: 100
+        y: 255
+        width: 500
+        height: 82
+        bg_color: 1976635
+        on_click:
+        - switch.toggle: speaker_mute
+        - script.execute: update_videophone_settings
+        widgets:
+        - label:
+            id: videophone_speaker_mute_label
+            align: CENTER
+            text: 'Speaker: active'
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: TOP_RIGHT
+        x: -100
+        y: 255
+        width: 500
+        height: 82
+        bg_color: 1976635
+        on_click:
+        - switch.toggle: mute
+        - script.execute: update_videophone_settings
+        widgets:
+        - label:
+            id: videophone_mic_mute_label
+            align: CENTER
+            text: 'Microphone: active'
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: TOP_LEFT
+        x: 100
+        y: 370
+        width: 500
+        height: 82
+        bg_color: 1976635
+        on_click:
+        - switch.toggle: aec_switch
+        - script.execute: update_videophone_settings
+        widgets:
+        - label:
+            id: videophone_aec_label
+            align: CENTER
+            text: 'AEC: on'
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: TOP_RIGHT
+        x: -100
+        y: 370
+        width: 500
+        height: 82
+        bg_color: 1976635
+        on_click:
+        - switch.toggle: auto_answer_switch
+        - script.execute: update_videophone_settings
+        widgets:
+        - label:
+            id: videophone_auto_answer_label
+            align: CENTER
+            text: 'Auto answer: off'
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: TOP_MID
+        y: 485
+        width: 500
+        height: 82
+        bg_color: 1976635
+        on_click:
+        - switch.toggle: dnd_switch
+        - script.execute: update_videophone_settings
+        widgets:
+        - label:
+            id: videophone_dnd_label
+            align: CENTER
+            text: 'Do not disturb: off'
+            text_color: 16777215
+            text_font: videophone_small_font
+    - button:
+        align: BOTTOM_MID
+        y: -42
+        width: 300
+        height: 82
+        bg_color: 2450411
+        radius: 12
+        on_click:
+        - lvgl.page.show:
+            id: videophone_page
+            animation: MOVE_RIGHT
+            time: 180ms
+        widgets:
+        - label:
+            align: CENTER
+            text: BACK
+            text_color: 16777215
+            text_font: videophone_small_font
+  _p4_phone_video_boot:
+  - lambda: !lambda |-
+      id(p4_video).attach_video_container(id(videophone_video_surface));
+  - lvgl.page.show: videophone_page
+  - script.execute: update_status
+  - script.execute: update_videophone_settings
+  _p4_phone_video_scripts:
+  - id: show_video_page
+    mode: restart
+    then:
+    - if:
+        condition:
+          lambda: !lambda |-
+            return id(phone).is_in_call() &&
+                   ${ 'id(p4_video).has_remote_frame()' if _p4_phone_has_video else 'false' };
+        then:
+        - script.execute: update_status
+        - lvgl.page.show: videophone_video_page
+  _p4_phone_scripts:
+  - id: !extend 'update_status'
+    mode: restart
+    then:
+    - lambda: !lambda |-
+        const bool ringing = id(phone).is_ringing();
+        const bool calling = id(phone).is_calling();
+        const bool in_call = id(phone).is_in_call();
+        const bool idle = id(phone).is_idle();
+
+        std::string peer = id(videophone_peer);
+        if (idle) peer = id(phone).get_current_destination();
+        if (peer.empty()) peer = "No contact selected";
+
+        const char *state = "READY";
+        const char *action = "CALL";
+        uint32_t action_color = 0x16A34A;
+        if (ringing) {
+          state = "INCOMING CALL";
+          action = "ANSWER";
+        } else if (calling) {
+          state = "CALLING";
+          action = "HANG UP";
+          action_color = 0xDC2626;
+        } else if (in_call) {
+          state = id(phone).is_video_active() ? "VIDEO CALL" : "AUDIO CALL";
+          action = "HANG UP";
+          action_color = 0xDC2626;
+        } else if (!id(videophone_terminal_notice).empty()) {
+          state = id(videophone_terminal_notice).c_str();
+        }
+
+        lv_label_set_text(id(videophone_state_label), state);
+        lv_label_set_text(id(videophone_peer_label), peer.c_str());
+        lv_label_set_text(id(videophone_call_label), action);
+        lv_obj_set_style_bg_color(
+            id(videophone_call_button), lv_color_hex(action_color),
+            LV_PART_MAIN);
+        ${ 'lv_label_set_text(id(videophone_video_peer_label), peer.c_str());' if _p4_phone_has_video else '' }
+  - id: update_videophone_settings
+    mode: restart
+    then:
+    - lambda: !lambda |-
+        char text[48];
+        snprintf(text, sizeof(text), "Speaker: %s",
+                 id(speaker_mute).state ? "muted" : "active");
+        lv_label_set_text(id(videophone_speaker_mute_label), text);
+        snprintf(text, sizeof(text), "Microphone: %s",
+                 id(mute).state ? "muted" : "active");
+        lv_label_set_text(id(videophone_mic_mute_label), text);
+        snprintf(text, sizeof(text), "AEC: %s",
+                 id(aec_switch).state ? "on" : "off");
+        lv_label_set_text(id(videophone_aec_label), text);
+        snprintf(text, sizeof(text), "Auto answer: %s",
+                 id(auto_answer_switch).state ? "on" : "off");
+        lv_label_set_text(id(videophone_auto_answer_label), text);
+        snprintf(text, sizeof(text), "Do not disturb: %s",
+                 id(dnd_switch).state ? "on" : "off");
+        lv_label_set_text(id(videophone_dnd_label), text);
+        lv_slider_set_value(id(videophone_volume_slider),
+                            static_cast<int32_t>(id(master_volume).state),
+                            LV_ANIM_OFF);
+        lv_slider_set_value(id(videophone_mic_gain_slider),
+                            static_cast<int32_t>(id(mic_gain).state),
+                            LV_ANIM_OFF);
+  - id: show_phone_page
+    mode: restart
+    then:
+    - lvgl.page.show: videophone_page
+    - script.execute: update_status
+  - id: clear_videophone_terminal_notice
+    mode: restart
+    then:
+    - delay: 3s
+    - lambda: !lambda |-
+        id(videophone_terminal_notice).clear();
+    - script.execute: update_status
+  _p4_phone_route:
+    packages:
+      route: !include '../../../lvgl/p4_call_media_route.yaml'

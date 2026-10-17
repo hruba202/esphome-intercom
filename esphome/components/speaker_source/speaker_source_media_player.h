@@ -46,7 +46,7 @@ namespace esphome::speaker_source {
 // Source tasks use defer() for all requests (volume, mute, play_uri).
 //
 // Thread-safe communication:
-// - FreeRTOS queue (media_control_command_queue_): control() -> loop() for play/command dispatch
+// - FreeRTOS queue: play/ordinary commands; STOP cancels its pipeline immediately on the main loop.
 // - defer(): SourceBinding::request_volume/request_mute/request_play_uri -> main loop
 // - Atomic fields (active_source, pending_frames): shared between all three thread contexts
 //
@@ -219,6 +219,7 @@ class SpeakerSourceMediaPlayer final : public Component, public media_player::Me
                                                    media_player::MediaPlayerState old_state) const;
 
   void process_control_queue_();
+  void discard_pipeline_commands_(uint8_t pipeline);
   void handle_player_command_(media_player::MediaPlayerCommand player_command, uint8_t pipeline);
   bool try_execute_play_uri_(const std::string &uri, uint8_t pipeline);
   media_source::MediaSource *find_source_for_uri_(const std::string &uri, uint8_t pipeline);

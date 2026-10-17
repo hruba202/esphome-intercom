@@ -359,6 +359,30 @@ staleClaim._onBusEvent({{
 }});
 assert.equal(staleClaim.softphoneCallIdFor("test"), "");
 
+// The shared activity feed exists only for consumers or an owned conversation.
+const lazyEngine = new Engine();
+lazyEngine._ownedSoftphoneCalls.clear();
+let busRequests = 0, busStops = 0;
+const lazyConnection = {{subscribeMessage: async () => {{
+  busRequests++;
+  return () => busStops++;
+}}}};
+lazyEngine._busConnection = lazyConnection;
+lazyEngine._ensureBusSubscriptions(lazyConnection);
+assert.equal(busRequests, 0);
+const stopOne = lazyEngine.subscribeCallEvents(() => {{}});
+const stopTwo = lazyEngine.subscribeCallEvents(() => {{}});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(busRequests, 1);
+stopOne();
+assert.equal(busStops, 0);
+stopTwo();
+assert.equal(busStops, 1);
+const stopPending = lazyEngine.subscribeCallEvents(() => {{}});
+stopPending();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(busStops, 2);
+
 // Activity replay is independent of call termination and does not revive old slots.
 const activityEngine = new Engine();
 activityEngine.claimSoftphoneSession("active-call", "test");

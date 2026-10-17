@@ -3,9 +3,8 @@
 # Status: native-I2S regression/wiring example; Freenove FNK0085 pins below
 # Support: https://github.com/sponsors/n-IA-hane
 #
-# Main packages:
-#   voip/transport.yaml; voip/call_settings.yaml; voip/entities_full_duplex.yaml
-#   ESPHome i2s_audio microphone/speaker platforms; no external audio DSP
+# Device package: packages/devices/generic-s3-phone-native.yaml
+# Features: edit the firmware_features list below.
 #
 # Capture (selected native mic channel):
 # ┌─────────────────────────┐    ┌─────────────────────────┐    ┌─────────────────────────┐
@@ -73,12 +72,15 @@
 # =============================================================================
 
 substitutions:
+  runtime_controller_components_source: "github://n-IA-hane/esphome-runtime-controller@dev"
+  gmf_ai_audio_source: ""
+  firmware_features: [voip, status_led, diagnostics]
   name: generic-native-int-fd
   friendly_name: Generic S3 Native VoIP Full Duplex
 
-  ext_components_source: "github://n-IA-hane/esphome-intercom@main"
-  voip_stack_components_source: "github://n-IA-hane/esphome-voip-stack@main"
-  audio_stack_components_source: "github://n-IA-hane/esphome-audio-stack@main"
+  ext_components_source: "github://n-IA-hane/esphome-intercom@dev"
+  voip_stack_components_source: "github://n-IA-hane/esphome-voip-stack@dev"
+  audio_stack_components_source: "github://n-IA-hane/esphome-audio-stack@dev"
 
   # ---------------------------------------------------------------------------
   # Pinout: native microphone I2S bus
@@ -106,230 +108,4 @@ substitutions:
 # basic buttons and native diagnostics.
 
 packages:
-  core: github://n-IA-hane/esphome-intercom/packages/voip_only.yaml@main
-  voip_transport: github://n-IA-hane/esphome-intercom/packages/voip/transport.yaml@main
-  voip_entities_full_duplex: github://n-IA-hane/esphome-intercom/packages/voip/entities_full_duplex.yaml@main
-  call_settings: github://n-IA-hane/esphome-intercom/packages/voip/call_settings.yaml@main
-  speaker_mute: github://n-IA-hane/esphome-intercom/packages/voip/speaker_mute.yaml@main
-  s3_base: github://n-IA-hane/esphome-intercom/packages/platform/esp32s3_base.yaml@main
-  native_diagnostics: github://n-IA-hane/esphome-intercom/packages/diagnostics/native.yaml@main
-  status_led: github://n-IA-hane/esphome-intercom/packages/led/status_ws2812_single.yaml@main
-
-# =============================================================================
-# BOARD AND MEMORY
-# =============================================================================
-
-# Device identity exposed to ESPHome, HA and the shared VoIP phonebook.
-
-esphome:
-  min_version: 2026.9.0
-  name: ${name}
-  friendly_name: ${friendly_name}
-
-# ESP32-S3 native-audio target. This profile is intentionally independent from
-# esp_audio_stack, so it validates the standard ESPHome audio contracts.
-
-esp32:
-  board: freenove_esp32_s3_wroom
-  variant: esp32s3
-  flash_size: 8MB
-  framework:
-    type: esp-idf
-    advanced:
-      compiler_optimization: PERF
-    sdkconfig_options:
-      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
-      CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG: "y"
-      CONFIG_ESP_CONSOLE_SECONDARY_NONE: "y"
-
-# PSRAM gives VoIP tasks and buffers headroom even on the native ESPHome path.
-
-psram:
-  mode: octal
-  speed: 80MHz
-
-# Persist user settings without excessive flash writes.
-
-preferences:
-  flash_write_interval: 5min
-
-# =============================================================================
-# EXTERNAL COMPONENTS
-# =============================================================================
-
-# Project components used by the native path: voip_stack plus the shared
-# internal VoIP task/ring-buffer helpers, without esp_audio_stack.
-
-external_components:
-  - source: ${voip_stack_components_source}
-    components: [voip_stack]
-
-# =============================================================================
-# CONNECTIVITY
-# =============================================================================
-
-# Normal Wi-Fi client mode. Power save is disabled for low-latency SIP/RTP and
-# reliable HA API updates.
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  power_save_mode: NONE
-
-# OTA update endpoint used by ESPHome Dashboard and `esphome upload`.
-
-ota:
-  - platform: esphome
-
-# USB Serial/JTAG logger. VoIP domains stay visible at INFO; noisy entity
-# domains stay WARN for normal field use.
-
-logger:
-  hardware_uart: USB_SERIAL_JTAG
-  level: INFO
-  logs:
-    voip_stack: INFO
-    voip_stack.fsm: INFO
-    voip_stack.tcp: INFO
-    voip_stack.udp: INFO
-    voip_stack.audio: INFO
-    voip_stack.settings: INFO
-    sensor: WARN
-    text_sensor: WARN
-    binary_sensor: WARN
-    switch: WARN
-    number: WARN
-    button: WARN
-    api: WARN
-    api.connection: WARN
-    component: WARN
-    i2s_audio: INFO
-    microphone: INFO
-    speaker: INFO
-
-# =============================================================================
-# BUSES
-# =============================================================================
-
-# Two native ESPHome I2S buses: RX for microphone and TX for speaker.
-
-i2s_audio:
-  - id: rx_i2s
-    i2s_bclk_pin: ${rx_i2s_bclk_pin}
-    i2s_lrclk_pin: ${rx_i2s_lrclk_pin}
-
-  - id: tx_i2s
-    i2s_bclk_pin: ${tx_i2s_bclk_pin}
-    i2s_lrclk_pin: ${tx_i2s_lrclk_pin}
-
-# =============================================================================
-# OUTPUTS AND LIGHTS
-# =============================================================================
-
-# Optional amplifier enable pin for MAX98357A-style boards.
-
-output:
-  - platform: gpio
-    id: speaker_enable
-    pin: ${speaker_enable_pin}
-
-# =============================================================================
-# AUDIO PIPELINE
-# =============================================================================
-
-# Native ESPHome microphone. INMP441 is strapped to the right slot. Keep the
-# wire as stereo and let MicrophoneSource select channel 1; this matches the
-# stable esp_audio_stack path and avoids mono-slot silence on some IDF/board
-# combinations.
-
-microphone:
-  - platform: i2s_audio
-    id: mic_main
-    adc_type: external
-    i2s_audio_id: rx_i2s
-    i2s_din_pin: ${rx_i2s_din_pin}
-    channel: stereo
-    sample_rate: 48000
-    bits_per_sample: 32bit
-    correct_dc_offset: true
-
-# Native ESPHome speaker. Keep it at VoIP wire format to avoid a
-# resampler in this regression profile.
-
-speaker:
-  - platform: i2s_audio
-    id: hw_speaker
-    dac_type: external
-    i2s_audio_id: tx_i2s
-    i2s_dout_pin: ${tx_i2s_dout_pin}
-    channel: mono
-    sample_rate: 48000
-    bits_per_sample: 16bit
-    buffer_duration: 128ms
-    timeout: 500ms
-
-# =============================================================================
-# MEDIA, ASSIST AND VOIP
-# =============================================================================
-
-# Local SIP phone in full-duplex mode. It advertises 48 kHz/10 ms PCM because
-# both native mic and speaker are configured at that rate.
-
-voip_stack:
-  task_stacks_in_psram: true
-  buffers_in_psram: true
-  audio:
-    # Opus is the VoIP-only default. RTP uses opus/48000/2 (RFC7587);
-    # sample_rate/channels below describe the local mono PCM boundary.
-    tx:
-      codec: opus
-      sample_rate: 48000
-      pcm_format: s16le
-      channels: 1
-      frame_ms: 20
-    rx:
-      codec: opus
-      sample_rate: 48000
-      pcm_format: s16le
-      channels: 1
-      frame_ms: 20
-  # To use PCM, comment the active audio block above and uncomment this one.
-  # Preserve the RX alternatives when using a resampler for direct ESP calls.
-  #audio:
-  #  tx:
-  #    sample_rate: 48000
-  #    pcm_format: s16le
-  #    channels: 1
-  #    frame_ms: 10
-  #  rx:
-  #    sample_rate: 48000
-  #    pcm_format: s16le
-  #    channels: 1
-  #    frame_ms: 10
-  microphone_source:
-    microphone: mic_main
-    bits_per_sample: 16
-    channels: [1]
-    gain_factor: 1
-  speaker: hw_speaker
-  dc_offset_removal: false
-  # Optional local call limits; leave unset for PBX-controlled ringing.
-  # ringing_timeout: 30s
-  delete_contact_missing_from:
-    updates_number: 1
-
-# =============================================================================
-# RUNTIME LOGIC AND ENTITIES
-# =============================================================================
-
-# User-facing amp power switch. It only gates the hardware enable pin.
-
-switch:
-  - platform: output
-    id: speaker_power
-    name: Speaker Power
-    output: speaker_enable
-    restore_mode: RESTORE_DEFAULT_ON
-
-api:
-  custom_services: true
+  device: github://n-IA-hane/esphome-intercom/packages/devices/generic-s3-phone-native.yaml@dev

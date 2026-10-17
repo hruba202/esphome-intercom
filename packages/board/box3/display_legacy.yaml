@@ -1,0 +1,30 @@
+# BOX-3 display/touch compatibility for configurations that already provide backlight and buses.
+spi:
+- id: spi_bus
+  clk_pin: 7
+  mosi_pin: 6
+display:
+- platform: mipi_spi
+  id: s3_box_lcd
+  model: S3BOX
+  invert_colors: false
+  data_rate: 40MHz
+  cs_pin: 5
+  dc_pin: 4
+  reset_pin:
+    number: 48
+    inverted: true
+  update_interval: never
+touchscreen:
+- id: gt911_touchscreen
+  platform: gt911
+  i2c_id: internal_i2c
+  address: 93
+  interrupt_pin:
+    number: GPIO3
+    ignore_strapping_warning: true
+binary_sensor:
+- id: home_button
+  platform: gt911
+  name: Home Button
+  index: 0

@@ -35,7 +35,7 @@ Stable release: [2026.10.1](https://github.com/n-IA-hane/esphome-intercom/releas
 Requires Home Assistant **2026.7.0 or newer**. Firmware builds require ESPHome
 **2026.9.0 or newer**.
 
-The updated firmware profiles use ESP VoIP Stack **2026.10.1**, Runtime Controller
+The stable 2026.10.1 firmware profiles use ESP VoIP Stack **2026.10.1**, Runtime Controller
 **2026.10.1**, and Audio Stack **2026.10.2** from their `main` branches. HA and ESP
 firmware do not need matching version numbers. Rebuilding ESP firmware is
 recommended to receive the updated AFE delivery and playback fixes; it is separate
@@ -135,10 +135,30 @@ That first call requires Home Assistant and the cards. To connect a desk phone,
 softphone or ATA, [create a local SIP account](docs/SERVICES.md#local-sip-endpoint-account-services).
 Groups, Assist, automations and a provider trunk can be added independently.
 
+### Grow your setup one step at a time
+
+Start with the smallest setup that solves your problem. These steps build on a
+working call; you can stop at any of them. An existing SIP door station can join
+at step 2 without an ESP or a local Voice Assistant.
+
+| Step | Practical example | Add next | What to check |
+| --- | --- | --- | --- |
+| 1. Two phones | Call the kitchen dashboard from the study | Two browser phones and their cards, as above | Answer, speak in both directions, hang up and call again |
+| 2. A physical endpoint | Answer a door station or an ESP room phone | [A local SIP account](docs/USER_GUIDE.md) or [a maintained ESP YAML](yamls/README.md#how-to-use) | Call to and from that endpoint; video needs a video-capable endpoint and route |
+| 3. A voice and music device | Use the same ESP for Assist, music and calls | [A FULL profile and its feature selection](packages/README.md#work-through-a-full-profile) | Try each feature alone, then a call during playback and recovery after hangup |
+| 4. Several rooms | Ring the kitchen and study for the doorbell | [A ring group](docs/GROUPS.md#ring-group) | Either room can answer; the other stops ringing |
+| 5. Call handling | Forward an unanswered call, use voicemail, transfer or park a call | [The PBX walkthrough](docs/PBX_WORKFLOWS.md) | Test both the answer and no-answer paths; check which features your installed release includes |
+| 6. Automation and external lines | Route by presence, play an announcement or call through another PBX | [Native HA actions and triggers](docs/AUTOMATION_DIALPLAN.md), then [a trunk](docs/SIP_TRUNK.md) if needed | Verify the selected destination and line, then the busy/unavailable outcome |
+
+Firmware configuration follows its own short progression: use the board's YAML,
+edit its feature list, then customize individual settings. Board wiring and
+runtime policies are advanced topics, not prerequisites for the first call.
+
 ### Add an ESP phone when you need one
 
-1. Choose a maintained YAML under [`yamls/`](yamls/) and adapt only its
-   substitutions, pins and secrets.
+1. Choose the YAML for your exact board from the
+   [device guide](yamls/README.md). Keep its supplied wiring; change GPIOs only
+   when your physical wiring differs or you use a generic profile.
 2. Add the flashed device through the normal ESPHome integration.
 3. Call its phonebook name from another endpoint. An optional ESP mirror card
    controls that physical phone.
@@ -152,6 +172,14 @@ and media features to an ESP endpoint.
 | Local Voice Assistant + MWW + media + TTS + optional Sendspin + VoIP | [`yamls/full-experience/`](yamls/full-experience/) |
 | Native ESPHome mic/speaker paths | [`yamls/voip-only/esphome-native/`](yamls/voip-only/esphome-native/) |
 | New or unqualified hardware | [`yamls/experimental/`](yamls/experimental/) |
+
+The reorganized firmware profiles select one device package and one
+`firmware_features` list. Follow the [progressive package examples](packages/README.md#work-through-a-full-profile)
+to remove Sendspin, build a voice-only device, or combine voice, calls and music.
+This layout is included in the development preview; use its coordinated `dev`
+package and component sources. For an older copied configuration, follow the
+[firmware migration](docs/BREAKING_CHANGES.md#development-firmware-new-device-packages)
+instead of stacking new packages on top of the old preset.
 
 The [user guide](docs/USER_GUIDE.md) continues from installation through cards,
 calls, SIP accounts, groups, Assist, trunks and diagnostics. The
@@ -641,7 +669,9 @@ external_components:
 ```
 
 Replace `esp_aec` with `esp_afe` only when the profile actually uses the full
-AFE pipeline. All maintained YAMLs point to the stable `main` branches.
+AFE pipeline. Stable release profiles use their documented `main` sources; the
+reorganized development profiles use coordinated `dev` sources. Keep the sources
+supplied with the selected profile rather than mixing release generations.
 
 After a major ESPHome or component upgrade, clear that device's ESPHome build
 cache before compiling. The [deployment guide](docs/DEPLOYMENT_GUIDE.md)

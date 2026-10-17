@@ -283,11 +283,22 @@ async def async_transfer_call(
         bridge.redirect_ringing(session.call_id, target.endpoint_id, retained_endpoint_id=retained)
         return SipTransferResult(True, 200, "completed", retained_call=True)
 
-    client = _client_for_call(runtime, request.call_id)
+    # REFER goes to the peer being retained, not necessarily the outgoing leg.
+    # The callee can transfer the original caller just as the caller can
+    # transfer the callee. The existing source owner covers UAC and UAS legs.
+    from_callee = bool(
+        session is not None
+        and request.endpoint_id
+        and request.endpoint_id == session.metadata.get("dest_endpoint_id")
+    )
+    client = (
+        runtime.sip.source_sip_client_for(session.call_id)
+        if from_callee else _client_for_call(runtime, request.call_id)
+    )
     server, remote_uri = (
         (None, client.dialog.remote_uri)
         if client is not None and client.dialog is not None
-        else _inbound_server(runtime, request.call_id)
+        else _inbound_server(runtime, session.call_id if from_callee else request.call_id)
     )
     if not remote_uri:
         return SipTransferResult(False, 0, "call_not_found")

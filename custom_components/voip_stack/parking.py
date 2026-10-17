@@ -43,7 +43,7 @@ def get_parking_lot(hass):
     owner = runtime.sip
     settings = parking_settings(hass)
     if owner is None or not owner.active or not settings.get("enabled"):
-        raise ParkingError("Call parking is disabled")
+        raise ParkingError("Configure non-conflicting parking access and slot numbers in VoIP Stack settings")
     lot = owner.component("parking")
     if lot is None:
         def changed():

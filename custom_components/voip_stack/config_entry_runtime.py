@@ -74,7 +74,7 @@ def entry_runtime_signature(entry: ConfigEntry) -> dict:
             CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS,
             EXTERNAL_CALL_BLOCKED_ENDPOINTS, CONF_ESPHOME_PHONE_POLICIES,
             "default_trunk_id",
-            "esphome_mailboxes", "voicemail",
+            "esphome_mailboxes", "voicemail", "parking",
         }
     }
 
@@ -119,6 +119,15 @@ async def async_config_entry_updated(hass: HomeAssistant, entry: ConfigEntry) ->
         await hass.config_entries.async_reload(entry.entry_id)
         return
 
+    from .repairs import async_sync_pbx_configuration_issues
+    async_sync_pbx_configuration_issues(hass)
+    from .parking_config import parking_settings
+    settings = parking_settings(hass)
+    lot = runtime.sip.component("parking") if runtime.sip is not None else None
+    if lot is not None and settings.get("enabled"):
+        # Reserved calls retain their slot and timer; new deposits use the new
+        # list. The configuration flow prevents removing an occupied slot.
+        lot.slots = tuple(settings["slots"])
     from .trunk_runtime import async_reconcile_trunks
     await async_reconcile_trunks(hass, entry)
 

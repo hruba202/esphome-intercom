@@ -1017,7 +1017,8 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "session_device_id": store.get("session_device_id", ""),
         "dnd": _ha_softphone_dnd(hass, endpoint_id),
         "voicemail": dict(store.get("voicemail") or {"enabled": False, "new": 0, "old": 0, "total": 0}),
-        "parking": {"enabled": bool(parking.get("enabled"))},
+        "parking": {"enabled": bool(parking.get("enabled")),
+                    "unavailable_reason": parking.get("unavailable_reason", "")},
         "recording": {"active": recording_active,
                       "finishing": recording is not None and recording.stopped.is_set(),
                       "owned": recording_active and recording.endpoint.endpoint_id == endpoint_id},
@@ -1449,7 +1450,9 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
         device["endpoint_type"] = EndpointKind.ESPHOME.value
         device["voicemail"] = mailbox_snapshot(hass, endpoint_id)
         from .parking_config import parking_settings
-        device["parking"] = {"enabled": bool(parking_settings(hass).get("enabled"))}
+        parking = parking_settings(hass)
+        device["parking"] = {"enabled": bool(parking.get("enabled")),
+                             "unavailable_reason": parking.get("unavailable_reason", "")}
         device["capabilities"] = sorted(capabilities)
         async_sync_esphome_action_issue(hass, device)
 

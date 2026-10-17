@@ -1,0 +1,91 @@
+# Waveshare V2 physical audio and the selected processor, preserving scheduling and buffers.
+esp_audio_stack:
+  audio_task_stack_in_psram: true
+  buffers_in_psram: true
+  master_volume_min_db: -30.0
+  task_core: 1
+  task_priority: 19
+  task_stack_size: 8192
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 48000
+  output_sample_rate: 16000
+  processor_id: aec_processor
+  audio_effects:
+    rate_cvt_complexity: 3
+    rate_cvt_perf_type: speed
+  codec:
+    i2c_id: i2c_bus
+    input:
+      type: es7210
+      address: 64
+      mic_selected: 15
+      gain_db: 24.0
+    output:
+      type: es8311
+      address: 24
+      use_mclk: true
+      no_dac_ref: true
+  use_tdm_reference: true
+  tdm_total_slots: 4
+  tdm_mic_slot: 0
+  tdm_ref_slot: 1
+esp_aec:
+  id: aec_processor
+  sample_rate: 16000
+  filter_length: 4
+  mode: fd_low_cost
+microphone:
+- platform: esp_audio_stack
+  id: mic_main
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 48000
+  bits_per_sample: 16
+  timeout: 1s
+switch:
+- platform: template
+  name: Speaker Mute
+  id: speaker_mute
+  icon: mdi:volume-off
+  entity_category: config
+  optimistic: true
+  restore_mode: RESTORE_DEFAULT_OFF
+  on_turn_on:
+  - logger.log:
+      level: INFO
+      tag: mute
+      format: 'Speaker mute ON: DAC muted, amplifier off'
+  - speaker.mute_on: hw_speaker
+  - delay: 50ms
+  - output.turn_off: speaker_enable
+  on_turn_off:
+  - logger.log:
+      level: INFO
+      tag: mute
+      format: 'Speaker mute OFF: amplifier on, DAC unmuted'
+  - if:
+      condition:
+        speaker.is_playing: hw_speaker
+      then:
+      - output.turn_on: speaker_enable
+      - delay: 50ms
+  - speaker.mute_off: hw_speaker
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_aec
+  - resampler
+- source: ${ext_components_source}
+  components:
+  - speaker
+packages:
+  mute: !include '../../features/shared/microphone_mute.yaml'
+  controls: !include '../../esp_audio_stack/controls.yaml'
+  processor_controls: !include '../../esp_audio_stack/aec_controls.yaml'
+  amplifier: !include '../../esp_audio_stack/speaker_power_output.yaml'

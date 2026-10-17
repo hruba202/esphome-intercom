@@ -7,10 +7,17 @@ Parking leaves the other party connected to Home Assistant while you put down
 your phone. Another phone retrieves that conversation by calling its parking
 slot. The caller does not have to redial.
 
-## Enable and configure
+## Configure parking
 
-Open the integration's main configuration and enable call parking. By default,
-parking is disabled and does not reserve any numbers in the dial plan.
+Parking is available by default. Open **VoIP Stack > Reconfigure > Call parking**
+to customize its numbers, timeouts and optional hold audio. No hold media means
+silence while parked, not a background player.
+
+If an existing phone, contact or group already uses a parking address, that
+route remains intact and HA Repairs reports the conflict. Configure another
+parking range before using the feature. Occupied slots cannot be removed until
+their calls have been retrieved or ended; editing other settings does not reload
+the SIP transport. Existing parked calls retain their timer and media settings.
 
 The initial settings are:
 

@@ -1,0 +1,63 @@
+# Complete telephone binding and local controls, without a voice/media coordinator.
+voip_stack:
+  buffers_in_psram: true
+  audio:
+    tx:
+      codec: opus
+      sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 20
+    rx:
+      codec: opus
+      sample_rate: 48000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 20
+  microphone: mic_main
+  speaker: voip_speaker_input
+  dc_offset_removal: false
+  delete_contact_missing_from:
+    updates_number: 1
+  use_ha_as_first_contact: true
+select:
+- platform: template
+  name: AEC Mode
+  id: aec_mode_select
+  icon: mdi:tune-vertical
+  options:
+  - fd_low_cost
+  - fd_high_perf
+  initial_option: fd_high_perf
+  optimistic: false
+  restore_value: true
+  set_action:
+  - if:
+      condition:
+        not:
+          voip_stack.is_idle: null
+      then:
+      - logger.log:
+          level: WARN
+          format: Cannot switch AEC mode during active VoIP call
+      else:
+      - logger.log:
+          format: Switching AEC mode to %s
+          args:
+          - x.c_str()
+      - esp_audio_stack.stop: null
+      - esp_aec.set_mode:
+          id: aec_processor
+          mode: !lambda |-
+            return x;
+      - esp_audio_stack.start: null
+  - lambda: id(aec_mode_select).publish_state(id(aec_processor).get_mode_name());
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+packages:
+  callbacks: !include '../../../voip/callbacks.yaml'
+  voip_entities_full_duplex: !include '../../../voip/entities_full_duplex.yaml'
+  call_settings: !include '../../../voip/call_settings.yaml'
+  voip_transport: !include '../../../voip/transport.yaml'

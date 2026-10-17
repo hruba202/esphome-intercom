@@ -15,7 +15,7 @@ rules or mailbox. ESP hardware is optional.
 | Add a second provider or external PBX | Integration menu > Add SIP trunk |
 | Choose which line a phone uses | Phone card > Options > Call routing |
 | Send unanswered calls elsewhere | Enable Ringing timeout and choose an outcome |
-| Take messages when nobody answers | Enable voicemail, then the phone's mailbox and no-answer rule |
+| Take messages when nobody answers | Create the phone's mailbox and no-answer rule; configure a voice for spoken menus |
 | Listen to your messages | Voicemail in the HA phone card, or dial `*97` |
 | Continue a conversation on another phone | Park it, then dial its assigned slot |
 | Answer a different phone that is still ringing | Dial `pickup.<phone>` or `*8` followed by its extension |
@@ -98,13 +98,13 @@ card. Ring groups keep their group policy instead of allowing each member's
 personal voicemail to answer while the others are still ringing.
 See [phone routing](PHONE_ROUTING.md) for precedence and examples.
 
-## Enable and use voicemail
+## Configure and use voicemail
 
 **Voicemail** is the feature. A **mailbox** is one phone's message inbox, where
 its messages are stored. There is no separate mailbox server to install.
 
-First enable voicemail in the integration configuration and choose an HA TTS
-entity, language and, when offered, voice for the spoken menus. Then enable
+Voicemail is available by default. Choose an HA TTS entity, language and optional
+voice under **Reconfigure > Voicemail voice** for spoken menus. Enable
 **Enable this phone's mailbox** in the desired phone card's Options. This also
 works for an ESP mirror card. Messages are stored on HA, not in the ESP's flash.
 Enabling the mailbox alone does not redirect unanswered calls: configure the
@@ -140,7 +140,7 @@ automations and all keypad commands.
 
 ## Park a call or answer another ringing phone
 
-Enable parking in the integration configuration first. The default access
+Parking is available by default. Customize it under **Reconfigure > Call parking**. The default access
 number is `700`; available slots start at `701`.
 
 Suppose you are talking on Kitchen and want to continue on Office:

@@ -1,0 +1,74 @@
+# P4 audio-board hardware and connectivity; display and camera are selected separately.
+esphome:
+  min_version: 2026.9.0
+  name: ${name}
+  friendly_name: ${friendly_name}
+psram:
+  mode: hex
+  speed: 200MHz
+esp_ldo:
+- channel: 3
+  voltage: 2.5V
+network:
+  enable_high_performance: false
+esp32_hosted:
+  variant: ESP32C6
+  use_psram: true
+  reset_pin: ${hosted_reset_pin}
+  cmd_pin: ${hosted_cmd_pin}
+  clk_pin: ${hosted_clk_pin}
+  d0_pin: ${hosted_d0_pin}
+  d1_pin: ${hosted_d1_pin}
+  d2_pin: ${hosted_d2_pin}
+  d3_pin: ${hosted_d3_pin}
+  active_high: true
+wifi:
+  ssid: !secret 'wifi_ssid'
+  password: !secret 'wifi_password'
+  power_save_mode: none
+  reboot_timeout: 10min
+  fast_connect: false
+api:
+  custom_services: true
+logger:
+  hardware_uart: UART0
+  level: INFO
+  logs:
+    voip_stack: INFO
+    voip_stack.fsm: INFO
+    voip_stack.tcp: INFO
+    voip_stack.udp: INFO
+    voip_stack.audio: INFO
+    voip_stack.settings: INFO
+    sensor: WARN
+    text_sensor: WARN
+    binary_sensor: WARN
+    switch: WARN
+    number: WARN
+    button: WARN
+    api: WARN
+    api.connection: WARN
+    component: WARN
+i2c:
+- id: internal_i2c
+  sda: ${codec_i2c_sda_pin}
+  scl: ${codec_i2c_scl_pin}
+  frequency: 400kHz
+  scan: false
+output:
+- platform: gpio
+  id: speaker_enable
+  pin: ${speaker_enable_pin}
+binary_sensor:
+- platform: gpio
+  name: Boot Button
+  id: boot_button
+  pin:
+    number: ${boot_button_pin}
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+packages:
+  platform: !include '../platform/esp32p4_base.yaml'
+  radio: !include 'esp32p4_c6_sdio.yaml'

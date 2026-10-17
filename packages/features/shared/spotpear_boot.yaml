@@ -1,0 +1,3 @@
+# Compatibility entrypoint for round-board startup.
+packages:
+  boot: !include round_boot.yaml

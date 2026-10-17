@@ -7,6 +7,7 @@ from esphome.components.esp32 import (
     add_idf_component,
     add_idf_sdkconfig_option,
     include_builtin_idf_component,
+    require_certificate_bundle,
 )
 import esphome.config_validation as cv
 from esphome.const import (
@@ -339,10 +340,13 @@ async def to_code(config: ConfigType) -> None:
 
     # Re-enable ESP-IDF's HTTP client (excluded by default to save compile time)
     include_builtin_idf_component("esp_http_client")
+    # Keep the upstream audio provider's trust-store requirement. Selecting
+    # this provider must not leave micro-decoder HTTPS without a verifier.
+    require_certificate_bundle()
 
     add_idf_component(
         name="esphome/esp-audio-libs",
-        ref="3.2.1",
+        ref="4.1.0",
     )
 
     data = _get_data()
@@ -396,7 +400,7 @@ async def to_code(config: ConfigType) -> None:
     # Adds a define and IDF component for legacy `audio_decoder.cpp`.
     if data.flac_support:
         cg.add_define("USE_AUDIO_FLAC_SUPPORT")
-        add_idf_component(name="esphome/micro-flac", ref="0.2.0")
+        add_idf_component(name="esphome/micro-flac", ref="0.3.0")
         _emit_memory_pair(
             data.flac.buffer_memory,
             "CONFIG_MICRO_FLAC_PREFER_PSRAM",

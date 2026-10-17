@@ -26,6 +26,15 @@ from .test_trunk_calls_ha import trunks as trunks
 pytestmark = pytest.mark.ha
 
 
+@pytest.fixture(autouse=True)
+def configured_tts_provider(monkeypatch):
+    """The suite's injected TTS stream represents its configured test provider."""
+    from types import SimpleNamespace
+    from custom_components.voip_stack import voicemail_config
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda _hass, identity:
+                        SimpleNamespace(available=True) if identity == "tts.test" else None)
+
+
 @pytest.fixture
 async def speech_entity(mailbox_lab):
     import logging
@@ -230,7 +239,10 @@ def custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
-def mailbox_lab(lab, tmp_path):
+def mailbox_lab(lab, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from custom_components.voip_stack import voicemail_config
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda *_: SimpleNamespace(available=True))
     lab.hass.config.config_dir = str(tmp_path)
     lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
@@ -796,7 +808,7 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
         "voip_stack", context={"source": "reconfigure", "entry_id": entry.entry_id},
     )
     form = await lab.hass.config_entries.flow.async_configure(
-        form["flow_id"], form["data_schema"]({"voicemail_enabled": True}),
+        form["flow_id"], {"next_step_id": "voicemail"},
     )
     assert form["step_id"] == "voicemail" and not entry.data.get("voicemail")
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.missing"})
@@ -819,7 +831,7 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
         lab.hass.config_entries.async_remove_subentry(entry, contact.subentry_id)
         result = await lab.hass.config_entries.flow.async_configure(result["flow_id"], {"language": "it"})
     assert result["type"] == "abort"
-    assert entry.data["voicemail"] == {"enabled": True, "tts_entity_id": "tts.test", "language": "it"}
+    assert entry.data["voicemail"] == {"tts_entity_id": "tts.test", "language": "it"}
 
 
 @pytest.mark.parametrize("language,expected", [
@@ -856,14 +868,14 @@ async def test_voicemail_voice_selection_uses_ha_catalog_and_persists(mailbox_la
     monkeypatch.setattr(config_module, "voice_engine", lambda *_args: engine)
     form = await lab.hass.config_entries.flow.async_init(
         "voip_stack", context={"source": "reconfigure", "entry_id": entry.entry_id})
-    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], form["data_schema"]({"voicemail_enabled": True}))
+    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"next_step_id": "voicemail"})
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.test"})
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "it"})
     assert form["step_id"] == "voicemail_voice" and not entry.data.get("voicemail")
     result = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"voice": "raffa_reference"})
     assert result["type"] == "abort"
     assert entry.data["voicemail"] == {
-        "enabled": True, "tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"}
+        "tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"}
 
 
 async def test_voicemail_menu_passes_selected_voice_to_native_tts(mailbox_lab, monkeypatch):
@@ -897,7 +909,7 @@ async def test_voicemail_menu_passes_selected_voice_to_native_tts(mailbox_lab, m
 
 
 @pytest.mark.parametrize("address", ["*97", "*98", "mailbox", "mailbox.Other", "voicemail.Other", "*60101"])
-async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbox_lab, address):
+async def test_mailbox_addresses_are_reserved_but_do_not_steal_existing_routes(mailbox_lab, address):
     from custom_components.voip_stack.mailbox import resolve_mailbox_route
     from custom_components.voip_stack.phonebook_services import _validate_contact_namespace
     from custom_components.voip_stack.roster import RosterEntry
@@ -909,7 +921,8 @@ async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbo
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {"enabled": False}})
     assert resolve_mailbox_route(lab.hass, address, [contact]) is None
-    _validate_contact_namespace(lab.hass, [contact])
+    with pytest.raises(ValueError, match="conflicts"):
+        _validate_contact_namespace(lab.hass, [contact])
 
 
 async def test_feature_code_does_not_shadow_plain_numeric_extension(mailbox_lab):

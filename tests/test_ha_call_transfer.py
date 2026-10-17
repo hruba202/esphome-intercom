@@ -132,6 +132,7 @@ async def test_transfer_service_closes_only_the_successful_current_call(
 
     session = SimpleNamespace(generation=7)
     registry = SimpleNamespace(
+        resolve_session_id=lambda call_id: call_id,
         get_session=lambda _call_id: session,
         is_generation_current=lambda _call_id, generation: current and generation == 7,
     )

@@ -1,0 +1,5 @@
+# Telephone lifecycle projection when no status light is selected.
+script:
+- id: update_status
+  mode: restart
+  then: []

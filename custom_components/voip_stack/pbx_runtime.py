@@ -433,12 +433,13 @@ class SipEndpointRuntime(CallRuntimeApi):
             )
         consultation = (
             role == "source"
-            and getattr(endpoint, "kind", None) is EndpointKind.SIP_ACCOUNT
+            and getattr(endpoint, "kind", None) in {EndpointKind.SIP_ACCOUNT, EndpointKind.ESPHOME}
             and active is not None
             and active.call_id != session.call_id
             and clean_endpoint_id in active.endpoint_claims
-            # The callee can consult as soon as its own dialog is answered,
-            # even while the parent bridge is finishing media setup.
+            # Native SIP peers may stage another source dialog for consultation
+            # or REFER while their established conversation remains owned.
+            # A confirmed callee also qualifies before the bridge commits.
             and (active.phase in {SessionPhase.ESTABLISHED, SessionPhase.HELD}
                  or answered_destination)
         )

@@ -1977,10 +1977,12 @@ class VoipStackCard extends HTMLElement {
     }
     if (els.parkBtn) {
       const established = softphoneMode ? this._softphoneSnapshot?.state === "in_call" : espState === "in_call";
-      els.parkBtn.hidden = transferring || !parking?.enabled || !established;
+      const parkingNeedsConfiguration = !!parking?.unavailable_reason;
+      els.parkBtn.hidden = transferring || (!parking?.enabled && !parkingNeedsConfiguration) || !established;
       const parkingVideoUnsupported = softphoneMode && !!this._softphoneSnapshot?.video_active;
-      els.parkBtn.disabled = !!this._parkingBusy || parkingVideoUnsupported;
-      els.parkBtn.title = this._t(parkingVideoUnsupported ? "Parking requires an audio-only call" : "Park call");
+      els.parkBtn.disabled = !!this._parkingBusy || parkingVideoUnsupported || parkingNeedsConfiguration;
+      els.parkBtn.title = this._t(parkingNeedsConfiguration ? "Configure parking in VoIP Stack settings" :
+        parkingVideoUnsupported ? "Parking requires an audio-only call" : "Park call");
     }
     if (els.recordBtn) {
       const recording = this._softphoneSnapshot?.recording;

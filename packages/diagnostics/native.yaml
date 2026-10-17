@@ -6,10 +6,13 @@
 # reset reason and device info; it is not the runtime debug package.
 # =============================================================================
 
-substitutions:
-  diagnostics_update_interval: "60s"
-  diagnostics_wifi_update_interval: "30s"
+defaults:
+  diagnostics_update_interval: '${ diagnostics_update_interval | default("60s") }'
+  diagnostics_wifi_update_interval: '${ diagnostics_wifi_update_interval | default("30s") }'
 
+substitutions:
+  diagnostics_update_interval: ${diagnostics_update_interval}
+  diagnostics_wifi_update_interval: ${diagnostics_wifi_update_interval}
 debug:
   update_interval: ${diagnostics_update_interval}
 

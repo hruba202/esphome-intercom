@@ -1,0 +1,38 @@
+# One coordinator and shared lifecycle, independently of selected consumers.
+defaults:
+  _fw_content_hooks: !include '../../voice_assistant/ui_hooks.yaml'
+packages:
+  controller: !include 'controller.yaml'
+  lifecycle: !include '../../runtime/lifecycle_globals.yaml'
+  boot: !include '../../runtime/boot_events.yaml'
+  ha_presence_globals: !include '../../runtime/ha_presence_globals.yaml'
+  ha_presence: !include '../../runtime/ha_connectivity.yaml'
+  presentation: !include '../../runtime/presentation_globals.yaml'
+  content: ${ _fw_content_hooks if _fw_voice or _fw_display else {} }
+external_components:
+- source: ${runtime_controller_components_source}
+  components:
+  - runtime_controller
+runtime_controller:
+  observe:
+    wifi: true
+    microphone_mute: mute
+    speaker_mute: speaker_mute
+script:
+- id: update_led
+  mode: restart
+  then: []
+- id: render_ui_state
+  mode: restart
+  then: []
+esphome:
+  on_boot:
+  - priority: -100
+    then:
+    - if:
+        condition:
+          lambda: return ${'false' if _fw_voice else 'true'};
+        then:
+        - globals.set:
+            id: init_in_progress
+            value: 'false'

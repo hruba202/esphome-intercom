@@ -4,6 +4,70 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## Development firmware: new device packages
+
+**For this firmware update, start again from the current YAML for your exact
+board and carry over your settings.** The shared packages have been reorganized:
+maintained profiles now select one `packages/devices/` entrypoint and one
+`firmware_features` list. Updating a handful of includes in an old FULL YAML can
+leave duplicate players, controls or callbacks alongside the new composition.
+
+This is a firmware configuration migration, separate from updating VoIP Stack
+through HACS. It does not require deleting the HA integration, its phones or
+your working device. This preview uses coordinated `dev` packages and component
+sources. Use its published source references rather than mixing them with `main`.
+
+### Migrate a copied device YAML
+
+1. Keep your old YAML and secrets for comparison. Select the current equivalent
+   from the [device catalog](../packages/DEVICE_CATALOG.md), including the correct
+   board revision, AEC/AFE/native backend and, for P4 video, JPEG or H.264 profile.
+2. Transfer your existing device `name`, friendly name, Wi-Fi/network settings,
+   API encryption, OTA authentication and secret references. Keep credentials in
+   your private `secrets.yaml`. Preserve custom GPIOs only where they match your
+   actual wiring; do not copy a different board's pin map.
+3. Edit the new YAML's **existing** `firmware_features` list. Preserve your intended
+   choices, such as no Sendspin or no display. Do not add another list in an
+   overlay: ESPHome concatenates package lists. Feature selection does not
+   change the chosen AFE/AEC/native backend.
+4. Transfer custom settings and automations individually, using substitutions
+   or extensions of the existing IDs. Keep wanted call settings, static contacts,
+   wake-word models, gain/volume preferences and UI customizations. Compare each
+   with the new package before adding it; its equivalent may already be supplied.
+5. Keep **one device package**. Do not copy the old FULL preset, entire player,
+   mixer or repeated voice/call callbacks on top of it. Leaf includes remain for
+   legacy/custom builds with their documented prerequisites, not as additional
+   full presets for a migrated device.
+6. Keep package, component and asset references coordinated. Validate and compile
+   the result with ESPHome, check image size against the actual OTA slot, then
+   install it. A changed partition layout needs an appropriate full serial flash;
+   an ordinary OTA application update does not migrate partitions.
+7. Check the device's selected functions: call in and out, hang up and redial,
+   invoke Assist, play and stop media, and check the display/LED after each action.
+   Test only functions your profile includes, then their intended combinations.
+
+This recommendation does not mean that every existing leaf include was removed.
+It gives a clean starting point for the new composition while preserving your
+device identity and preferences. The [progressive examples](../packages/README.md#work-through-a-full-profile)
+show small feature changes before custom board or runtime work. The Generic
+4 MB Full Lite default still excludes Sendspin; historical build sizes are not
+guarantees for the new libraries.
+
+## 2026.10.3-dev: PBX functions available by default
+
+Global parking and voicemail enable switches have been removed. Reconfigure
+now offers General settings, Call parking and Voicemail voice separately. Basic
+installation needs no TTS provider. Existing custom numbers, timers, media,
+voices, mailbox settings and recordings are preserved. No mailbox is created
+and no forwarding rule is added by the migration. Per-phone mailbox removal
+remains an explicit destructive operation.
+
+Parking defaults to access 700 and slots 701-720. Previously disabled feature
+codes become available where they do not conflict with existing destinations.
+Conflicting routes are preserved and reported in Repairs; correct the feature
+configuration or the conflicting destination before using those codes. Existing
+automation service names and entity identities are unchanged.
+
 ## 2026.10.3-dev: disabling a phone's mailbox deletes it
 
 **Enable mailbox** now controls whether that phone has a mailbox. Explicitly

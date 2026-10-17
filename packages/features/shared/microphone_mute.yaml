@@ -1,0 +1,13 @@
+# Hardware mute only; selected consumers extend this control as needed.
+switch:
+- platform: template
+  name: Mic Mute
+  id: mute
+  icon: mdi:microphone-off
+  entity_category: config
+  optimistic: true
+  restore_mode: RESTORE_DEFAULT_OFF
+  on_turn_on:
+  - microphone.mute: ${mic_id}
+  on_turn_off:
+  - microphone.unmute: ${mic_id}

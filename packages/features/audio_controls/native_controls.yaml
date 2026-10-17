@@ -1,0 +1,73 @@
+# Controls for native capture and output; only selected consumers are addressed.
+defaults:
+  _fw_native_volume_music:
+  - mixer_speaker.apply_ducking:
+      id: media_mixer_input
+      decibel_reduction: !lambda |-
+        const float clamped = std::max(0.0f, std::min(100.0f, x));
+        return clamped <= 0.0f
+                   ? static_cast<uint8_t>(51)
+                   : static_cast<uint8_t>(std::lround((100.0f - clamped) * 51.0f / 100.0f));
+      duration: 150ms
+  _fw_native_volume_announcements:
+  - mixer_speaker.apply_ducking:
+      id: tts_mixer_input
+      decibel_reduction: !lambda |-
+        const float clamped = std::max(0.0f, std::min(100.0f, x));
+        return clamped <= 0.0f
+                   ? static_cast<uint8_t>(51)
+                   : static_cast<uint8_t>(std::lround((100.0f - clamped) * 51.0f / 100.0f));
+      duration: 150ms
+  _fw_native_volume_voip:
+  - mixer_speaker.apply_ducking:
+      id: voip_mixer_input
+      decibel_reduction: !lambda |-
+        const float clamped = std::max(0.0f, std::min(100.0f, x));
+        return clamped <= 0.0f
+                   ? static_cast<uint8_t>(51)
+                   : static_cast<uint8_t>(std::lround((100.0f - clamped) * 51.0f / 100.0f));
+      duration: 150ms
+  _fw_native_volume_direct:
+  - speaker.volume_set:
+      id: hw_speaker
+      volume: !lambda |-
+        const float clamped = std::max(0.0f, std::min(100.0f, x));
+        const unsigned reduction = clamped <= 0.0f ? 51 : std::lround((100.0f - clamped) * 51.0f / 100.0f);
+        return std::pow(10.0f, -static_cast<float>(reduction) / 20.0f);
+number:
+- platform: template
+  id: master_volume
+  name: Master Volume
+  icon: mdi:volume-high
+  entity_category: config
+  min_value: 0
+  max_value: 100
+  step: 5
+  mode: SLIDER
+  optimistic: true
+  restore_value: true
+  initial_value: 100
+  set_action: ${ ((_fw_native_volume_music if _fw_music else []) + (_fw_native_volume_announcements if _fw_announcements
+    else []) + (_fw_native_volume_voip if _fw_voip else [])) if _fw_mixed else _fw_native_volume_direct }
+- platform: template
+  id: mic_gain
+  name: Mic Boost
+  icon: mdi:microphone
+  entity_category: config
+  min_value: 0
+  max_value: 36
+  step: 1
+  unit_of_measurement: dB
+  mode: SLIDER
+  optimistic: true
+  restore_value: true
+  initial_value: 0
+  set_action:
+  - lambda: !lambda |-
+      const float clamped = std::max(0.0f, std::min(36.0f, x));
+      int factor = static_cast<int>(std::lround(std::pow(10.0f, clamped / 20.0f)));
+      factor = std::max(1, std::min(64, factor));
+      ${ 'id(va_mic_source).set_gain_factor(factor);' if _fw_voice else '' }
+      ${ 'id(mww_mic_source).set_gain_factor(factor);' if _fw_wake_word else '' }
+      ${ 'id(voip_mic_source).set_gain_factor(factor);' if _fw_voip else '' }
+      ESP_LOGI("audio", "Native mic boost %.0fdB -> MicrophoneSource gain_factor=%d", clamped, factor);

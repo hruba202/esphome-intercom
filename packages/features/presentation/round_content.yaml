@@ -1,0 +1,104 @@
+# Common text, animation and voice-display hooks for the round layouts.
+script:
+- id: clear_replying_text
+  then:
+  - lambda: !lambda |-
+      id(wrapped_lines_reply).clear();
+      id(reply_total_pages) = 1;
+      id(reply_page_index) = 0;
+      lv_obj_t* lines[] = {
+        id(reply_line_0), id(reply_line_1), id(reply_line_2), id(reply_line_3), id(reply_line_4),
+        id(reply_line_5), id(reply_line_6), id(reply_line_7), id(reply_line_8), id(reply_line_9)
+      };
+      for (auto *line : lines) {
+        lv_label_set_text(line, "");
+      }
+      lv_label_set_text(id(reply_page_counter), "");
+- id: !extend 'ui_va_barge_start'
+  then:
+  - script.stop: reply_pagination_timer
+  - script.execute: clear_replying_text
+- id: !extend 'ui_va_end'
+  then:
+  - script.stop: reply_pagination_timer
+  - script.execute: backlight_timer
+  - text_sensor.template.publish:
+      id: text_request
+      state: ''
+  - text_sensor.template.publish:
+      id: text_response
+      state: ''
+  - script.execute: clear_replying_text
+  - script.execute: update_replying_text
+- id: !extend 'ui_stt_ended'
+  then:
+  - text_sensor.template.publish:
+      id: text_request
+      state: !lambda |-
+        return text;
+  - script.execute: draw_display
+- id: ai_animation_loop
+  mode: single
+  then:
+  - lambda: !lambda |-
+      lv_animimg_set_repeat_count(id(idle_anim), 0);
+      lv_animimg_start(id(idle_anim));
+      lv_anim_del(id(idle_anim), nullptr);
+  - while:
+      condition:
+        lambda: !lambda |-
+          return id(current_mode) == 0 &&
+                 id(voice_assistant_phase) == ${voice_assist_idle_phase_id} &&
+                 !id(init_in_progress);
+      then:
+      - lambda: !lambda |-
+          lv_animimg_start(id(idle_anim));
+      - delay: 25s
+- id: update_replying_text
+  then:
+  - lambda: !lambda |-
+      if (id(current_mode) != 0 ||
+          id(voice_assistant_phase) != ${voice_assist_replying_phase_id}) {
+        return;
+      }
+      static std::vector<std::string> visible_lines(10);
+      static std::string page_counter_text;
+      lv_obj_t* lines[] = {
+        id(reply_line_0), id(reply_line_1), id(reply_line_2), id(reply_line_3), id(reply_line_4),
+        id(reply_line_5), id(reply_line_6), id(reply_line_7), id(reply_line_8), id(reply_line_9)
+      };
+      const size_t total_rows = 10;
+      const auto &wrapped = id(wrapped_lines_reply);
+      const size_t total_pages = std::max(1, id(reply_total_pages));
+      const size_t cur_page = id(reply_page_index) % total_pages;
+      const size_t start_line = cur_page * total_rows;
+      for (size_t i = 0; i < total_rows; i++) {
+        size_t line_idx = start_line + i;
+        visible_lines[i] = line_idx < wrapped.size() ? wrapped[line_idx] : "";
+        lv_label_set_text_static(lines[i], visible_lines[i].c_str());
+      }
+      // Update page counter
+      if (total_pages > 1) {
+        page_counter_text = str_sprintf("%d/%d", (int) (cur_page + 1), (int) total_pages);
+        lv_label_set_text_static(id(reply_page_counter), page_counter_text.c_str());
+      } else {
+        page_counter_text.clear();
+        lv_label_set_text_static(id(reply_page_counter), page_counter_text.c_str());
+      }
+- id: reply_pagination_timer
+  mode: restart
+  then:
+  - delay: 14s
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(current_mode) == 0 &&
+                 id(voice_assistant_phase) == ${voice_assist_replying_phase_id} &&
+                 id(reply_total_pages) > 1;
+      then:
+      - globals.set:
+          id: reply_page_index
+          value: !lambda |-
+            return id(reply_page_index) + 1;
+      - script.execute: update_replying_text
+      - script.execute: reply_pagination_timer

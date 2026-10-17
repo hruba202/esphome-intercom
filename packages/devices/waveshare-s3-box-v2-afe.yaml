@@ -1,0 +1,125 @@
+# Device wiring and consumer parameters. Shared feature modules own lifecycle and controls.
+defaults:
+  afe_mode_options: ${ afe_mode_options | default(["sr_low_cost", "sr_high_perf", "fd_low_cost", "fd_high_perf"])
+    }
+  firmware_processing_modes: ${afe_mode_options}
+substitutions:
+  firmware_lvgl: true
+  firmware_display_package: ../features/presentation/devices/waveshare_v2.yaml
+  firmware_primary_button_id: main_button
+  firmware_voice_binding:
+    voice_assistant:
+      id: va
+      microphone: mic_afe
+      media_player: speaker_media_player
+      noise_suppression_level: 0
+      auto_gain: 0dBFS
+      volume_multiplier: 2.0
+  firmware_wake_word_binding:
+    micro_wake_word:
+      task_core: 1
+      id: mww
+      microphone: mic_afe
+      stop_after_detection: false
+      models:
+      - model: alexa
+    external_components:
+    - source: ${ext_components_source}
+      components:
+      - micro_wake_word
+  firmware_voip_binding:
+    voip_stack:
+      use_ha_as_first_contact: true
+      task_stacks_in_psram: true
+      audio_task_stacks_in_psram: ${voip_audio_task_stacks_in_psram}
+      tx_task_stack_size: ${voip_tx_task_stack_size}
+      rx_task_stack_size: ${voip_rx_task_stack_size}
+      signaling_buffers_in_psram: true
+      buffers_in_psram: true
+      id: phone
+      extension: '101'
+      conference_groups: CG Casa
+      conference_ring: false
+      ring_groups: RG Casa
+      audio:
+        tx:
+          sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        tx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx:
+          sample_rate: 48000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx_formats:
+        - sample_rate: 32000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 32
+      microphone: mic_afe
+      speaker: voip_speaker_input
+      delete_contact_missing_from:
+        updates_number: 1
+    speaker:
+    - id: !extend 'voip_speaker_input'
+      task_core: 1
+      task_priority: 1
+  firmware_music_binding:
+    media_source:
+    - id: !extend 'media_http_source'
+      buffer_size: ${http_media_ring_buffer_size}
+      task_stack_in_psram: true
+      persistent_ring_buffer: ${http_media_persistent_ring_buffer}
+    speaker:
+    - id: !extend 'media_speaker_input'
+      task_core: 1
+      task_priority: 1
+  firmware_announcement_binding:
+    media_source:
+    - id: !extend 'announcement_http_source'
+      buffer_size: ${http_media_ring_buffer_size}
+      task_stack_in_psram: true
+      persistent_ring_buffer: ${http_media_persistent_ring_buffer}
+    speaker:
+    - id: !extend 'tts_speaker_input'
+      task_core: 1
+      task_priority: 1
+  _round_full_buttons: !include '../features/controls/spotpear_full.yaml'
+  _round_simple_buttons: !include '../features/controls/primary_button.yaml'
+  _round_diagnostics: !include '../diagnostics/native.yaml'
+  firmware_controls:
+    packages:
+      buttons: ${ _round_full_buttons if _fw_display and _fw_voice and _fw_voip else _round_simple_buttons }
+      processing: !include '../features/audio_controls/afe_mode.yaml'
+  afe_initial_mode: fd_high_perf
+  afe_mode_restore_value: false
+runtime_controller:
+  id: runtime
+  storage_in_psram: true
+packages:
+  hardware: !include '../board/waveshare_s3_box_v2.yaml'
+  display_hardware: !include '${ ''../board/waveshare_s3_box_v2_display.yaml'' if ''display'' in firmware_features
+    else ''../features/shared/absent.yaml'' }'
+  audio: !include '../audio/profiles/waveshare-s3-box-v2-afe.yaml'
+  boot: !include '../features/shared/spotpear_boot.yaml'
+  diagnostics: ${ _round_diagnostics if 'diagnostics' in firmware_features else {} }
+  flac_memory: !include '../audio/flac_codecs_psram.yaml'
+  application: !include '../profiles/application.yaml'

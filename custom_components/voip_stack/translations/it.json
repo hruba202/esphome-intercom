@@ -14,9 +14,7 @@
           "media_capture": "Registra audio privato per la diagnostica",
           "experimental_sip_video": "Abilita video SIP per il softphone Home Assistant",
           "sip_registrar_enabled": "Abilita account softphone SIP locali",
-          "trunk_enabled": "Abilita trunk SIP opzionale",
-          "voicemail_enabled": "Abilita segreteria telefonica",
-          "parking_enabled": "Abilita parcheggio chiamate"
+          "trunk_enabled": "Abilita trunk SIP opzionale"
         },
         "data_description": {
           "sip_port": "Porta di ascolto dell'endpoint SIP HA. HA accetta signaling SIP sia su UDP sia su TCP su questa porta.",
@@ -139,6 +137,15 @@
           "hold_media": "Audio di attesa",
           "clear_hold_media": "Rimuovi l'audio di attesa salvato"
         }
+      },
+      "reconfigure": {
+        "title": "Impostazioni VoIP Stack",
+        "description": "Scegli le impostazioni da configurare. Le funzioni PBX sono disponibili; configura le risorse quando servono.",
+        "menu_options": {
+          "user": "Impostazioni generali",
+          "parking": "Parcheggio chiamate",
+          "voicemail": "Voce della segreteria"
+        }
       }
     },
     "error": {
@@ -157,7 +164,8 @@
       "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo.",
       "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio.",
       "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata.",
-      "trunk_media_address_invalid": "Inserisci un indirizzo IPv4 unicast raggiungibile, oppure lascia vuoto."
+      "trunk_media_address_invalid": "Inserisci un indirizzo IPv4 unicast raggiungibile, oppure lascia vuoto.",
+      "parking_slots_in_use": "Recupera o termina le chiamate negli slot da rimuovere prima di modificare la lista."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",
@@ -484,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Interni telefonici duplicati",
       "description": "Queste destinazioni usano lo stesso interno: {conflicts}. Assegna un interno diverso a ogni telefono, contatto o endpoint Assist. Le chiamate a un interno ambiguo vengono rifiutate; nomi e indirizzi SIP espliciti restano disponibili. Per un telefono ESPHome, modifica l'interno sul dispositivo. La segnalazione scompare quando la rubrica non contiene conflitti."
+    },
+    "parking_configuration": {
+      "title": "Controlla la configurazione del parcheggio",
+      "description": "Scegli accesso e slot validi che non siano in conflitto con telefoni, contatti o gruppi. Le destinazioni esistenti restano invariate."
+    },
+    "mailbox_route_conflict": {
+      "title": "Conflitto con i codici della segreteria",
+      "description": "Un telefono, contatto o gruppo usa un indirizzo della segreteria. Rinomina la destinazione in conflitto; le rotte esistenti restano invariate."
     }
   },
   "exceptions": {

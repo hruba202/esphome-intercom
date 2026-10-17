@@ -155,6 +155,16 @@ async def async_migrate_entry(
         from .trunk_config import migrate_legacy_trunk
         migrate_legacy_trunk(hass, config_entry)
         hass.config_entries.async_update_entry(config_entry, minor_version=3)
+    if config_entry.version == 6 and config_entry.minor_version < 4:
+        data = dict(config_entry.data)
+        for feature in ("parking", "voicemail"):
+            if feature in data:
+                settings = dict(data[feature])
+                settings.pop("enabled", None)
+                data[feature] = settings
+        data.pop("parking_enabled", None)
+        data.pop("voicemail_enabled", None)
+        hass.config_entries.async_update_entry(config_entry, data=data, minor_version=4)
     return True
 
 
@@ -466,8 +476,9 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
             translation_placeholders={"phone": "VoIP Stack"},
         )
     phone = await runtime.phones.resolve_source(call)
+    registry = _call_registry(call.hass)
     request = CallTransferRequest(
-        call_id=str(call.data.get("call_id") or "").strip(),
+        call_id=registry.resolve_session_id(str(call.data.get("call_id") or "").strip()),
         destination=str(call.data.get("destination") or "").strip(),
         replaces_call_id=str(call.data.get("replaces_call_id") or "").strip(),
         endpoint_id=phone.endpoint_id,
@@ -477,8 +488,7 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
             translation_domain=DOMAIN,
             translation_key="transfer_destination_required",
         )
-    registry = _call_registry(call.hass)
-    source_session = registry.get_session(registry.resolve_session_id(request.call_id)) if call.data.get("device_id") else registry.get_session(request.call_id)
+    source_session = registry.get_session(request.call_id)
     if call.data.get("device_id"):
         from .call_scope import call_belongs_to_endpoint
 

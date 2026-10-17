@@ -1,0 +1,39 @@
+# Physical screen and backlight for this standalone telephone.
+display:
+- platform: mipi_spi
+  id: s3_box_lcd
+  model: GC9A01A
+  invert_colors: true
+  data_rate: 40MHz
+  cs_pin: 5
+  dc_pin: 47
+  reset_pin:
+    number: 38
+  auto_clear_enabled: false
+  dimensions:
+    height: 240
+    width: 240
+touchscreen:
+- platform: cst816
+  id: touch
+  display: s3_box_lcd
+  i2c_id: touchscreen_i2c_bus
+  interrupt_pin: ${touch_interrupt_pin}
+  reset_pin: ${touch_reset_pin}
+light:
+- platform: monochromatic
+  id: backlight
+  name: Display Backlight
+  icon: mdi:brightness-6
+  output: backlight_output
+  restore_mode: ALWAYS_ON
+  default_transition_length: 250ms
+spi:
+- id: spi_bus
+  clk_pin: 4
+  mosi_pin: 2
+output:
+- platform: ledc
+  id: backlight_output
+  pin: ${display_backlight_pin}
+  inverted: true

@@ -1160,3 +1160,124 @@ async def test_replacement_waits_for_destination_remote_media_commit(registered_
         if result is not None and result.rollback is not None:
             await result.rollback()
         grant.release()
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("transferor_index", [0, 1])
+@pytest.mark.parametrize("retained_kind", [EndpointKind.SIP_ACCOUNT, EndpointKind.ESPHOME])
+@pytest.mark.parametrize("first_rejected", [False, True])
+@pytest.mark.parametrize("use_leg_id", [False, True])
+async def test_blind_transfer_service_retains_opposite_phone(
+    registered_phones, trunks, transferor_index, retained_kind, first_rejected, use_leg_id,
+):
+    """The retained SIP peer can establish its referred dialog before BYE."""
+    from homeassistant.core import ServiceCall
+    from custom_components.voip_stack import _handle_sip_transfer_service
+
+    lab = trunks
+    caller, callee, target = registered_phones
+    await asyncio.to_thread(caller.dial, "transfer_b")
+    await asyncio.to_thread(callee.wait_for, "Call established", 5)
+    original_id = lab.runtime.endpoints.get("transfer_a").active_call_id
+    original = lab.calls.get_session(original_id)
+    assert original is not None and original.live
+    retained_index = 1 - transferor_index
+    retained_id = ("transfer_a", "transfer_b")[retained_index]
+    transferor_id = ("transfer_a", "transfer_b")[transferor_index]
+    # bareSIP supplies independent real SIP transactions. The ESP endpoint kind
+    # reproduces the admission policy used by firmware staging a blind REFER.
+    lab.runtime.endpoints.update(retained_id, kind=retained_kind)
+    request_call_id = lab.calls.bridge_link_for(original_id) if use_leg_id else original_id
+    request = ServiceCall(
+        lab.hass, "voip_stack", "transfer",
+        {"device_id": transferor_id, "call_id": request_call_id, "destination": "transfer_c"},
+    )
+    if first_rejected:
+        lab.runtime.endpoints.update("transfer_c", dnd=True)
+        rejected = await _handle_sip_transfer_service(request)
+        assert not rejected["success"] and rejected["status"] == 486, rejected
+        assert original.live and set(original.endpoint_claims) == {"transfer_a", "transfer_b"}
+        assert lab.runtime.endpoints.get(retained_id).active_call_id == original_id
+        original_relay = lab.calls.resource_for(original_id, "relay")
+        left, right = original_relay.left_tx_packets, original_relay.right_tx_packets
+        async with asyncio.timeout(3):
+            while original_relay.left_tx_packets <= left + 10 or original_relay.right_tx_packets <= right + 10:
+                await asyncio.sleep(0.01)
+        lab.runtime.endpoints.update("transfer_c", dnd=False)
+    result = await _handle_sip_transfer_service(request)
+    assert result["success"], result
+    assert result["call_id"] == original_id
+    async with asyncio.timeout(5):
+        while True:
+            for peer in registered_phones:
+                peer.read()
+            sessions = tuple(lab.calls.sessions.values())
+            if len(sessions) == 1 and sessions[0].call_id != original_id:
+                replacement = sessions[0]
+                break
+            await asyncio.sleep(0.01)
+    assert set(replacement.endpoint_claims) == {retained_id, "transfer_c"}
+    assert not lab.runtime.endpoints.get(transferor_id).active_call_id
+    assert lab.runtime.endpoints.get(retained_id).active_call_id == replacement.call_id
+    relay = lab.calls.resource_for(replacement.call_id, "relay")
+    left, right = relay.left_tx_packets, relay.right_tx_packets
+    async with asyncio.timeout(3):
+        while relay.left_tx_packets <= left + 10 or relay.right_tx_packets <= right + 10:
+            await asyncio.sleep(0.01)
+    assert target.read().count("Call established") == 1
+    await asyncio.to_thread(registered_phones[retained_index].command, "/hangupall")
+    async with asyncio.timeout(4):
+        while lab.calls.sessions:
+            await asyncio.sleep(0.01)
+    assert not lab.calls.endpoint_claims_snapshot()
+    assert not lab.runtime.rtp_port_pool.get("used")
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+async def test_legacy_esp_refer_rejection_keeps_original_busy(registered_phones, trunks, monkeypatch):
+    """A peer without REFER retains its original call and destination claim."""
+    from homeassistant.core import ServiceCall
+    from custom_components.voip_stack import _handle_sip_transfer_service
+    from custom_components.voip_stack.core import sip
+    from custom_components.voip_stack.roster import RosterEntry
+
+    lab = trunks
+    caller, second, _target = registered_phones
+    legacy = lab.phones[0]
+    lab.runtime.endpoints.update("sip:bedroom0", kind=EndpointKind.ESPHOME, availability="available")
+    port = legacy.transport.get_extra_info("sockname")[1]
+    lab.roster.append(RosterEntry(
+        "bedroom0", sip_uri=f"sip:bedroom0@127.0.0.1:{port}",
+        metadata={"endpoint_id": "sip:bedroom0", "endpoint_kind": "esphome"},
+    ))
+    original_dispatch = legacy.datagram_received
+    refers = []
+
+    def dispatch(raw, address):
+        request = sip.parse_message(raw)
+        if request.method != "REFER":
+            original_dispatch(raw, address)
+            return
+        refers.append(request)
+        headers = [(name, request.header(name)) for name in ("Via", "From", "To", "Call-ID", "CSeq")]
+        legacy.transport.sendto(sip.build_response(501, "Not Implemented", headers), address)
+
+    monkeypatch.setattr(legacy, "datagram_received", dispatch)
+    await asyncio.to_thread(caller.dial, "bedroom0")
+    original_id = lab.runtime.endpoints.get("transfer_a").active_call_id
+    original = lab.calls.get_session(original_id)
+    result = await _handle_sip_transfer_service(ServiceCall(
+        lab.hass, "voip_stack", "transfer",
+        {"device_id": "transfer_a", "call_id": original_id, "destination": "transfer_c"},
+    ))
+    assert not result["success"] and result["status"] == 501, result
+    assert len(refers) == 1
+    assert original.live and original.state == "in_call"
+    assert set(original.endpoint_claims) == {"transfer_a", "sip:bedroom0"}
+    assert not legacy.bye.is_set()
+    await asyncio.to_thread(second.command, "/dial bedroom0")
+    await asyncio.to_thread(second.wait_for, "486 Busy Here", 5)
+    assert len(legacy.invites) == 1
+    assert lab.runtime.endpoints.get("sip:bedroom0").active_call_id == original_id
+    await asyncio.to_thread(caller.hangup)
+    await asyncio.wait_for(original.terminated.wait(), 3)

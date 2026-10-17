@@ -1,0 +1,6 @@
+packages:
+  events: !include '../../runtime/wake_word_events.yaml'
+  controls: !include '../../runtime/wake_word_controls.yaml'
+  priority: !include '../../runtime/mww_task_priority.yaml'
+voice_assistant:
+  micro_wake_word: mww

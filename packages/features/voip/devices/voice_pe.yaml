@@ -1,0 +1,165 @@
+# VoIP overlay only. Official Voice PE owns XMOS, hardware audio, media and normal gestures.
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+speaker:
+- id: !extend 'mixing_speaker'
+  source_speakers:
+  - id: voip_mixing_input
+    timeout: never
+    buffer_duration: 100ms
+    sample_rate: 48000
+    bits_per_sample: 32
+    num_channels: 2
+- platform: resampler
+  id: voip_resampling_speaker
+  output_speaker: voip_mixing_input
+  sample_rate: 48000
+  bits_per_sample: 16
+  num_channels: 1
+voip_stack:
+  use_ha_as_first_contact: true
+  id: phone
+  audio:
+    tx:
+      sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+    rx:
+      sample_rate: 48000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+    rx_formats:
+    - sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+  microphone_source:
+    microphone: i2s_mics
+    channels: 0
+  speaker: voip_resampling_speaker
+  task_stacks_in_psram: true
+  network_socket_headroom: 4
+  on_ringing:
+  - script.execute: voice_pe_claim_call_audio
+  on_calling:
+  - script.execute: voice_pe_claim_call_audio
+  on_in_call:
+  - script.execute: voice_pe_claim_call_audio
+  - mixer_speaker.apply_ducking:
+      id: media_mixing_input
+      decibel_reduction: 20
+      duration: 0.0s
+  on_idle:
+  - script.execute: voice_pe_release_call_audio
+  - mixer_speaker.apply_ducking:
+      id: media_mixing_input
+      decibel_reduction: 0
+      duration: 1.0s
+  on_hangup:
+  - mixer_speaker.apply_ducking:
+      id: media_mixing_input
+      decibel_reduction: 0
+      duration: 1.0s
+  on_call_failed:
+  - mixer_speaker.apply_ducking:
+      id: media_mixing_input
+      decibel_reduction: 0
+      duration: 1.0s
+globals:
+- id: voice_pe_call_audio_claimed
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+- id: voice_pe_resume_mww
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+script:
+- id: voice_pe_claim_call_audio
+  then:
+  - if:
+      condition:
+        lambda: return !id(voice_pe_call_audio_claimed);
+      then:
+      - lambda: |-
+          id(voice_pe_call_audio_claimed) = true;
+          id(voice_pe_resume_mww) = id(mww).is_running();
+      - if:
+          condition:
+            voice_assistant.is_running: null
+          then:
+          - voice_assistant.stop: null
+      - if:
+          condition:
+            micro_wake_word.is_running: null
+          then:
+          - micro_wake_word.stop: null
+- id: voice_pe_release_call_audio
+  then:
+  - if:
+      condition:
+        lambda: return id(voice_pe_call_audio_claimed);
+      then:
+      - lambda: id(voice_pe_call_audio_claimed) = false;
+      - if:
+          condition:
+            and:
+            - lambda: return id(voice_pe_resume_mww);
+            - api.connected: null
+          then:
+          - micro_wake_word.start: null
+      - lambda: id(voice_pe_resume_mww) = false;
+binary_sensor:
+- id: !extend 'center_button'
+  filters:
+  - lambda: |-
+      static bool voip_press_consumed = false;
+
+      if (voip_press_consumed) {
+        if (!x) {
+          voip_press_consumed = false;
+        }
+        return {};
+      }
+
+      if (x && !id(center_button).state &&
+          (id(phone).is_active() || id(voice_pe_call_audio_claimed)) &&
+          !id(init_in_progress) && !id(color_changed) &&
+          !id(group_volume_changed) && !id(disable_buttons).state) {
+        voip_press_consumed = true;
+        if (id(phone).is_ringing()) {
+          id(phone).answer_call();
+        } else if (id(phone).is_active()) {
+          id(phone).stop();
+        }
+        return {};
+      }
+
+      return x;
+button:
+- platform: voip_stack
+  call:
+    name: Call
+    id: call_button
+    icon: mdi:phone
+  next_contact:
+    name: Next Contact
+    id: next_contact_button
+    icon: mdi:skip-next
+  previous_contact:
+    name: Previous Contact
+    id: prev_contact_button
+    icon: mdi:skip-previous
+  decline:
+    name: Decline
+    id: decline_button
+    icon: mdi:phone-hangup
+api:
+  custom_services: true
+packages:
+  voip_transport: !include '../../../voip/transport.yaml'
+  voip_settings: !include '../../../voip/call_settings.yaml'

@@ -1,0 +1,41 @@
+# Physical capture/output and processing parameters for this reference profile.
+esp_audio_stack:
+  task_core: 1
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 48000
+  output_sample_rate: 16000
+  slot_bit_width: 32
+  correct_dc_offset: true
+  processor_id: aec_processor
+  aec_reference: previous_frame
+  buffers_in_psram: true
+esp_aec:
+  id: aec_processor
+  sample_rate: 16000
+  filter_length: 4
+  mode: fd_high_perf
+microphone:
+- platform: esp_audio_stack
+  id: mic_main
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 48000
+  bits_per_sample: 16
+  timeout: 1s
+packages:
+  microphone_mute: !include '../../features/shared/microphone_mute.yaml'
+  speaker_mute: !include '../../voip/speaker_mute_runtime.yaml'
+  audio_stack_controls: !include '../../esp_audio_stack/controls.yaml'
+  aec_controls: !include '../../esp_audio_stack/aec_controls.yaml'
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_aec
+- source: ${ext_components_source}
+  components:
+  - speaker

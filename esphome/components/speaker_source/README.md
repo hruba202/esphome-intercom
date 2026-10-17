@@ -14,6 +14,13 @@ The playback accounting changes and dependency compatibility are described in
 
 Stop commands also target a source that is still opening its HTTP stream.
 An explicit stop cancels that pending request and does not advance the playlist.
+STOP is dispatched immediately on the same main-loop owner, even if a queued
+play request cannot progress. Superseded commands and URI allocations are removed
+only for that pipeline; other pipeline commands retain their order. This also
+releases the existing HTTP decoder workers before a blocking OTA transfer begins.
+When the source confirms cancellation, its speaker is stopped rather than asked
+to drain frames that maintenance may already have discarded. Natural EOF still
+finishes the speaker normally; other playback pipelines are not cancelled.
 
 Worker shutdown also guards ESP-IDF's `pthread_join` against unrelated task
 notifications. ESPHome uses task notifications to wake its main loop, including

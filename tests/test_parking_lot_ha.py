@@ -301,7 +301,7 @@ async def test_parking_configuration_validates_public_routes(lab, custom_integra
         lab.hass.config_entries.async_add_subentry(entry,ConfigSubentry(subentry_type='contact',title='701',unique_id='existing-slot',data={'id':'existing-slot','name':'701','number':'12345'}))
     lab.hass.config.components.update({'assist_pipeline','ffmpeg','http','lovelace','media_source','network'})
     form=await lab.hass.config_entries.flow.async_init('voip_stack',context={'source':'reconfigure','entry_id':entry.entry_id})
-    form=await lab.hass.config_entries.flow.async_configure(form['flow_id'],form['data_schema']({'parking_enabled':True}))
+    form=await lab.hass.config_entries.flow.async_configure(form['flow_id'],{'next_step_id':'parking'})
     assert form['step_id']=='parking'
     data=form['data_schema']({})
     result=await lab.hass.config_entries.flow.async_configure(form['flow_id'],data)
@@ -310,7 +310,7 @@ async def test_parking_configuration_validates_public_routes(lab, custom_integra
         assert not entry.data.get('parking')
     else:
         assert result['type']=='abort'
-        assert entry.data['parking']['enabled'] and entry.data['parking']['slots'][0]=='701'
+        assert 'enabled' not in entry.data['parking'] and entry.data['parking']['slots'][0]=='701'
         with pytest.raises(ValueError,match='conflicts'):
             _validate_contact_namespace(lab.hass,[RosterEntry('future-conflict',name='701')])
 

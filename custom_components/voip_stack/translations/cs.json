@@ -14,9 +14,7 @@
           "media_capture": "Zaznamenávat zvuk soukromých hovorů pro diagnostiku",
           "experimental_sip_video": "Povolit SIP video pro Home Assistant softphone",
           "sip_registrar_enabled": "Povolit lokální účty SIP",
-          "trunk_enabled": "Povolit volitelný SIP trunk",
-          "voicemail_enabled": "Povolit hlasovou schránku",
-          "parking_enabled": "Povolit parkování hovorů"
+          "trunk_enabled": "Povolit volitelný SIP trunk"
         },
         "data_description": {
           "sip_port": "Naslouchací port pro SIP koncový bod HA. HA na tomto portu ambientně přijímá SIP signalizaci přes UDP i TCP.",
@@ -139,6 +137,15 @@
           "hold_media": "Zvuk při přidržení",
           "clear_hold_media": "Odstranit uložený zvuk při přidržení"
         }
+      },
+      "reconfigure": {
+        "title": "Nastavení VoIP Stack",
+        "description": "Vyberte nastavení. Funkce ústředny jsou dostupné; potřebné prostředky nastavte podle potřeby.",
+        "menu_options": {
+          "user": "Obecná nastavení",
+          "parking": "Parkování hovorů",
+          "voicemail": "Hlas hlasové schránky"
+        }
       }
     },
     "error": {
@@ -157,7 +164,8 @@
       "parking_route_conflict": "Parkovací kód je v konfliktu s existujícím telefonem, kontaktem, klapkou Assist nebo skupinou.",
       "trunk_codecs_invalid": "Vyberte podporované kodeky a ponechte alespoň jeden zvukový kodek.",
       "trunk_target_required": "Vyberte přijímající telefon nebo zadejte cíl vytáčecího plánu.",
-      "trunk_media_address_invalid": "Zadejte dostupnou unicast IPv4 adresu, nebo ponechte pole prázdné."
+      "trunk_media_address_invalid": "Zadejte dostupnou unicast IPv4 adresu, nebo ponechte pole prázdné.",
+      "parking_slots_in_use": "Před změnou seznamu převezměte nebo ukončete hovory v odstraňovaných pozicích."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack byl úspěšně překonfigurován.",
@@ -484,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Duplicitní telefonní klapky",
       "description": "Tyto cíle používají stejnou klapku: {conflicts}. Každému telefonu, kontaktu nebo koncovému bodu Assist přiřaďte jinou klapku. Volání na nejednoznačnou klapku jsou odmítnuta; názvy a výslovné adresy SIP zůstávají dostupné. U telefonu ESPHome změňte klapku na zařízení. Tento problém zmizí, jakmile v telefonním seznamu nebudou konflikty."
+    },
+    "parking_configuration": {
+      "title": "Zkontrolujte nastavení parkování",
+      "description": "Zvolte platná parkovací čísla bez konfliktů s telefony, kontakty nebo skupinami. Stávající cíle zůstanou zachovány."
+    },
+    "mailbox_route_conflict": {
+      "title": "Konflikt kódů hlasové schránky",
+      "description": "Telefon, kontakt nebo skupina používá adresu hlasové schránky. Přejmenujte konfliktní cíl; stávající směrování zůstane zachováno."
     }
   },
   "exceptions": {

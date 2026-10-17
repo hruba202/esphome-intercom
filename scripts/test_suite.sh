@@ -105,6 +105,7 @@ ha_tests=(
   tests/test_sip_phone_transfers_ha.py
   tests/test_audio_splice_ha.py
   tests/test_media_call_lifetime_ha.py
+  tests/test_pbx_defaults_ha.py
   tests/test_parking_lot_ha.py
   tests/test_call_recording_ha.py
   tests/test_esphome_origination_ha.py

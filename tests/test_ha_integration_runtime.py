@@ -714,7 +714,7 @@ async def test_system_health_and_media_capture_repair_are_privacy_safe(
         endpoints=SimpleNamespace(
             endpoints=(
                 SimpleNamespace(
-                    kind=EndpointKind.ESPHOME,
+                    kind=EndpointKind.ESPHOME, sip_uri_user="esp-health", name="ESP health", extension="",
                     availability=EndpointAvailability.AVAILABLE,
                 ),
             )
@@ -1124,7 +1124,7 @@ async def test_retired_native_phones_migrate_without_removing_supported_phones(h
     )
 
     assert await async_migrate_entry(hass, entry)
-    assert entry.version == 6 and entry.minor_version == 3
+    assert entry.version == 6 and entry.minor_version == 4
     assert dict(entry.data) == {"sip_port": 5060}
     assert set(entry.subentries) == {children[k].subentry_id for k in ("browser", "sip_account")}
     assert registry.async_get_entity_id("sensor", DOMAIN, "companion") is None

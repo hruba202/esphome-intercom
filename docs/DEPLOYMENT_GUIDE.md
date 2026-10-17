@@ -22,6 +22,13 @@ fixes, particularly on Generic S3.
 For the first HA call, follow the [visual user guide](USER_GUIDE.md). The YAML,
 network and firmware details below are for the parts you actually install.
 
+For firmware, follow [the board setup steps](../yamls/README.md#how-to-use), then
+the [progressive package examples](../packages/README.md#work-through-a-full-profile):
+remove one optional feature, choose voice/calls/music, then customize settings or
+board wiring. Existing installations should read the
+[new device-package migration](BREAKING_CHANGES.md#development-firmware-new-device-packages)
+before reusing an old YAML.
+
 ## YAML tree
 
 ```text
@@ -95,13 +102,13 @@ HTTP playback, TTS and timers. Choose according to flash size and needed feature
 | Profile | Flash configuration | Sendspin | Build optimization |
 |---|---|---|---|
 | [Full AEC](../yamls/full-experience/single-bus/generic-s3-full-aec.yaml) | 8 MB | Included | Performance |
-| [Full Lite AEC](../yamls/full-experience/single-bus/generic-s3-full-lite-aec.yaml) | 4 MB | Disabled, package line commented | Size |
+| [Full Lite AEC](../yamls/full-experience/single-bus/generic-s3-full-lite-aec.yaml) | 4 MB | Omitted from `firmware_features` | Size |
 
-**Full Lite is experimental and still requires PSRAM.** Its measured application
-image is about 1.78 MB. The standard 4 MB OTA layout has two application slots of
-1,835,008 bytes each, leaving roughly 59 KB per slot with the measured firmware.
-The whole 4 MB flash is not available to one application. Check the build result
-after changing features or dependencies; re-enabling Sendspin may exceed the slot.
+**Full Lite is experimental and still requires PSRAM.** An earlier build measured
+about 1.78 MB, leaving roughly 59 KB in each 1,835,008-byte OTA application slot.
+That is historical headroom, not a size guarantee for the refreshed dependencies.
+The whole 4 MB flash is not available to one application. Check the new build's
+actual image size against its partition layout; adding `sendspin` may exceed the slot.
 
 Adapt GPIOs, flash size and PSRAM settings to your actual board. If moving to a
 different partition layout, use a complete serial flash for this migration;
@@ -140,16 +147,17 @@ sensitivity. Treat 15 as a starting point for your installation.
 
 ### Selecting runtime features
 
-Use the base Runtime Controller package and only the adapters your device needs
-when building a custom configuration. The full preset intentionally includes
-voice, media, timers, ringtone and presentation bindings; the no-LED preset only
-removes the physical LED renderer.
+For maintained devices, edit the existing `firmware_features` list in the board
+YAML. Its device package supplies the matching consumers, controls, callbacks
+and presentation. A screenless profile does not need LVGL. The
+[package guide](../packages/README.md) explains dependencies and practical examples.
 
-The controller's optional VoIP, LED, output-script and state-observer support is
-selected during compilation. Omitting a feature also omits its dedicated stored
-state. A screenless device does not need a display adapter or LVGL.
+The controller's separate `features` setting selects internal coordination rules;
+it does not create audio hardware or remove firmware applications on its own.
+Only a custom controller or a legacy composition needs manual adapter selection.
 See the [runtime package guide](https://github.com/n-IA-hane/esphome-runtime-controller/blob/main/MIGRATION.md#choose-packages)
-for the required IDs and helpers of each package.
+for those adapters' required IDs and helpers. Do not add the old full preset to
+a new device package that already owns the runtime bindings.
 
 ## Home Assistant
 

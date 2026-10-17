@@ -1,0 +1,55 @@
+# Physical audio and processor. The telephone owns its extra playback inputs.
+esp_audio_stack:
+  buffers_in_psram: true
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 48000
+  output_sample_rate: 16000
+  processor_id: aec_processor
+  audio_effects:
+    rate_cvt_complexity: 3
+    rate_cvt_perf_type: speed
+  num_channels: 2
+  codec:
+    i2c_id: i2c_bus
+    input:
+      type: es8311
+      address: 24
+      gain_db: 24.0
+      use_mclk: true
+      no_dac_ref: false
+    output:
+      type: es8311
+      address: 24
+      use_mclk: true
+      no_dac_ref: false
+  use_stereo_aec_reference: true
+  reference_channel: right
+esp_aec:
+  id: aec_processor
+  sample_rate: 16000
+  filter_length: 4
+  mode: voip_high_perf
+microphone:
+- platform: esp_audio_stack
+  id: mic_main
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 48000
+  bits_per_sample: 16
+  timeout: 1s
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_aec
+packages:
+  playback: !include '../../media_player/playback_compat.yaml'
+  speaker_mute: !include '../../voip/speaker_mute.yaml'
+  audio_stack_controls: !include '../../esp_audio_stack/controls.yaml'
+  audio_stack_aec_controls: !include '../../esp_audio_stack/aec_controls.yaml'
+  speaker_power: !include '../../esp_audio_stack/speaker_power_output.yaml'

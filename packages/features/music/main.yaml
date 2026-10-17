@@ -1,0 +1,24 @@
+defaults:
+  _fw_mixed_music_input: !include '../../audio/mixer_media_input.yaml'
+  _fw_direct_music_input: !include
+    file: ../shared/direct_input.yaml
+    vars:
+      input_id: media_speaker_input
+  _fw_music_ducking: !include 'runtime.yaml'
+packages:
+  input: ${ _fw_mixed_music_input if _fw_mixed else _fw_direct_music_input }
+  globals: !include '../../runtime/media_globals.yaml'
+  runtime: ${ _fw_music_ducking if _fw_mixed else {} }
+media_source:
+- platform: audio_http
+  id: media_http_source
+  buffer_size: 65536
+  task_stack_in_psram: true
+media_player:
+- id: !extend 'speaker_media_player'
+  media_pipeline:
+    speaker: media_speaker_input
+    sample_rate: 48000
+    format: FLAC
+    sources:
+    - media_http_source

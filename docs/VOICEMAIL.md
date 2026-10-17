@@ -6,27 +6,27 @@ A mailbox belongs to a phone, not to a dashboard card. SIP phones and the HA
 softphone call the same voicemail application. The card displays message
 metadata; listening and deleting use the ordinary call and keypad commands.
 
-## Enable voicemail
+## Configure the mailbox and menu voice
 
-In VoIP Stack's configuration, enable voicemail and choose an existing Home
-Assistant TTS entity and its prompt language. The voice is shared by the
-telephone menus. English, Italian, German and Portuguese are supported when the
-selected TTS engine supports that language.
+Voicemail is available without a global enable switch. Create only the phone
+mailboxes you need. Depositing a message uses the optional recorded greeting
+and recording tone; it does not require a TTS provider.
 
-If that engine offers several voices, the next step lets you select one for
-all voicemail menu prompts. The choices come from Home Assistant's TTS voice
-catalog. Leaving **TTS default voice** selected uses the provider's default.
-The voice of a recorded message remains the caller's own audio.
+For spoken mailbox navigation, open **VoIP Stack > Reconfigure > Voicemail voice**
+and choose an existing Home Assistant TTS entity and language. English, Italian,
+German and Portuguese are supported when offered by that provider. When several
+voices are available, select one or keep **TTS default voice**. HA installation
+and ordinary calls do not depend on configuring this voice. A missing or
+unavailable provider produces a configuration error for spoken-menu operations.
 
-Enabling voicemail checks that existing phones, contacts and groups do not use
-its feature codes or named address prefixes. HA reports conflicts before saving
-the configuration. Numeric extension `97` remains distinct from feature code
-`*97`.
+Voicemail feature codes and named prefixes share the phone/contact namespace.
+Existing conflicting destinations are preserved and reported in HA Repairs;
+resolve the conflict before using the mailbox feature addresses. Numeric
+extension `97` remains distinct from feature code `*97`.
 
-The global switch enables the voicemail feature; a mailbox is the message
-inbox belonging to one phone. You enable them separately. For an ESP, use its
-ESP mirror card: the mailbox and recordings remain on HA, with no firmware
-storage required. Calls must pass through HA for its no-answer rules to apply.
+A mailbox is the message inbox belonging to one phone. For an ESP, use its
+mirror card or the native mailbox action; messages stay on HA. Calls must pass
+through HA for its no-answer rules to apply.
 
 Enable the phone's mailbox in its VoIP Stack phone configuration, or with
 **Enable this phone's mailbox** in the card's Options. The native

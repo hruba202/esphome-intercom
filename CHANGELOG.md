@@ -4,6 +4,57 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Firmware configuration migration
+
+**When adopting the reorganized firmware packages, start from the updated YAML
+for your exact board and bring over your settings.** Each profile now includes
+one device package and a `firmware_features` list. Selecting voice, calls, music,
+Sendspin, timers or supported presentation also selects their matching controls
+and callbacks, so removing a feature no longer requires chasing its fragments
+across several files.
+
+Keep your device name, secrets, network/authentication settings, custom pins and
+wanted behavior. Do not paste the old FULL preset or whole player/mixer blocks
+over the new device package. Legacy leaf includes remain for custom builds, but
+mixing both complete compositions can duplicate components and callbacks.
+Follow the [migration checklist](docs/BREAKING_CHANGES.md#development-firmware-new-device-packages)
+and the [simple-to-advanced examples](packages/README.md#work-through-a-full-profile).
+
+This applies when rebuilding ESP firmware with the coordinated package update;
+a HACS update alone does not replace a device's firmware. Use the matching `dev` package and component sources for this preview. Generic
+Full Lite keeps Sendspin out of its default 4 MB selection. Choose the hardware
+and AFE/AEC/native profile separately from its application features.
+
+### Coordinated audio and runtime refresh
+
+- Integrate the validated GMF AI Audio 1.1.1 source, with ESP-SR 2.6.0 explicitly
+  selected by Audio Stack. Retain immediate processed-PCM delivery and use the
+  upstream feed/fetch stack placement and suspend/abort shutdown ordering.
+- Update the shared audio/mixer adapters to esp-audio-libs 4.1.0 and micro-FLAC
+  0.3.0. Keep Sendspin at 0.7.2. Include the certificate bundle for HTTPS playback.
+- Cancel only the selected player pipeline and its superseded commands on STOP;
+  keep normal EOF draining. Rejected output writes honor their caller's wait
+  budget while cleanup completes, preventing producer busy retry.
+- Use one shared OTA entry/recovery script for the selected sources and display.
+  Stop the speaker adapter before its hardware, cancel pending idle waits on
+  recovery, and restore readiness after an interrupted update.
+- Explain Runtime Controller decisions with progressive examples and optional
+  debug reports of the activity that selected each policy. Preserve existing
+  audio/SIP owners and the common resolver.
+- Keep the 4 MB Full Lite default free of Sendspin. Validate its composed default
+  while preserving voice, wake word, calls, music and announcement playback.
+
+### PBX applications available by default
+
+- Remove global parking and voicemail enable switches. Keep resource settings in
+  separate reconfiguration panels; initial setup does not require a TTS provider.
+- Preserve configured mailboxes and media through migration. Message deposits can
+  use their greeting/tone without TTS; spoken menus require a configured voice.
+- Protect existing routes from default feature-code collisions and report them in
+  HA Repairs. Update parking settings without restarting SIP or ending calls.
+- Release the shared card activity subscription when no cards or owned calls use
+  it. Idle availability does not open an unused media archive or run hold audio.
+
 ### Call card presentation corrections
 
 - Preserve the existing translucent bottom call bar and keypad layout. Show

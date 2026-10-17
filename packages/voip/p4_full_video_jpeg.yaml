@@ -1,40 +1,23 @@
-# Bidirectional SIP JPEG video for the full ESP32-P4 landscape profile.
-#
-# The parent profile owns the native 800x800 JPEG camera and full audio, AFE,
-# Voice Assistant, Micro Wake Word and LVGL runtime. This package adds the SIP
-# source, hardware decoder and direct DSI presentation without a second camera
-# pipeline or software image conversion.
-
+# P4 JPEG video. Camera/rendering retain their original owners and frame gates.
 packages:
-  call_media_route: !include ../lvgl/p4_call_media_route.yaml
-  video_entities: !include video_entities.yaml
-
+  call_media_route: !include '../lvgl/p4_call_media_route.yaml'
+  video_entities: !include 'video_entities.yaml'
+  wake_word: ${ _p4_video_wake_word_hooks if _p4_video_has_wake_word else {} }
 substitutions:
-  # Keep the native square camera envelope. The P4 hardware path performs the
-  # rotation and JPEG work without a software image conversion.
-  p4_sip_jpeg_width: "800"
-  p4_sip_jpeg_height: "800"
-  # TX and RX share the P4 JPEG codec and DMA path. Match the camera ceiling so
-  # bidirectional video uses one pacing contract.
-  p4_sip_jpeg_fps: "10"
-
-globals:
-  - id: restore_mww_after_video_call
-    type: bool
-    restore_value: false
-    initial_value: "false"
-
+  p4_sip_jpeg_width: '800'
+  p4_sip_jpeg_height: '800'
+  p4_sip_jpeg_fps: '10'
 external_components:
-  - source: ${voip_stack_components_source}
-    components: [esp_jpeg_video_source, p4_video_renderer]
-
+- source: ${voip_stack_components_source}
+  components:
+  - esp_jpeg_video_source
+  - p4_video_renderer
 esp_jpeg_video_source:
   id: p4_jpeg_video
   camera_id: p4_camera
   width: ${p4_sip_jpeg_width}
   height: ${p4_sip_jpeg_height}
   framerate: ${p4_sip_jpeg_fps}
-
 p4_video_renderer:
   id: p4_video
   codec: jpeg
@@ -46,10 +29,9 @@ p4_video_renderer:
   display_id: main_display
   display_rotation: 270
   on_first_frame:
-    - script.execute: show_call_video_page
+  - script.execute: show_call_video_page
   on_video_ended:
-    - script.execute: hide_call_video_page
-
+  - script.execute: hide_call_video_page
 voip_stack:
   id: phone
   video:
@@ -62,124 +44,114 @@ voip_stack:
     rtp_port: 40002
     offer_payload_type: 26
     max_rtp_payload: 1400
-  on_video_start:
-    - lambda: |-
-        id(restore_mww_after_video_call) = id(g_wake_word_enabled);
-    - if:
-        condition:
-          lambda: return id(restore_mww_after_video_call);
-        then:
-          - switch.turn_off: wake_word_switch
-  on_video_end:
-    - if:
-        condition:
-          lambda: return id(restore_mww_after_video_call);
-        then:
-          - globals.set:
-              id: restore_mww_after_video_call
-              value: "false"
-          - switch.turn_on: wake_word_switch
-
 lvgl:
   on_boot:
-    - lambda: |-
-        id(p4_video).attach_video_container(id(call_video_surface));
+  - lambda: id(p4_video).attach_video_container(id(call_video_surface));
   pages:
-    - id: call_video_page
-      bg_color: 0x000000
-      widgets:
-        - obj:
-            id: call_video_surface
-            align: TOP_MID
-            width: 1280
-            height: 720
-            bg_color: 0x000000
+  - id: call_video_page
+    bg_color: 0
+    widgets:
+    - obj:
+        id: call_video_surface
+        align: TOP_MID
+        width: 1280
+        height: 720
+        bg_color: 0
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+    - obj:
+        align: BOTTOM_MID
+        width: 1280
+        height: 80
+        bg_color: 1053468
+        border_width: 0
+        pad_all: 8
+        scrollable: false
+        widgets:
+        - label:
+            id: call_video_peer_label
+            align: LEFT_MID
+            x: 24
+            y: -15
+            width: 900
+            text: Video call
+            text_color: 16777215
+            text_font: font_ui_medium
+            long_mode: DOT
+        - label:
+            id: p4_video_media_route_label
+            align: LEFT_MID
+            x: 24
+            y: 15
+            width: 900
+            text: ''
+            text_color: 9741240
+            text_font: font_body
+            long_mode: DOT
+        - button:
+            align: RIGHT_MID
+            x: -24
+            width: 220
+            height: 60
+            bg_color: 15680580
             border_width: 0
-            pad_all: 0
-            scrollable: false
-        - obj:
-            align: BOTTOM_MID
-            width: 1280
-            height: 80
-            bg_color: 0x10131C
-            border_width: 0
-            pad_all: 8
-            scrollable: false
+            radius: 10
+            on_click:
+            - voip_stack.call_toggle: null
             widgets:
-              - label:
-                  id: call_video_peer_label
-                  align: LEFT_MID
-                  x: 24
-                  y: -15
-                  width: 900
-                  text: "Video call"
-                  text_color: 0xFFFFFF
-                  text_font: font_ui_medium
-                  long_mode: DOT
-              - label:
-                  id: p4_video_media_route_label
-                  align: LEFT_MID
-                  x: 24
-                  y: 15
-                  width: 900
-                  text: ""
-                  text_color: 0x94A3B8
-                  text_font: font_body
-                  long_mode: DOT
-              - button:
-                  align: RIGHT_MID
-                  x: -24
-                  width: 220
-                  height: 60
-                  bg_color: 0xEF4444
-                  border_width: 0
-                  radius: 10
-                  on_click:
-                    - voip_stack.call_toggle:
-                  widgets:
-                    - label:
-                        align: CENTER
-                        text: "HANG UP"
-                        text_color: 0xFFFFFF
-                        text_font: font_ui_medium
-
+            - label:
+                align: CENTER
+                text: HANG UP
+                text_color: 16777215
+                text_font: font_ui_medium
 script:
-  - id: show_call_video_page
-    mode: restart
-    then:
-      - script.stop: draw_display
-      - script.stop: ai_animation_loop
-      - lambda: |-
-          const char *peer = id(peer_name).empty()
-                                 ? "Video call"
-                                 : id(peer_name).c_str();
-          lv_label_set_text(id(call_video_peer_label), peer);
-          id(runtime_rendered_page) = "call_video";
-          if (lv_disp_get_scr_act(nullptr) != id(call_video_page)->obj)
-            lv_disp_load_scr(id(call_video_page)->obj);
-
-  - id: hide_call_video_page
-    mode: restart
-    then:
-      - script.stop: show_call_video_page
-      - lambda: |-
-          if (id(runtime_rendered_page) == "call_video")
-            id(runtime_rendered_page).clear();
-      - script.execute: draw_display
-
-  - id: !extend draw_display
-    then:
+- id: show_call_video_page
+  mode: restart
+  then:
+  - script.stop: draw_display
+  - script.stop: ai_animation_loop
+  - lambda: "const char *peer = id(peer_name).empty()\n                       ? \"Video call\"\n               \
+      \        : id(peer_name).c_str();\nlv_label_set_text(id(call_video_peer_label), peer);\nid(runtime_rendered_page)\
+      \ = \"call_video\";\nif (lv_disp_get_scr_act(nullptr) != id(call_video_page)->obj)\n  lv_disp_load_scr(id(call_video_page)->obj);"
+- id: hide_call_video_page
+  mode: restart
+  then:
+  - script.stop: show_call_video_page
+  - lambda: "if (id(runtime_rendered_page) == \"call_video\")\n  id(runtime_rendered_page).clear();"
+  - script.execute: draw_display
+- id: !extend 'draw_display'
+  then:
+  - if:
+      condition:
+        lambda: "return id(phone).is_in_call() &&\n       id(p4_video).has_remote_frame();"
+      then:
+      - lambda: "const char *peer = id(peer_name).empty()\n                       ? \"Video call\"\n           \
+          \            : id(peer_name).c_str();\nlv_label_set_text(id(call_video_peer_label), peer);\nif (lv_disp_get_scr_act(nullptr)\
+          \ != id(call_video_page)->obj)\n  lv_disp_load_scr(id(call_video_page)->obj);\nid(runtime_rendered_page)\
+          \ = \"call_video\";"
+defaults:
+  _p4_video_has_wake_word: ${ ('voice' in firmware_features and 'wake_word' in firmware_features) if firmware_features is defined else true }
+  _p4_video_wake_word_hooks:
+    globals:
+    - id: restore_mww_after_video_call
+      type: bool
+      restore_value: false
+      initial_value: 'false'
+    voip_stack:
+      on_video_start:
+      - lambda: id(restore_mww_after_video_call) = id(g_wake_word_enabled);
       - if:
           condition:
-            lambda: |-
-              return id(phone).is_in_call() &&
-                     id(p4_video).has_remote_frame();
+            lambda: return id(restore_mww_after_video_call);
           then:
-            - lambda: |-
-                const char *peer = id(peer_name).empty()
-                                       ? "Video call"
-                                       : id(peer_name).c_str();
-                lv_label_set_text(id(call_video_peer_label), peer);
-                if (lv_disp_get_scr_act(nullptr) != id(call_video_page)->obj)
-                  lv_disp_load_scr(id(call_video_page)->obj);
-                id(runtime_rendered_page) = "call_video";
+          - switch.turn_off: wake_word_switch
+      on_video_end:
+      - if:
+          condition:
+            lambda: return id(restore_mww_after_video_call);
+          then:
+          - globals.set:
+              id: restore_mww_after_video_call
+              value: 'false'
+          - switch.turn_on: wake_word_switch

@@ -354,6 +354,7 @@ async def test_global_reconfiguration_preserves_named_trunks_and_phone_policies(
     original = dict(catalog.subentries)
     form = await hass.config_entries.flow.async_init("voip_stack",
         context={"source": "reconfigure", "entry_id": catalog.entry_id})
+    form = await hass.config_entries.flow.async_configure(form["flow_id"], {"next_step_id": "user"})
     values = form["data_schema"]({})
     assert "trunk_enabled" not in values
     result = await hass.config_entries.flow.async_configure(form["flow_id"], values)

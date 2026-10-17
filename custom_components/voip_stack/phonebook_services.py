@@ -37,15 +37,13 @@ def _entry_mapping(entry: RosterEntry) -> dict[str, Any]:
 
 def _runtime_route_mappings(hass: Any) -> list[Mapping[str, Any]]:
     from .mailbox import mailbox_settings
-    from .voicemail_config import voicemail_config
 
     mappings: list[Mapping[str, Any]] = []
     from .parking_config import parking_settings
     parking = parking_settings(hass)
     if parking.get("enabled"):
         mappings.append({"parking_feature_routes": parking})
-    if voicemail_config(hass).get("enabled"):
-        mappings.append({"mailbox_feature_routes": True})
+    mappings.append({"mailbox_feature_routes": True})
     registry = endpoint_directory(hass)
     mappings.extend(
         {

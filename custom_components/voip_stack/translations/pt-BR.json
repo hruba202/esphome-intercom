@@ -14,9 +14,7 @@
           "media_capture": "Gravar áudio privado das chamadas para diagnóstico",
           "experimental_sip_video": "Ativar vídeo SIP para o softphone do Home Assistant",
           "sip_registrar_enabled": "Ativar contas SIP locais",
-          "trunk_enabled": "Ativar tronco SIP opcional",
-          "voicemail_enabled": "Ativar correio de voz",
-          "parking_enabled": "Ativar estacionamento de chamadas"
+          "trunk_enabled": "Ativar tronco SIP opcional"
         },
         "data_description": {
           "sip_port": "Porta de escuta do endpoint SIP do Home Assistant. O Home Assistant aceita sinalização SIP por UDP e TCP nessa porta.",
@@ -139,6 +137,15 @@
           "hold_media": "Áudio de espera",
           "clear_hold_media": "Remover áudio de espera salvo"
         }
+      },
+      "reconfigure": {
+        "title": "Configurações do VoIP Stack",
+        "description": "Escolha as configurações. Os recursos PBX estão disponíveis; configure-os quando necessário.",
+        "menu_options": {
+          "user": "Configurações gerais",
+          "parking": "Estacionamento de chamadas",
+          "voicemail": "Voz do correio de voz"
+        }
       }
     },
     "error": {
@@ -157,7 +164,8 @@
       "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo.",
       "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio.",
       "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem.",
-      "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio."
+      "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio.",
+      "parking_slots_in_use": "Recupere ou encerre as chamadas nas posições removidas antes de alterar a lista."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
@@ -484,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Ramais duplicados",
       "description": "Estes destinos usam o mesmo ramal: {conflicts}. Atribua um ramal diferente a cada telefone, contato ou endpoint Assist. Chamadas para um ramal ambíguo são rejeitadas; nomes únicos e endereços SIP explícitos continuam disponíveis. Para um telefone ESPHome, altere o ramal no dispositivo. O aviso desaparece quando a agenda não contém conflitos."
+    },
+    "parking_configuration": {
+      "title": "Verifique a configuração de estacionamento",
+      "description": "Escolha números válidos sem conflitos com telefones, contatos ou grupos. Os destinos existentes serão preservados."
+    },
+    "mailbox_route_conflict": {
+      "title": "Conflito nos códigos do correio de voz",
+      "description": "Um telefone, contato ou grupo usa um endereço do correio de voz. Renomeie o destino em conflito; as rotas existentes serão preservadas."
     }
   },
   "exceptions": {

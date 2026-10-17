@@ -3,10 +3,8 @@
 # Status: JPEG videophone profile
 # Support: https://github.com/sponsors/n-IA-hane
 #
-# Main packages:
-#   voip/waveshare_p4_touch_videophone_base.yaml
-#   board/waveshare_p4_touch_10_1_videophone.yaml (through base)
-#   voip/p4_video_jpeg.yaml (the selected video codec only)
+# Device package: packages/devices/waveshare-p4-phone-jpeg.yaml
+# Features: edit the firmware_features list below.
 #
 # Audio inherited from the shared videophone board package:
 # ┌─────────────────────────┐     ┌───────────────────────┐
@@ -39,6 +37,15 @@
 # symbols, buffers and managed libraries are absent from this firmware.
 
 substitutions:
+  ext_components_source: "github://n-IA-hane/esphome-intercom@dev"
+  voip_stack_components_source: "github://n-IA-hane/esphome-voip-stack@dev"
+  audio_stack_components_source: "github://n-IA-hane/esphome-audio-stack@dev"
+  runtime_controller_components_source: "github://n-IA-hane/esphome-runtime-controller@dev"
+  camera_components_source: "github://Psix-anp/esphome-esp-video-camera@main"
+  gmf_ai_audio_source: ""
+  intercom_idf_root: ""
+  intercom_idf_ref: "dev"
+  firmware_features: [voip, display, video]
   p4_video_width: "800"
   p4_video_height: "800"
   p4_video_fps: "15"
@@ -48,12 +55,7 @@ substitutions:
   p4_video_max_decode_height: "800"
 
 packages:
-  base: github://n-IA-hane/esphome-intercom/packages/voip/waveshare_p4_touch_videophone_base.yaml@main
-  video: github://n-IA-hane/esphome-intercom/packages/voip/p4_video_jpeg.yaml@main
-
-# Keep generated IDF components isolated from the H.264 profile. In
-# particular, the JPEG-only esp_h264 manifest shim must never survive a codec
-# switch in a shared ESPHome build directory.
+  device: github://n-IA-hane/esphome-intercom/packages/devices/waveshare-p4-phone-jpeg.yaml@dev
 esphome:
   min_version: 2026.9.0
   build_path: .esphome/build/waveshare-p4-touch-videophone-jpeg

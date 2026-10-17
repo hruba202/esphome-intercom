@@ -263,13 +263,25 @@ class VoipStackEngine extends EventTarget {
     }, BUS_SUBSCRIBE_RETRY_MS);
   }
 
+  _wantsBusSubscription() {
+    return this._callSubscribers.size > 0 || this.active || this._ownedSoftphoneCalls.size > 0;
+  }
+
   _ensureBusSubscriptions(conn) {
-    if (this._busConnection !== conn) return;
-    if (!this._busUnsub && !this._busSubscribePending) {
+    if (!conn || this._busConnection !== conn) return;
+    const wanted = this._wantsBusSubscription();
+    if (!wanted) {
+      if (this._busUnsub) this._busUnsub();
+      this._busUnsub = null;
+      if (this._busSubscribeRetryTimer) clearTimeout(this._busSubscribeRetryTimer);
+      this._busSubscribeRetryTimer = null;
+      this._lastActivityEvent = null;
+    }
+    if (wanted && !this._busUnsub && !this._busSubscribePending) {
       this._busSubscribePending = true;
       conn.subscribeMessage((event) => this._onBusEvent(event), { type: WS_SUBSCRIBE_CALL_EVENTS, include_activity: true })
       .then((unsub) => {
-        if (this._busConnection === conn) this._busUnsub = unsub;
+        if (this._busConnection === conn && this._wantsBusSubscription()) this._busUnsub = unsub;
         else unsub();
       })
       .catch((err) => {
@@ -1098,6 +1110,7 @@ class VoipStackEngine extends EventTarget {
   }
 
   _emit() {
+    this._ensureBusSubscriptions(this._busConnection);
     this.dispatchEvent(new CustomEvent("state", {
       detail: {
         state: this._state,
@@ -1171,13 +1184,17 @@ class VoipStackEngine extends EventTarget {
 
   subscribeCallEvents(cb) {
     this._callSubscribers.add(cb);
+    this._ensureBusSubscriptions(this._busConnection);
     if (this._lastActivityEvent) {
       try { cb(this._lastActivityEvent); } catch (err) { console.error("voip-stack-engine replay", err); }
     }
     for (const event of this._lastEvents.values()) {
       try { cb(event); } catch (err) { console.error("voip-stack-engine replay", err); }
     }
-    return () => this._callSubscribers.delete(cb);
+    return () => {
+      this._callSubscribers.delete(cb);
+      this._ensureBusSubscriptions(this._busConnection);
+    };
   }
 
   _onSoftphoneState(state, subscriptionSelector = null) {

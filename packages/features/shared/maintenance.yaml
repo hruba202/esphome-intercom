@@ -1,0 +1,106 @@
+# One cancellable operation owns both maintenance phases. A new phase cancels
+# pending waits from the old phase through ESPHome's restart script semantics.
+# OTA data transfer blocks the main loop: pause display before the async idle
+# wait, and leave no effects behind that wait. Audio Stack owns deferred close
+# and its start() barrier; no YAML delay is claimed to delay flash preparation.
+defaults:
+  _fw_stop_animation: ${ firmware_maintenance_stop_animation | default(_fw_stop_animation_default) }
+  _fw_redraw_display: ${ firmware_maintenance_redraw | default(_fw_redraw_display_default) }
+  _fw_maintenance_begin:
+  - globals.set:
+      id: g_ota_in_progress
+      value: 'true'
+  _fw_maintenance_end:
+  - globals.set:
+      id: g_ota_in_progress
+      value: 'false'
+  _fw_stop_voice:
+  - voice_assistant.stop: {}
+  _fw_stop_wake_word:
+  - micro_wake_word.stop: {}
+  _fw_stop_phone:
+  - voip_stack.stop: {}
+  _fw_stop_player:
+  - media_player.stop:
+      id: speaker_media_player
+      announcement: true
+  _fw_stop_music:
+  - media_player.stop:
+      id: speaker_media_player
+  _fw_stop_animation_default:
+  - script.stop: ai_animation_loop
+  _fw_stop_timer:
+  - script.stop: timer_alarm_loop
+  - runtime_controller.event:
+      id: runtime
+      event: timer_stopped
+  _fw_pause_display:
+  - lvgl.pause:
+      show_snow: false
+  - logger.log:
+      level: INFO
+      tag: firmware_maintenance
+      format: Display paused for firmware update
+  _fw_resume_display:
+  - lvgl.resume: {}
+  - logger.log:
+      level: INFO
+      tag: firmware_maintenance
+      format: Display resumed after firmware update
+  _fw_redraw_display_default:
+  - script.execute: draw_display
+  _fw_stop_audio:
+  # Stop the adapter that owns playback before suspending its hardware. Leaving
+  # it RUNNING strands buffered PCM because finish() can no longer drain it.
+  - speaker.stop: hw_speaker
+  - esp_audio_stack.stop: {}
+  _fw_resume_audio:
+  - esp_audio_stack.start: {}
+  _fw_resume_wake_word:
+  - script.execute: start_mww_when_ready
+  _fw_wait_audio_idle:
+  - wait_until:
+      condition:
+        esp_audio_stack.is_idle: {}
+      timeout: 2s
+ota:
+- platform: esphome
+  id: ota_esphome
+  on_begin:
+    then:
+    - script.execute:
+        id: firmware_maintenance
+        resume: false
+  on_abort:
+    then:
+    - script.execute:
+        id: firmware_maintenance
+        resume: true
+  on_error:
+    then:
+    - script.execute:
+        id: firmware_maintenance
+        resume: true
+script:
+- id: firmware_maintenance
+  mode: restart
+  parameters:
+    resume: bool
+  then:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return resume;
+      then:
+      - if:
+          condition:
+            lambda: !lambda |-
+              return id(g_ota_in_progress);
+          then: ${ _fw_maintenance_end + (_fw_resume_display if _fw_lvgl else []) + (_fw_resume_audio if firmware_audio_backend
+            == 'audio_stack' else []) + (_fw_resume_wake_word if _fw_wake_word else []) + (_fw_redraw_display if
+            _fw_lvgl else []) }
+      else: ${ _fw_maintenance_begin + (_fw_stop_animation if _fw_lvgl else []) + (_fw_stop_timer if _fw_timers
+        else []) + (_fw_stop_player if _fw_announcements else []) + (_fw_stop_music if _fw_music else []) + (_fw_stop_voice
+        if _fw_voice else []) + (_fw_stop_wake_word if _fw_wake_word else []) + (_fw_stop_phone if _fw_voip else
+        []) + (_fw_stop_audio if firmware_audio_backend == 'audio_stack' else []) + (_fw_pause_display if _fw_lvgl
+        else []) + (_fw_wait_audio_idle if firmware_audio_backend == 'audio_stack' else []) }

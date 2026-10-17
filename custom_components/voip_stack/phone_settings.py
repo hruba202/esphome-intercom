@@ -51,9 +51,6 @@ async def async_set_phone_settings(call: ServiceCall) -> None:
             updates["no_answer"] = PhoneDestination(DestinationKind.HANGUP)
         elif call.data["no_answer_action"] == "voicemail":
             from .mailbox import mailbox_settings
-            from .voicemail_config import require_voicemail_config
-
-            require_voicemail_config(call.hass)
             target = str(call.data.get("no_answer_to") or "").strip()
             destination = (registry.by_device_id(target) or registry.resolve(target)) if target else endpoint
             if destination is None or not mailbox_settings(call.hass, destination.endpoint_id).get("enabled"):

@@ -14,9 +14,7 @@
           "media_capture": "Nehmen Sie den Ton privater Anrufe zur Diagnose auf",
           "experimental_sip_video": "Aktivieren Sie SIP-Video für das Home Assistant-Softphone",
           "sip_registrar_enabled": "Aktivieren Sie lokale SIP-Konten",
-          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk",
-          "voicemail_enabled": "Anrufbeantworter aktivieren",
-          "parking_enabled": "Anrufparken aktivieren"
+          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk"
         },
         "data_description": {
           "sip_port": "Abhörport für den HA-SIP-Endpunkt. HA akzeptiert SIP-Signalisierung über UDP und TCP an diesem Port.",
@@ -109,7 +107,7 @@
         }
       },
       "voicemail": {
-        "title": "Stimme des Anrufbeantworters",
+        "title": "Mailbox-Stimme",
         "description": "Wählen Sie die Home Assistant TTS-Entität für das gemeinsame Telefonmenü.",
         "data": {
           "tts_entity_id": "TTS-Entität"
@@ -139,6 +137,15 @@
           "hold_media": "Wartemusik",
           "clear_hold_media": "Gespeicherte Wartemusik entfernen"
         }
+      },
+      "reconfigure": {
+        "title": "VoIP-Stack-Einstellungen",
+        "description": "Wähle die Einstellungen. Alle PBX-Funktionen sind verfügbar; richte ihre Ressourcen bei Bedarf ein.",
+        "menu_options": {
+          "user": "Allgemeine Einstellungen",
+          "parking": "Anruf parken",
+          "voicemail": "Mailbox-Stimme"
+        }
       }
     },
     "error": {
@@ -157,7 +164,8 @@
       "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet.",
       "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
       "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein.",
-      "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen."
+      "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen.",
+      "parking_slots_in_use": "Hole die Anrufe aus den zu entfernenden Parkpositionen zurück oder beende sie zuerst."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",
@@ -484,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Doppelte Nebenstellennummern",
       "description": "Diese Ziele verwenden dieselbe Nebenstellennummer: {conflicts}. Weise jedem Telefon, Kontakt und Assist-Endpunkt eine eigene Nummer zu. Anrufe an eine mehrdeutige Nummer werden abgewiesen; eindeutige Namen und explizite SIP-Adressen bleiben nutzbar. Bei ESPHome-Telefonen muss die Nummer am Gerät geändert werden. Die Meldung verschwindet, sobald das Telefonbuch keine Konflikte mehr enthält."
+    },
+    "parking_configuration": {
+      "title": "Parkkonfiguration prüfen",
+      "description": "Wähle gültige Parknummern ohne Konflikte mit Telefonen, Kontakten oder Gruppen. Bestehende Ziele bleiben unverändert."
+    },
+    "mailbox_route_conflict": {
+      "title": "Konflikt mit Mailbox-Codes",
+      "description": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Mailbox-Adresse. Benenne das betreffende Ziel um; bestehende Routen bleiben unverändert."
     }
   },
   "exceptions": {

@@ -4,17 +4,18 @@
 from pathlib import Path
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 
 ROOT = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
-VOICE_PE = ROOT / "yamls/experimental/home-assistant-voice-pe/home-assistant-voice-pe-voip.yaml"
 CAMERA_URL = "github://Psix-anp/esphome-esp-video-camera"
 REPOS = {
     "ext_components_source": ("github://n-IA-hane/esphome-intercom", ROOT),
     "voip_stack_components_source": ("github://n-IA-hane/esphome-voip-stack", ROOT.parent / "esphome-voip-stack"),
     "audio_stack_components_source": ("github://n-IA-hane/esphome-audio-stack", ROOT.parent / "esphome-audio-stack"),
     "runtime_controller_components_source": ("github://n-IA-hane/esphome-runtime-controller", ROOT.parent / "esphome-runtime-controller"),
+    "camera_components_source": (CAMERA_URL, ROOT.parent / "esphome-esp-video-camera"),
 }
 CAMERA_ROOT = ROOT.parent / "esphome-esp-video-camera"
 P4_VOIP_YAML_ROOT = ROOT / "yamls/voip-only/single-bus"
@@ -95,21 +96,41 @@ def rewrite_package(line, path, ref):
 
 
 def rewrite_yaml(path, ref):
-    if ref == "local" and path.resolve() == VOICE_PE.resolve():
-        return
+    text = path.read_text()
+    device_entrypoint = bool(re.search(r"(?m)^\s+device:\s+(?:!include\s+|github://)", text))
+    p4 = "waveshare-p4" in text or "p4" in path.name
+    overrides = {}
+    for key, (url, repo_root) in REPOS.items():
+        if key == "camera_components_source" and not p4:
+            continue
+        component_dir = "components" if key == "camera_components_source" else "esphome/components"
+        remote_ref = "main" if key == "camera_components_source" else ref
+        overrides[key] = relative(path.parent, repo_root / component_dir) if ref == "local" else f"{url}@{remote_ref}"
+    if device_entrypoint:
+        overrides["gmf_ai_audio_source"] = str(ROOT.parent / "esp-gmf/elements/gmf_ai_audio") if ref == "local" else ""
+    if p4:
+        overrides["intercom_idf_root"] = str(ROOT / "idf_components") if ref == "local" else ""
+        overrides["intercom_idf_ref"] = "main" if ref == "local" else ref
     output = []
-    for line in path.read_text().splitlines():
-        match = re.match(r'^(\s*)([A-Za-z_][A-Za-z0-9_]*_components_source):\s*"[^"]*"\s*$', line)
-        if match and match.group(2) in REPOS:
+    seen = set()
+    for line in text.splitlines():
+        match = re.match(r'^(\s*)([A-Za-z_][A-Za-z0-9_]*):\s*[^\n]*$', line)
+        if match and match.group(2) in overrides:
             indent, key = match.groups()
-            url, repo_root = REPOS[key]
-            value = relative(path.parent, repo_root / "esphome/components") if ref == "local" else f"{url}@{ref}"
-            output.append(f'{indent}{key}: "{value}"')
+            seen.add(key)
+            output.append(f'{indent}{key}: "{overrides[key]}"')
         elif re.match(r'^\s*assets_base:\s*"[^"]*"\s*$', line):
             value = relative(path.parent, ROOT) + "/" if ref == "local" else f"https://github.com/n-IA-hane/esphome-intercom/raw/{ref}/"
             output.append(f'  assets_base: "{value}"')
         else:
             output.append(rewrite_package(line, path, ref))
+    if device_entrypoint:
+        additions = [f'  {key}: "{value}"' for key, value in overrides.items() if key not in seen]
+        if "substitutions:" in output:
+            index = output.index("substitutions:") + 1
+            output[index:index] = additions
+        else:
+            output = ["substitutions:", *additions, *output]
     path.write_text("\n".join(output) + "\n")
 
 
@@ -130,6 +151,8 @@ def rewrite_camera(path, ref):
     source = relative(source_root, CAMERA_ROOT / "components") if ref == "local" else f"{CAMERA_URL}@main"
     for index in range(1, len(lines)):
         if re.fullmatch(r"\s*components:\s*\[esp_video_camera\]\s*", lines[index]):
+            if "${camera_components_source}" in lines[index - 1]:
+                continue
             match = re.match(r"^(\s*-\s*source:)\s*.*$", lines[index - 1])
             if match:
                 lines[index - 1] = f"{match.group(1)} {source}"
@@ -142,6 +165,8 @@ def mode(path):
     remote |= any(re.search(rf"(?m)^\s+[A-Za-z_][A-Za-z0-9_]*:\s*{re.escape(url)}/", text) for url in URLS)
     local = any(re.search(rf'^\s*{key}:\s*"\.\./', text, re.MULTILINE) for key in REPOS)
     local |= bool(re.search(r"^\s+[A-Za-z_][A-Za-z0-9_]*:\s*!include\s+", text, re.MULTILINE))
+    local |= bool(re.search(r'^\s*intercom_idf_root:\s*"[^"\s][^"]*"', text, re.MULTILINE))
+    local |= bool(re.search(r'^\s*gmf_ai_audio_source:\s*"[^"\s][^"]*"', text, re.MULTILINE))
     if remote and local:
         return "mixed"
     if remote:
@@ -155,9 +180,8 @@ def check(expect, only):
     failed = False
     for path in selected(yaml_files(), only):
         current = mode(path)
-        exception = expect == "local" and path.resolve() == VOICE_PE.resolve()
         bad = current in {"mixed", "unknown"}
-        bad |= bool(expect and current != "fragment" and current != expect and not exception)
+        bad |= bool(expect and current != "fragment" and current != expect)
         if bad:
             detail = f", expected {expect}" if expect else ""
             print(f"FAIL: {path.relative_to(ROOT)} ({current}{detail})", file=sys.stderr)
@@ -165,9 +189,47 @@ def check(expect, only):
         if re.search(r"(?m)^\s*-\s*!include\s+", path.read_text()):
             print(f"FAIL: {path.relative_to(ROOT)} (nested list !include is not portable outside the repo)", file=sys.stderr)
             failed = True
+    # Includes inside a public package must travel with that repository. Checking
+    # only the top-level URL misses undeclared sibling-checkout dependencies.
+    for path in sorted((ROOT / "packages").rglob("*.yaml")):
+        for include in package_include_files(path):
+            target = (path.parent / include).resolve()
+            outside = not target.is_relative_to(ROOT.resolve())
+            if not target.is_file() or (expect == "remote" and outside):
+                print(
+                    f"FAIL: {path.relative_to(ROOT)} (package include is missing or not portable: {include})",
+                    file=sys.stderr,
+                )
+                failed = True
     if not failed:
         print("OK: all YAMLs consistent.", file=sys.stderr)
     return int(failed)
+
+
+def package_include_files(path):
+    """Read static scalar/block includes without interpreting secrets or YAML."""
+    pending_indent = None
+    for line in path.read_text().splitlines():
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(stripped)
+        value = None
+        if pending_indent is not None:
+            if indent <= pending_indent:
+                pending_indent = None
+            elif stripped.startswith("file:"):
+                value = stripped.removeprefix("file:").strip()
+                pending_indent = None
+        if match := re.search(r"(?:^|\s)!include(?:\s+(.*))?$", line):
+            value = (match.group(1) or "").strip()
+            if not value or value.startswith("#"):
+                pending_indent = indent
+                continue
+        if value and "${" not in value and not value.startswith("{"):
+            fields = shlex.split(value, comments=True)
+            if fields:
+                yield fields[0]
 
 
 def parse_args():

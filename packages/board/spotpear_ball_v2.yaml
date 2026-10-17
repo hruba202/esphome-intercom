@@ -1,0 +1,119 @@
+# Spotpear Ball v2 audio-board wiring, power measurement and connectivity.
+esphome:
+  min_version: 2026.9.0
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      compiler_optimization: PERF
+    sdkconfig_options:
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
+      CONFIG_SPIRAM_RODATA: n
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: y
+      CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA: y
+      CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT: y
+psram:
+  mode: octal
+  speed: 80MHz
+network:
+  enable_high_performance: true
+wifi:
+  ssid: !secret 'wifi_ssid'
+  password: !secret 'wifi_password'
+  power_save_mode: NONE
+api:
+  custom_services: true
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
+  logs:
+    voip_stack: INFO
+    voip_stack.fsm: INFO
+    voip_stack.tcp: INFO
+    voip_stack.udp: INFO
+    voip_stack.audio: INFO
+    voip_stack.settings: INFO
+    sensor: WARN
+    text_sensor: WARN
+    binary_sensor: WARN
+    switch: WARN
+    number: WARN
+    button: WARN
+    api: WARN
+    api.connection: WARN
+    component: WARN
+i2c:
+- id: i2c_bus
+  sda: ${codec_i2c_sda_pin}
+  scl: ${codec_i2c_scl_pin}
+  scan: false
+output:
+- platform: gpio
+  id: speaker_enable
+  pin: ${speaker_enable_pin}
+sensor:
+- platform: adc
+  pin: ${battery_adc_pin}
+  name: Battery Voltage
+  id: battery_voltage
+  attenuation: 12db
+  accuracy_decimals: 2
+  update_interval: 10s
+  unit_of_measurement: V
+  icon: mdi:battery
+  filters:
+  - multiply: 2.0
+  - median:
+      window_size: 7
+      send_every: 7
+      send_first_at: 1
+  - throttle: 1min
+- platform: template
+  id: battery_percentage
+  name: Battery Percentage
+  lambda: "if (!id(battery_voltage).has_state() || std::isnan(id(battery_voltage).state))\n  return NAN;\nreturn\
+    \ id(battery_voltage).state;"
+  accuracy_decimals: 0
+  unit_of_measurement: '%'
+  icon: mdi:battery-medium
+  filters:
+  - calibrate_linear:
+      method: exact
+      datapoints:
+      - 2.80 -> 0.0
+      - 3.10 -> 10.0
+      - 3.30 -> 20.0
+      - 3.45 -> 30.0
+      - 3.60 -> 40.0
+      - 3.70 -> 50.0
+      - 3.75 -> 60.0
+      - 3.80 -> 70.0
+      - 3.90 -> 80.0
+      - 4.00 -> 90.0
+      - 4.20 -> 100.0
+  - lambda: 'if (x > 100) return 100;
+
+      if (x < 0) return 0;
+
+      return x;'
+binary_sensor:
+- platform: gpio
+  pin:
+    number: ${main_button_pin}
+    mode: INPUT_PULLUP
+    inverted: true
+  id: main_button
+  name: Main Button
+  icon: mdi:gesture-tap-button
+- platform: template
+  name: USB Connected
+  id: usb_connected
+  device_class: plug
+  lambda: return id(battery_voltage).state > 3.9;
+packages:
+  platform: !include '../platform/esp32s3_base.yaml'

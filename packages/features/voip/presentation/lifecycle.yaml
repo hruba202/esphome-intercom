@@ -1,0 +1,24 @@
+# Call-page ownership and restoration, selected only with phone presentation.
+globals:
+- id: runtime_ui_call_session_active
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+script:
+- id: runtime_ui_call_begin
+  then:
+  - script.stop: ui_call_ended
+  - lambda: |-
+      id(call_ended_active) = false;
+      if (!id(runtime_ui_call_session_active)) {
+        id(previous_mode) = id(current_mode);
+        id(runtime_ui_call_session_active) = true;
+      }
+      id(current_mode) = 1;
+- id: runtime_ui_call_end
+  then:
+  - lambda: |-
+      if (id(runtime_ui_call_session_active)) {
+        id(current_mode) = id(previous_mode);
+        id(runtime_ui_call_session_active) = false;
+      }

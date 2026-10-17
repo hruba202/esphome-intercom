@@ -55,6 +55,9 @@ async def test_baresip_registers_gets_mwi_plays_and_deletes_message(trunks, tmp_
         async def async_stream_result(self):
             yield bytes(640)
     monkeypatch.setattr(tts, "async_create_stream", lambda *_args: Speech())
+    from custom_components.voip_stack import voicemail_config
+    from types import SimpleNamespace
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda *_: SimpleNamespace(available=True))
     archive = await get_archive(lab.hass)
     writer = await archive.begin("baresip", caller="Lab delivery")
     for _ in range(25):

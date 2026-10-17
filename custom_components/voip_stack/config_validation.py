@@ -120,3 +120,53 @@ def extension_conflicts(extension: str, existing: Mapping[str, Any]) -> bool:
             if wanted in normalized_aliases(values):
                 return True
     return False
+
+
+def entry_route_mappings(
+    entry,
+    data: Mapping[str, Any],
+    *,
+    exclude_subentry_id: str = "",
+    include_assist: bool = True,
+    include_features: bool = True,
+) -> list[Mapping[str, Any]]:
+    """Build the complete persisted routing namespace for flow validation."""
+    from .contact_config import contact_dicts
+    from .phone_config import phone_subentries
+    from .phone_endpoint import EndpointKind
+    from .const import CONF_ASSIST_EXTENSION, CONF_ASSIST_ENDPOINT_ENABLED
+    from .parking_config import normalize_parking_config
+
+    mappings: list[Mapping[str, Any]] = (
+        contact_dicts(entry) if entry is not None else list(data.get(CONF_PHONEBOOK_CONTACTS, []) or [])
+    )
+    if include_features:
+        mappings.append({"mailbox_feature_routes": True})
+        mappings.append({"parking_feature_routes": normalize_parking_config(data.get("parking", {}))})
+    mappings.extend(
+        item
+        for item in data.get("sip_accounts", []) or []
+        if isinstance(item, Mapping)
+    )
+    if entry is not None:
+        mappings.extend(
+            subentry.data
+            for subentry in phone_subentries(entry)
+            if subentry.subentry_id != exclude_subentry_id
+        )
+    runtime = getattr(entry, "runtime_data", None) if entry is not None else None
+    endpoints = getattr(getattr(runtime, "endpoints", None), "endpoints", ())
+    mappings.extend(
+        {"id": endpoint.sip_uri_user, "name": endpoint.name, "extension": endpoint.extension}
+        for endpoint in endpoints if endpoint.kind is EndpointKind.ESPHOME
+    )
+    assist_extension = str(data.get(CONF_ASSIST_EXTENSION) or "").strip()
+    if include_assist and data.get(CONF_ASSIST_ENDPOINT_ENABLED) and assist_extension:
+        mappings.append(
+            {
+                "id": "assist",
+                "name": "Assist",
+                "extension": assist_extension,
+            }
+        )
+    return mappings

@@ -1,0 +1,37 @@
+# Complete telephone binding and local controls, without a voice/media coordinator.
+voip_stack:
+  task_stacks_in_psram: true
+  buffers_in_psram: true
+  audio:
+    tx:
+      codec: opus
+      sample_rate: 48000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 20
+    rx:
+      codec: opus
+      sample_rate: 48000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 20
+  microphone_source:
+    microphone: mic_main
+    bits_per_sample: 16
+    channels:
+    - 1
+    gain_factor: 1
+  speaker: hw_speaker
+  dc_offset_removal: false
+  delete_contact_missing_from:
+    updates_number: 1
+  use_ha_as_first_contact: true
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+packages:
+  callbacks: !include '../../../voip/callbacks.yaml'
+  voip_transport: !include '../../../voip/transport.yaml'
+  voip_entities_full_duplex: !include '../../../voip/entities_full_duplex.yaml'
+  call_settings: !include '../../../voip/call_settings.yaml'

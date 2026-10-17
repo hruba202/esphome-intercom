@@ -1,0 +1,3116 @@
+# Display behavior with voice gestures selected alongside the voice feature.
+time:
+- platform: sntp
+  id: my_time
+  timezone: Europe/Rome
+  servers:
+  - 0.pool.ntp.org
+font:
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 700
+  id: font_title
+  size: 32
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 700
+  id: font_state
+  size: 48
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 400
+  id: font_body
+  size: 22
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 400
+  id: font_small
+  size: 16
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 500
+  id: font_ui_medium
+  size: 24
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Noto Sans
+    weight: 400
+  id: font_response
+  size: 20
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Roboto Mono
+    weight: 400
+  id: font_timer
+  size: 36
+  glyphs: '0123456789:'
+- file: https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf
+  id: font_weather_icon
+  size: 100
+  glyphs:
+  - 󰖐
+  - 󰖑
+  - 󰖒
+  - 󰖓
+  - 󰖔
+  - 󰖕
+  - 󰖖
+  - 󰖗
+  - 󰖘
+  - 󰖙
+  - 󰖝
+  - 󰖞
+  - 󰙾
+  - 󰙿
+  - 󰼷
+- file: https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf
+  id: font_action_icon
+  size: 34
+  glyphs:
+  - 󰅁
+  - 󰅂
+  - 󰏲
+  - 󰏵
+  - 󰍬
+  - 󰍭
+  - 󰒓
+  - 󰕾
+  - 󰖁
+  - 󰟴
+- file: https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf
+  id: font_weather_icon_sm
+  size: 36
+  glyphs:
+  - 󰖐
+  - 󰖑
+  - 󰖒
+  - 󰖓
+  - 󰖔
+  - 󰖕
+  - 󰖖
+  - 󰖗
+  - 󰖘
+  - 󰖙
+  - 󰖝
+  - 󰖞
+  - 󰙾
+  - 󰙿
+  - 󰼷
+image:
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/listening.png
+  id: img_listening
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/thinking.png
+  id: img_thinking
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error.png
+  id: img_error
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/happy.png
+  id: mood_happy
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/neutral.png
+  id: mood_neutral
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/angry.png
+  id: mood_angry
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_wifi.png
+  id: error_no_wifi
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_ha.png
+  id: error_no_ha
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_00.png
+  id: idle_00
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_01.png
+  id: idle_01
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_02.png
+  id: idle_02
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_03.png
+  id: idle_03
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_04.png
+  id: idle_04
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_05.png
+  id: idle_05
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_06.png
+  id: idle_06
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_07.png
+  id: idle_07
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_08.png
+  id: idle_08
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_09.png
+  id: idle_09
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_10.png
+  id: idle_10
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_11.png
+  id: idle_11
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_12.png
+  id: idle_12
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_13.png
+  id: idle_13
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_14.png
+  id: idle_14
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_15.png
+  id: idle_15
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_16.png
+  id: idle_16
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_17.png
+  id: idle_17
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_18.png
+  id: idle_18
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_19.png
+  id: idle_19
+  resize: 400x400
+  type: RGB565
+  byte_order: little_endian
+lvgl:
+  displays:
+  - main_display
+  touchscreens:
+  - main_touch
+  color_depth: 16
+  byte_order: little_endian
+  log_level: WARN
+  rotation: 270
+  top_layer:
+    widgets: ${ (_p4_widgets_2 if _fw_timers else []) }
+  pages: ${ _p4_widgets_4 + _p4_widgets_8 + _p4_widgets_12 + (_p4_widgets_16 if _fw_timers else []) + _p4_widgets_135
+    + _p4_widgets_176 }
+globals:
+- id: voice_assistant_phase
+  type: int
+  restore_value: false
+  initial_value: ${voice_assist_not_ready_phase_id}
+- id: current_mode
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: previous_mode
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: peer_name
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+- id: call_ended_active
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+- id: voip_keypad_visible
+  type: bool
+  restore_value: false
+  initial_value: 'false'
+- id: voip_dial_buffer
+  type: std::string
+  restore_value: false
+  initial_value: '""'
+- id: forecast_condition
+  type: std::array<std::string, 5>
+- id: forecast_temp_max
+  type: float[5]
+- id: forecast_temp_min
+  type: float[5]
+- id: forecast_dow
+  type: int[5]
+- id: main_layout
+  type: int[48]
+  restore_value: false
+  initial_value: '{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}'
+script: ${ _p4_base_scripts + (_p4_phone_scripts if _fw_voip else []) }
+sensor:
+- platform: homeassistant
+  id: weather_temperature
+  entity_id: ${weather_entity_id}
+  attribute: temperature
+  internal: true
+  on_value:
+  - script.execute: update_weather_display
+- platform: homeassistant
+  id: weather_humidity
+  entity_id: ${weather_entity_id}
+  attribute: humidity
+  internal: true
+- platform: homeassistant
+  id: weather_wind_speed
+  entity_id: ${weather_entity_id}
+  attribute: wind_speed
+  internal: true
+text_sensor:
+- id: text_request
+  platform: template
+- id: text_response
+  platform: template
+- platform: homeassistant
+  id: weather_condition
+  entity_id: ${weather_entity_id}
+  internal: true
+  on_value:
+  - script.execute: update_weather_display
+- platform: homeassistant
+  id: weather_location
+  entity_id: ${weather_entity_id}
+  attribute: friendly_name
+  internal: true
+interval:
+- interval: 30s
+  then:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return !id(init_in_progress);
+      then:
+      - script.execute: update_weather_display
+- interval: 5min
+  then:
+  - if:
+      condition:
+        and:
+        - api.connected: null
+        - lambda: !lambda |-
+            std::string call_state = ${ 'id(phone).get_state_str()' if _fw_voip else 'std::string()' };
+            return !id(init_in_progress) &&
+                   !id(call_ended_active) &&
+                   (call_state == "idle" || call_state.empty());
+      then:
+      - script.execute: fetch_forecast
+api:
+  on_client_connected:
+  - script.execute: set_idle_or_mute_phase
+  - script.execute: draw_display
+  - delay: 5s
+  - script.execute: fetch_forecast
+wifi:
+  on_connect:
+  - logger.log: WiFi connected
+  - script.execute: draw_display
+  on_disconnect:
+  - logger.log: WiFi disconnected
+  - script.execute: draw_display
+esphome:
+  on_boot:
+  - priority: 200
+    then: ${ (_p4_boot_200_0 if _fw_voip else []) }
+  - priority: -100
+    then: ${ (_p4_boot_m100_0) + (_p4_boot_m100_1) + (_p4_boot_m100_2) + (_p4_boot_m100_3) + (_p4_boot_m100_4) +
+      (_p4_boot_m100_5) + (_p4_boot_m100_6) + (_p4_boot_m100_7 if _fw_wake_word else []) + (_p4_boot_m100_8) + (_p4_boot_m100_9
+      if _fw_wake_word else []) }
+touchscreen:
+- id: !extend 'main_touch'
+  on_touch:
+  - output.set_level:
+      id: backlight_pwm
+      level: 100%
+  - script.execute: backlight_timer
+packages:
+  phase: !include '../phase.yaml'
+  cleanup: !include '../../../lvgl/p4_va_cleanup.yaml'
+  ppa: !include '../../../lvgl/p4_ppa.yaml'
+  settings_sync: !include '../../../lvgl/lvgl_settings_p4_unified_boot.yaml'
+  artwork: ${ _p4_artwork if _fw_sendspin else {} }
+  timers: ${ _p4_timers if _fw_timers else {} }
+  playback: ${ _p4_player if _fw_playback else {} }
+  phone_hooks: ${ _p4_phone_hooks if _fw_voip else {} }
+  phone_lifecycle: ${ _p4_phone_lifecycle if _fw_voip else {} }
+defaults:
+  _p4_artwork: !include '../../../media_player/sendspin_artwork.yaml'
+  _p4_timers: !include '../../timers/presentation/waveshare-p4-full-landscape.yaml'
+  _p4_player:
+    media_player:
+    - id: !extend 'speaker_media_player'
+      on_announcement:
+      - if:
+          condition:
+            lambda: !lambda |-
+              return ${ 'id(phone).is_idle()' if _fw_voip else 'true' };
+          then:
+          - script.execute: backlight_timer
+      on_play:
+      - script.execute: backlight_timer
+      on_pause:
+      - script.execute: backlight_timer
+      on_idle:
+      - delay: 200ms
+      - script.execute: backlight_timer
+  _p4_boot_200_0:
+  - lambda: !lambda |-
+      id(peer_name) = id(phone).get_current_destination();
+  _p4_boot_m100_0:
+  - logger.log: 'Boot: late init start'
+  _p4_boot_m100_1:
+  - delay: 500ms
+  _p4_boot_m100_2:
+  - output.set_level:
+      id: backlight_pwm
+      level: 100%
+  _p4_boot_m100_3:
+  - lvgl.page.show: initializing_page
+  _p4_boot_m100_4:
+  - script.execute: compute_main_layout
+  _p4_boot_m100_5:
+  - script.execute: draw_display
+  _p4_boot_m100_6:
+  - script.execute: settings_p4_sync_widgets
+  _p4_boot_m100_7:
+  - micro_wake_word.stop: null
+  _p4_boot_m100_8:
+  - delay: 1s
+  _p4_boot_m100_9:
+  - script.execute: start_mww_when_ready
+  _p4_phone_hooks:
+    voip_stack:
+      on_phonebook_update:
+      - lambda: !lambda |-
+          id(peer_name) = destination;
+      - script.execute: draw_display
+      - delay: 2s
+      - script.execute: update_ic_idle_labels
+      on_destination_changed:
+      - lambda: !lambda |-
+          id(peer_name) = destination;
+      - script.execute: update_ic_idle_labels
+      - script.execute: draw_display
+  _p4_phone_geometry: |
+    lv_obj_set_pos(id(voip_tile), layout[RIGHT_X], y0);
+    lv_obj_set_size(id(voip_tile), layout[RIGHT_W], layout[VOIP_H]);
+    lv_obj_t *voip_groups[] = {id(call_idle_group), id(call_keypad_group), id(call_ringing_in_group), id(call_ringing_out_group),
+                                   id(call_in_call_group), id(call_ended_group)};
+    for (auto *group : voip_groups) {
+      lv_obj_set_size(group, layout[RIGHT_W], layout[VOIP_H]);
+    }
+    lv_obj_set_width(id(call_idle_peer_label), layout[RIGHT_TEXT_W]);
+    lv_obj_align(id(call_idle_header_label), LV_ALIGN_TOP_MID, 0, layout[CALL_HEADER_Y]);
+    lv_obj_align(id(call_idle_header_rule), LV_ALIGN_TOP_MID, 0, layout[CALL_RULE_Y]);
+    lv_obj_align(id(call_keypad_header_label), LV_ALIGN_TOP_MID, 0, layout[CALL_HEADER_Y]);
+    lv_obj_align(id(call_keypad_header_rule), LV_ALIGN_TOP_MID, 0, layout[CALL_RULE_Y]);
+    lv_obj_align(id(call_idle_destination_label), LV_ALIGN_TOP_MID, 0, layout[CALL_STATUS_Y]);
+    lv_obj_align(id(call_idle_peer_label), LV_ALIGN_TOP_MID, 0, layout[CALL_PEER_Y]);
+    lv_obj_align(id(call_idle_contacts_label), LV_ALIGN_TOP_MID, 0, layout[CALL_CONTACTS_Y]);
+    lv_obj_align(id(call_idle_hint_label), LV_ALIGN_TOP_MID, 0, layout[CALL_HINT_Y]);
+    lv_obj_align(id(call_idle_swipe_area), LV_ALIGN_TOP_MID, 0, layout[CALL_SWIPE_Y]);
+    lv_obj_set_size(id(call_idle_swipe_area), layout[RIGHT_INNER_W], layout[CALL_SWIPE_H]);
+    lv_obj_align(id(call_prev_btn), LV_ALIGN_BOTTOM_LEFT, layout[CALL_HEADER_X], -30);
+    lv_obj_set_size(id(call_prev_btn), layout[CALL_BUTTON_SIDE_W], layout[CALL_BUTTON_SIDE_H]);
+    lv_obj_align(id(call_button_widget), LV_ALIGN_BOTTOM_MID, 0, -24);
+    lv_obj_set_size(id(call_button_widget), layout[CALL_BUTTON_CALL_W], layout[CALL_BUTTON_CALL_H]);
+    lv_obj_align(id(call_next_btn), LV_ALIGN_BOTTOM_RIGHT, -layout[CALL_HEADER_X], -30);
+    lv_obj_set_size(id(call_next_btn), layout[CALL_BUTTON_SIDE_W], layout[CALL_BUTTON_SIDE_H]);
+    lv_obj_set_width(id(call_keypad_value_label), layout[RIGHT_TEXT_W]);
+    lv_obj_set_width(id(call_keypad_matrix)->obj, layout[RIGHT_INNER_W]);
+    // Fill the space down to the command row while retaining a small
+    // visual gap. This follows the computed VoIP tile height instead of
+    // assuming one landscape panel resolution.
+    int keypad_h = layout[VOIP_H] - 192;
+    if (keypad_h < 128) keypad_h = 128;
+    lv_obj_set_height(id(call_keypad_matrix)->obj, keypad_h);
+    lv_obj_set_width(id(call_ringing_in_peer_label), layout[RIGHT_TEXT_W]);
+    lv_obj_set_width(id(call_ringing_out_peer_label), layout[RIGHT_TEXT_W]);
+    lv_obj_set_width(id(call_in_call_peer_label), layout[RIGHT_TEXT_W]);
+    lv_obj_set_width(id(call_ended_peer_label), layout[RIGHT_TEXT_W]);
+    lv_obj_set_width(id(call_ended_reason_label), layout[RIGHT_TEXT_W]);
+  _p4_render_0:
+  - script.execute: runtime_project_ui_phase
+  _p4_render_1:
+  - script.execute: backlight_timer
+  _p4_render_2:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(ui_state) == ${ui_state_va_listening};
+      then:
+      - text_sensor.template.publish:
+          id: text_request
+          state: '...'
+      - text_sensor.template.publish:
+          id: text_response
+          state: '...'
+  _p4_render_3:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(ui_state) == ${ui_state_idle} && id(current_mode) == 1
+                 && ${ 'id(phone).is_idle()' if _fw_voip else 'true' };
+      then:
+      - script.execute: update_ic_idle_labels
+  _p4_render_4:
+  - script.execute: draw_display
+  _p4_timer_drawing: |-
+    if (id(runtime).is_activity_active("timer_ringing")) {
+      id(runtime_rendered_page) = "timer_finished";
+      if (active_scr != id(timer_finished_page)->obj)
+        lv_disp_load_scr(id(timer_finished_page)->obj);
+      return;
+    }
+  _p4_call_drawing: |+
+    // === Update VoIP tile (top right) ===
+    std::string call_state = id(phone).get_state_str();
+
+    // Telephone state always wins over the optional idle keypad. Cancel
+    // any in-flight card animation so ringing/calling cannot inherit an
+    // off-screen position.
+    if (call_state != "idle" && !call_state.empty()) {
+      id(voip_keypad_visible) = false;
+      lv_anim_del(id(call_idle_group), nullptr);
+      lv_anim_del(id(call_keypad_group), nullptr);
+      lv_obj_set_y(id(call_idle_group), 0);
+      lv_obj_set_y(id(call_keypad_group), id(main_layout)[11]);
+    }
+
+    set_hidden(id(call_idle_group), true);
+    set_hidden(id(call_keypad_group), true);
+    set_hidden(id(call_ringing_in_group), true);
+    set_hidden(id(call_ringing_out_group), true);
+    set_hidden(id(call_in_call_group), true);
+    set_hidden(id(call_ended_group), true);
+
+    if (id(call_ended_active) && !id(phone).is_active()) {
+      // ui_call_ended owns the tile for ~4 s after a terminated
+      // call so the user reads the reason regardless of the runtime state
+      // state already returning to IDLE.
+      set_hidden(id(call_ended_group), false);
+    } else if (call_state == "ringing") {
+      set_label(id(call_ringing_in_peer_label), id(peer_name).c_str());
+      set_hidden(id(call_ringing_in_group), false);
+    } else if (call_state == "calling" || call_state == "remote_ringing") {
+      set_label(id(call_ringing_out_peer_label), id(peer_name).c_str());
+      set_hidden(id(call_ringing_out_group), false);
+    } else if (call_state == "in_call" || call_state == "connecting") {
+      set_label(id(call_in_call_peer_label), id(peer_name).c_str());
+      set_hidden(id(call_in_call_group), false);
+    } else {
+      set_label(id(call_idle_peer_label), id(peer_name).c_str());
+      char buf[32];
+      snprintf(buf, sizeof(buf), "Contacts: %u",
+               static_cast<unsigned>(id(phone).get_contact_count()));
+      set_label(id(call_idle_contacts_label), buf);
+      if (id(voip_keypad_visible)) {
+        lv_obj_set_y(id(call_keypad_group), 0);
+        set_hidden(id(call_keypad_group), false);
+      } else {
+        lv_obj_set_y(id(call_idle_group), 0);
+        lv_obj_set_y(id(call_keypad_group), id(main_layout)[11]);
+        set_hidden(id(call_idle_group), false);
+      }
+    }
+
+  _p4_call_page: |
+    const char *call_page = id(call_ended_active) ? "call_ended" :
+        (call_state == "ringing") ? "ringing_in" :
+        (call_state == "calling" || call_state == "remote_ringing") ? "ringing_out" :
+        (call_state == "in_call" || call_state == "connecting") ? "in_call" :
+        id(voip_keypad_visible) ? "keypad" : "contacts";
+  _p4_dnd_projection: |-
+    set_quick_button(id(quick_dnd_btn), id(quick_dnd_label), id(dnd_switch).state,
+                     0xB91C1C, 0x44251D, "DND on", "DND");
+  _p4_wake_word_label: |-
+    for (auto *model : id(mww).get_wake_words()) {
+      if (model != nullptr && model->is_enabled() && !model->get_wake_word().empty()) {
+        selected_wake_word = model->get_wake_word();
+        break;
+      }
+    }
+  _p4_phone_scroll: lv_obj_clear_flag(id(voip_tile), LV_OBJ_FLAG_SCROLLABLE);
+  _p4_draw_actions:
+  - lambda: !lambda |-
+      lv_obj_t* active_scr = lv_disp_get_scr_act(nullptr);
+
+      // Settings page is user-driven (modal): never let the periodic
+      // draw_display callers (VoIP state, idle phase, animations,
+      // weather refresh, ...) snap the screen back to main_page while
+      // the user is interacting with the settings page. A live call still
+      // interrupts it, as it already does on the round target.
+      if (active_scr == id(settings_p4_page)->obj && !${ 'id(phone).is_active()' if _fw_voip else 'false' }) {
+        id(runtime_rendered_page) = "settings";
+        return;
+      }
+
+      auto set_hidden = [](lv_obj_t *obj, bool hidden) {
+        const bool is_hidden = lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        if (hidden && !is_hidden) {
+          lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        } else if (!hidden && is_hidden) {
+          lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        }
+      };
+      auto set_label = [](lv_obj_t *label, const char *text) {
+        if (text == nullptr) text = "";
+        const char *current = lv_label_get_text(label);
+        if (current == nullptr || strcmp(current, text) != 0)
+          lv_label_set_text(label, text);
+      };
+      auto set_quick_button = [&](lv_obj_t *btn, lv_obj_t *label, bool active,
+                                  uint32_t on_color, uint32_t off_color,
+                                  const char *on_text, const char *off_text) {
+        lv_obj_set_style_bg_color(btn, lv_color_hex(active ? on_color : off_color), LV_PART_MAIN);
+        lv_obj_set_style_border_width(btn, active ? 2 : 0, LV_PART_MAIN);
+        lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0xFFFFFF : off_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        set_label(label, active ? on_text : off_text);
+      };
+
+      // Overlay pages (full-screen, cover everything)
+      if (!wifi::global_wifi_component->is_connected()) {
+        id(runtime_rendered_page) = "no_wifi";
+        if (active_scr != id(no_wifi_page)->obj)
+          lv_disp_load_scr(id(no_wifi_page)->obj);
+        return;
+      }
+      if (id(runtime).is_activity_active("no_ha")) {
+        id(runtime_rendered_page) = "no_ha";
+        if (active_scr != id(no_ha_page)->obj)
+          lv_disp_load_scr(id(no_ha_page)->obj);
+        return;
+      }
+      int phase = id(voice_assistant_phase);
+      const int state = id(ui_state);
+      if (phase == ${voice_assist_not_ready_phase_id}) {
+        id(runtime_rendered_page) = "no_ha";
+        if (active_scr != id(no_ha_page)->obj)
+          lv_disp_load_scr(id(no_ha_page)->obj);
+        return;
+      }
+      // Timer ringing owns the full-screen overlay while the alarm is active.
+      // Use the runtime_controller timer activity instead of voice_assistant_phase because the
+      // alarm sound is played through media_player and may update the phase.
+      ${ _p4_timer_drawing if _fw_timers else '' }
+
+      // Optional media pages own the display until their profile clears
+      // this state. This prevents periodic dashboard refreshes from
+      // replacing a live video frame after its first-frame callback.
+      if (id(runtime_rendered_page) == "call_video" &&
+          ${ 'id(phone).is_in_call()' if _fw_voip else 'false' }) {
+        return;
+      }
+
+      // Normal: show main split-screen page
+      if (active_scr != id(main_page)->obj) {
+        lv_disp_load_scr(id(main_page)->obj);
+        // Main dashboard panels are fixed-size; content must not scroll inside them.
+        lv_obj_clear_flag(id(weather_tile), LV_OBJ_FLAG_SCROLLABLE);
+        ${ _p4_phone_scroll if _fw_voip else '' }
+      }
+      id(apply_main_layout).execute();
+
+      set_quick_button(id(quick_mic_mute_btn), id(quick_mic_mute_label), id(mute).state,
+                       0xB91C1C, 0x2B2547, "Mic muted", "Mic mute");
+      set_quick_button(id(quick_speaker_mute_btn), id(quick_speaker_mute_label), id(speaker_mute).state,
+                       0xB91C1C, 0x15364A, "Speaker muted", "Speaker");
+      ${ _p4_dnd_projection if _fw_voip else '' }
+
+      std::string selected_wake_word = "No wake word selected";
+      ${ _p4_wake_word_label if _fw_wake_word else '' }
+      set_label(id(va_wake_word_label), selected_wake_word.c_str());
+
+      // === Update VA container (bottom half) ===
+      // Hide all VA groups
+      set_hidden(id(va_idle_group), true);
+      set_hidden(id(va_listening_group), true);
+      set_hidden(id(va_thinking_group), true);
+      set_hidden(id(va_replying_group), true);
+      set_hidden(id(va_error_group), true);
+      set_hidden(id(va_muted_group), true);
+      // Runtime state is authoritative; the local phase only drives
+      // device-specific animation timing below.
+      if (state == ${ui_state_mww_recent} || state == ${ui_state_va_listening}) {
+        set_hidden(id(va_listening_group), false);
+      } else if (state == ${ui_state_va_thinking}) {
+        set_label(id(thinking_text_label), id(text_request).state.c_str());
+        set_hidden(id(va_thinking_group), false);
+      } else if (state == ${ui_state_va_replying} || state == ${ui_state_media}) {
+        set_label(id(replying_text_label), id(text_response).state.c_str());
+        set_hidden(id(va_replying_group), false);
+      } else if (state == ${ui_state_va_error}) {
+        set_hidden(id(va_error_group), false);
+      } else if (state == ${ui_state_both_muted} || state == ${ui_state_mic_muted}) {
+        set_hidden(id(va_muted_group), false);
+      } else {
+        set_hidden(id(va_idle_group), false);
+      }
+
+      ${ _p4_call_drawing if _fw_voip else '' }const char *va_page =
+          (state == ${ui_state_mww_recent} || state == ${ui_state_va_listening}) ? "listening" :
+          (state == ${ui_state_va_thinking}) ? "thinking" :
+          (state == ${ui_state_va_replying} || state == ${ui_state_media}) ? "replying" :
+          (state == ${ui_state_va_error}) ? "error" :
+          (state == ${ui_state_both_muted} || state == ${ui_state_mic_muted}) ? "muted" : "idle";
+      ${ _p4_call_page if _fw_voip else 'const char *call_page = "disabled";' }
+      id(runtime_rendered_page) = std::string("main:") + va_page + ":" + call_page;
+  - if:
+      condition:
+        lambda: !lambda |-
+          std::string call_state = ${ 'id(phone).get_state_str()' if _fw_voip else 'std::string()' };
+          return id(runtime_rendered_page).rfind("main:idle:", 0) == 0 &&
+                 id(current_mode) == 0 &&
+                 id(voice_assistant_phase) == ${voice_assist_idle_phase_id} &&
+                 !id(init_in_progress) &&
+                 (call_state == "idle" || call_state.empty());
+      then:
+      - if:
+          condition:
+            lambda: !lambda |-
+              return !id(ai_animation_loop).is_running();
+          then:
+          - script.execute: ai_animation_loop
+      else:
+      - script.stop: ai_animation_loop
+      - lambda: !lambda |-
+          lv_anim_del(id(idle_animation), nullptr);
+          lv_animimg_start(id(idle_animation));
+          lv_anim_del(id(idle_animation), nullptr);
+  _p4_draw_timer:
+  - script.execute: update_timer_state
+  _p4_base_scripts:
+  - id: !remove 'update_led'
+  - id: update_led
+    mode: restart
+    then:
+    - script.execute: draw_display
+  - id: apply_media_artwork
+    then:
+    - lambda: !lambda |-
+        // The Sendspin artwork extension performs the single final image
+        // selection; avoid an observable neutral intermediate frame.
+  - id: compute_main_layout
+    mode: single
+    then:
+    - lambda: !lambda |-
+        enum LayoutIndex {
+          SCREEN_W, SCREEN_H, PAGE_MARGIN, PANEL_GAP, PANEL_H,
+          WEATHER_X, WEATHER_W, VA_X, VA_W,
+          RIGHT_X, RIGHT_W, VOIP_H, QUICK_Y, QUICK_H,
+          WEATHER_TEXT_W, WEATHER_RULE_W, FORECAST_W, FORECAST_ROW_W,
+          FORECAST_DAY_W, FORECAST_ICON_W, FORECAST_TEMP_W,
+          RIGHT_TEXT_W, RIGHT_INNER_W, QUICK_BUTTON_W, QUICK_HEADER_W,
+          WEATHER_PAD, WEATHER_HEADER_Y, WEATHER_ICON_Y, WEATHER_TEMP_Y,
+          WEATHER_CONDITION_Y, WEATHER_LOCATION_Y, WEATHER_RULE_Y,
+          WEATHER_DETAILS_Y, FORECAST_Y, FORECAST_H,
+          CALL_HEADER_X, CALL_HEADER_Y, CALL_RULE_Y, CALL_STATUS_Y,
+          CALL_PEER_Y, CALL_CONTACTS_Y, CALL_HINT_Y, CALL_SWIPE_Y, CALL_SWIPE_H,
+          CALL_BUTTON_SIDE_W, CALL_BUTTON_CALL_W, CALL_BUTTON_SIDE_H, CALL_BUTTON_CALL_H,
+        };
+        lv_disp_t *disp = lv_disp_get_default();
+        if (disp == nullptr) {
+          return;
+        }
+        const int sw = lv_disp_get_hor_res(disp);
+        const int sh = lv_disp_get_ver_res(disp);
+        if (sw <= 0 || sh <= 0) {
+          return;
+        }
+
+        const int margin = 20;
+        const int gap = 20;
+        int panel_h = sh - (margin * 2);
+        if (panel_h < 460) panel_h = 460;
+
+        int right_w = (sw * 27) / 100;
+        if (right_w < 300) right_w = 300;
+        if (right_w > 340) right_w = 340;
+
+        int left_w = (sw * 28) / 100;
+        if (left_w < 320) left_w = 320;
+        if (left_w > 380) left_w = 380;
+
+        int center_w = sw - (margin * 2) - (gap * 2) - left_w - right_w;
+        if (center_w < 360) {
+          center_w = 360;
+          left_w = (sw - (margin * 2) - (gap * 2) - center_w - right_w);
+          if (left_w < 280) left_w = 280;
+        }
+
+        const int x0 = margin;
+        const int x1 = x0 + left_w + gap;
+        const int x2 = x1 + center_w + gap;
+
+        const int quick_h = 220;
+        const int voip_h = panel_h - gap - quick_h;
+        const int weather_text_w = left_w - 40;
+        const int weather_rule_w = left_w - 48;
+        const int forecast_w = left_w - 30;
+        const int forecast_row_w = forecast_w - 24;
+        const int forecast_icon_w = 48;
+        const int forecast_temp_w = 56;
+        int forecast_day_w = forecast_row_w - forecast_icon_w - (forecast_temp_w * 2) - 34;
+        if (forecast_day_w < 70) forecast_day_w = 70;
+
+        const int right_text_w = right_w - 40;
+        const int right_inner_w = right_w - 30;
+        int quick_button_w = (right_w - 56) / 2;
+        if (quick_button_w < 118) quick_button_w = 118;
+        if (quick_button_w > 140) quick_button_w = 140;
+        const int quick_header_w = right_w - 40;
+        const int weather_pad = 24;
+        const int weather_header_y = 20;
+        const int weather_icon_y = (panel_h * 10) / 100;
+        const int weather_temp_y = weather_icon_y + 108;
+        const int weather_condition_y = weather_temp_y + 64;
+        const int weather_location_y = weather_condition_y + 35;
+        const int weather_rule_y = weather_location_y + 41;
+        const int weather_details_y = weather_rule_y + 20;
+        const int forecast_y = weather_details_y + 52;
+        int forecast_h = panel_h - forecast_y - 26;
+        if (forecast_h < 300) forecast_h = 300;
+        const int call_header_x = 22;
+        const int call_header_y = 20;
+        const int call_rule_y = 56;
+        const int call_status_y = 82;
+        const int call_peer_y = 118;
+        int call_hint_y = voip_h - 142;
+        if (call_hint_y < 250) call_hint_y = 250;
+        int call_contacts_y = call_hint_y - 34;
+        if (call_contacts_y < 214) call_contacts_y = 214;
+        const int call_swipe_y = 80;
+        const int call_swipe_h = 170;
+        int call_button_side_w = (right_w * 23) / 100;
+        if (call_button_side_w < 72) call_button_side_w = 72;
+        if (call_button_side_w > 82) call_button_side_w = 82;
+        int call_button_call_w = (right_w * 27) / 100;
+        if (call_button_call_w < 88) call_button_call_w = 88;
+        if (call_button_call_w > 100) call_button_call_w = 100;
+        const int call_button_side_h = 64;
+        const int call_button_call_h = 78;
+        auto &layout = id(main_layout);
+        layout[SCREEN_W] = sw;
+        layout[SCREEN_H] = sh;
+        layout[PAGE_MARGIN] = margin;
+        layout[PANEL_GAP] = gap;
+        layout[PANEL_H] = panel_h;
+        layout[WEATHER_X] = x0;
+        layout[WEATHER_W] = left_w;
+        layout[VA_X] = x1;
+        layout[VA_W] = center_w;
+        layout[RIGHT_X] = x2;
+        layout[RIGHT_W] = right_w;
+        layout[VOIP_H] = voip_h;
+        layout[QUICK_Y] = margin + voip_h + gap;
+        layout[QUICK_H] = quick_h;
+        layout[WEATHER_TEXT_W] = weather_text_w;
+        layout[WEATHER_RULE_W] = weather_rule_w;
+        layout[FORECAST_W] = forecast_w;
+        layout[FORECAST_ROW_W] = forecast_row_w;
+        layout[FORECAST_DAY_W] = forecast_day_w;
+        layout[FORECAST_ICON_W] = forecast_icon_w;
+        layout[FORECAST_TEMP_W] = forecast_temp_w;
+        layout[RIGHT_TEXT_W] = right_text_w;
+        layout[RIGHT_INNER_W] = right_inner_w;
+        layout[QUICK_BUTTON_W] = quick_button_w;
+        layout[QUICK_HEADER_W] = quick_header_w;
+        layout[WEATHER_PAD] = weather_pad;
+        layout[WEATHER_HEADER_Y] = weather_header_y;
+        layout[WEATHER_ICON_Y] = weather_icon_y;
+        layout[WEATHER_TEMP_Y] = weather_temp_y;
+        layout[WEATHER_CONDITION_Y] = weather_condition_y;
+        layout[WEATHER_LOCATION_Y] = weather_location_y;
+        layout[WEATHER_RULE_Y] = weather_rule_y;
+        layout[WEATHER_DETAILS_Y] = weather_details_y;
+        layout[FORECAST_Y] = forecast_y;
+        layout[FORECAST_H] = forecast_h;
+        layout[CALL_HEADER_X] = call_header_x;
+        layout[CALL_HEADER_Y] = call_header_y;
+        layout[CALL_RULE_Y] = call_rule_y;
+        layout[CALL_STATUS_Y] = call_status_y;
+        layout[CALL_PEER_Y] = call_peer_y;
+        layout[CALL_CONTACTS_Y] = call_contacts_y;
+        layout[CALL_HINT_Y] = call_hint_y;
+        layout[CALL_SWIPE_Y] = call_swipe_y;
+        layout[CALL_SWIPE_H] = call_swipe_h;
+        layout[CALL_BUTTON_SIDE_W] = call_button_side_w;
+        layout[CALL_BUTTON_CALL_W] = call_button_call_w;
+        layout[CALL_BUTTON_SIDE_H] = call_button_side_h;
+        layout[CALL_BUTTON_CALL_H] = call_button_call_h;
+  - id: apply_main_layout
+    mode: restart
+    then:
+    - lambda: !lambda |-
+        enum LayoutIndex {
+          SCREEN_W, SCREEN_H, PAGE_MARGIN, PANEL_GAP, PANEL_H,
+          WEATHER_X, WEATHER_W, VA_X, VA_W,
+          RIGHT_X, RIGHT_W, VOIP_H, QUICK_Y, QUICK_H,
+          WEATHER_TEXT_W, WEATHER_RULE_W, FORECAST_W, FORECAST_ROW_W,
+          FORECAST_DAY_W, FORECAST_ICON_W, FORECAST_TEMP_W,
+          RIGHT_TEXT_W, RIGHT_INNER_W, QUICK_BUTTON_W, QUICK_HEADER_W,
+          WEATHER_PAD, WEATHER_HEADER_Y, WEATHER_ICON_Y, WEATHER_TEMP_Y,
+          WEATHER_CONDITION_Y, WEATHER_LOCATION_Y, WEATHER_RULE_Y,
+          WEATHER_DETAILS_Y, FORECAST_Y, FORECAST_H,
+          CALL_HEADER_X, CALL_HEADER_Y, CALL_RULE_Y, CALL_STATUS_Y,
+          CALL_PEER_Y, CALL_CONTACTS_Y, CALL_HINT_Y, CALL_SWIPE_Y, CALL_SWIPE_H,
+          CALL_BUTTON_SIDE_W, CALL_BUTTON_CALL_W, CALL_BUTTON_SIDE_H, CALL_BUTTON_CALL_H,
+        };
+        auto &layout = id(main_layout);
+        if (layout[SCREEN_W] <= 0 || layout[SCREEN_H] <= 0) {
+          id(compute_main_layout).execute();
+          if (layout[SCREEN_W] <= 0 || layout[SCREEN_H] <= 0) {
+            return;
+          }
+        }
+        const int y0 = layout[PAGE_MARGIN];
+
+        lv_obj_set_size(id(settings_page_wrapper), layout[SCREEN_W], layout[SCREEN_H]);
+
+        lv_obj_set_pos(id(weather_tile), layout[WEATHER_X], y0);
+        lv_obj_set_size(id(weather_tile), layout[WEATHER_W], layout[PANEL_H]);
+        lv_obj_align(id(weather_date_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_HEADER_Y]);
+        lv_obj_align(id(weather_icon_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_ICON_Y]);
+        lv_obj_align(id(weather_temp_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_TEMP_Y]);
+        lv_obj_align(id(weather_condition_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_CONDITION_Y]);
+        lv_obj_align(id(weather_location_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_LOCATION_Y]);
+        lv_obj_align(id(weather_rule), LV_ALIGN_TOP_MID, 0, layout[WEATHER_RULE_Y]);
+        lv_obj_align(id(weather_details_label), LV_ALIGN_TOP_MID, 0, layout[WEATHER_DETAILS_Y]);
+        lv_obj_align(id(forecast_container), LV_ALIGN_TOP_MID, 0, layout[FORECAST_Y]);
+        lv_obj_set_size(id(forecast_container), layout[FORECAST_W], layout[FORECAST_H]);
+        lv_obj_set_width(id(weather_date_label), layout[WEATHER_TEXT_W]);
+        lv_obj_set_width(id(weather_condition_label), layout[WEATHER_TEXT_W]);
+        lv_obj_set_width(id(weather_location_label), layout[WEATHER_TEXT_W]);
+        lv_obj_set_width(id(weather_details_label), layout[WEATHER_TEXT_W]);
+        lv_obj_set_width(id(weather_rule), layout[WEATHER_RULE_W]);
+
+        lv_obj_t *forecast_rows[] = {id(fc0_row), id(fc1_row), id(fc2_row), id(fc3_row), id(fc4_row)};
+        lv_obj_t *forecast_day_labels[] = {id(fc0_day_label), id(fc1_day_label), id(fc2_day_label),
+                                           id(fc3_day_label), id(fc4_day_label)};
+        lv_obj_t *forecast_icon_labels[] = {id(fc0_icon_label), id(fc1_icon_label), id(fc2_icon_label),
+                                            id(fc3_icon_label), id(fc4_icon_label)};
+        lv_obj_t *forecast_max_labels[] = {id(fc0_max_label), id(fc1_max_label), id(fc2_max_label),
+                                           id(fc3_max_label), id(fc4_max_label)};
+        lv_obj_t *forecast_min_labels[] = {id(fc0_min_label), id(fc1_min_label), id(fc2_min_label),
+                                           id(fc3_min_label), id(fc4_min_label)};
+        for (size_t i = 0; i < 5; i++) {
+          lv_obj_set_width(forecast_rows[i], layout[FORECAST_ROW_W]);
+          lv_obj_set_width(forecast_day_labels[i], layout[FORECAST_DAY_W]);
+          lv_obj_set_width(forecast_icon_labels[i], layout[FORECAST_ICON_W]);
+          lv_obj_set_width(forecast_max_labels[i], layout[FORECAST_TEMP_W]);
+          lv_obj_set_width(forecast_min_labels[i], layout[FORECAST_TEMP_W]);
+        }
+
+        lv_obj_set_pos(id(va_container), layout[VA_X], y0);
+        lv_obj_set_size(id(va_container), layout[VA_W], layout[PANEL_H]);
+        lv_obj_t *va_groups[] = {id(va_idle_group), id(va_listening_group), id(va_thinking_group),
+                                 id(va_replying_group), id(va_error_group), id(va_muted_group)};
+        for (auto *group : va_groups) {
+          lv_obj_set_size(group, layout[VA_W], layout[PANEL_H]);
+        }
+        lv_obj_set_width(id(thinking_text_label), layout[VA_W] - 40);
+        lv_obj_set_width(id(replying_text_label), layout[VA_W] - 40);
+
+        ${ _p4_phone_geometry if _fw_voip else '' }
+        lv_obj_set_pos(id(quick_controls_panel), layout[RIGHT_X], layout[QUICK_Y]);
+        lv_obj_set_size(id(quick_controls_panel), layout[RIGHT_W], layout[QUICK_H]);
+        lv_obj_set_width(id(quick_controls_header), layout[QUICK_HEADER_W]);
+        lv_obj_t *quick_buttons[] = {id(quick_settings_btn), id(quick_mic_mute_btn),
+                                     id(quick_speaker_mute_btn)${ ', id(quick_dnd_btn)' if _fw_voip else '' }};
+        for (auto *button : quick_buttons) {
+          lv_obj_set_width(button, layout[QUICK_BUTTON_W]);
+        }
+  - id: !extend 'ui_va_end'
+    then:
+    - script.execute: backlight_timer
+    - text_sensor.template.publish:
+        id: text_request
+        state: ''
+    - text_sensor.template.publish:
+        id: text_response
+        state: ''
+    - script.execute: clear_replying_text
+    - script.execute: set_idle_or_mute_phase
+    - script.execute: draw_display
+  - id: !extend 'render_ui_state'
+    then: ${ _p4_render_0 + _p4_render_1 + _p4_render_2 + (_p4_render_3 if _fw_voip else []) + _p4_render_4 }
+  - id: !extend 'ui_tts_started'
+    then:
+    - lambda: !lambda |-
+        std::string t = text;
+        esphome::image::Image *mood = id(mood_neutral);
+        if (t.size() >= 3) {
+          std::string prefix = t.substr(0, 3);
+          if (prefix == ":-)") {
+            mood = id(mood_happy);
+          } else if (prefix == ":-(") {
+            mood = id(mood_angry);
+          } else if (prefix == ":-|") {
+            // neutral (default)
+          }
+          if (prefix == ":-)" || prefix == ":-(" || prefix == ":-|") {
+            t = t.substr(3);
+            if (!t.empty() && t[0] == ' ') t = t.substr(1);
+          }
+        }
+        if (lv_img_get_src(id(mood_bg)) != mood)
+          lv_img_set_src(id(mood_bg), mood);
+        id(text_response).publish_state(t);
+        id(runtime_visual_source) = mood == id(mood_happy) ? 2 :
+                                    mood == id(mood_angry) ? 3 : 1;
+        id(runtime_response_text_ready) = !t.empty();
+    - script.stop: backlight_timer
+    - output.set_level:
+        id: backlight_pwm
+        level: 100%
+    - if:
+        condition:
+          lambda: !lambda |-
+            return id(ui_state) == ${ui_state_va_replying};
+        then:
+        - script.execute: draw_display
+  - id: !extend 'ui_stt_ended'
+    then:
+    - text_sensor.template.publish:
+        id: text_request
+        state: !lambda |-
+          return text;
+    - script.execute: draw_display
+  - id: draw_display
+    mode: restart
+    then: ${ _p4_draw_actions + (_p4_draw_timer if _fw_timers else []) }
+  - id: ai_animation_loop
+    mode: single
+    then:
+    - lambda: !lambda |-
+        lv_anim_del(id(idle_animation), nullptr);
+        lv_animimg_set_repeat_count(id(idle_animation), 0);
+        lv_animimg_start(id(idle_animation));
+        lv_anim_del(id(idle_animation), nullptr);
+    - while:
+        condition:
+          lambda: !lambda |-
+            return true;
+        then:
+        - lvgl.animimg.start: idle_animation
+        - delay: 25s
+  - id: update_weather_display
+    mode: restart
+    then:
+    - lambda: !lambda |-
+        std::string call_state = ${ 'id(phone).get_state_str()' if _fw_voip else 'std::string()' };
+        if (id(call_ended_active) ||
+            call_state == "ringing" ||
+            call_state == "calling" || call_state == "remote_ringing" ||
+            call_state == "in_call" || call_state == "connecting") {
+          return;
+        }
+
+        // Condition → MDI icon mapping
+        auto icon_for = [](const std::string& c) -> const char* {
+          if (c == "sunny") return "\U000F0599";
+          if (c == "clear-night") return "\U000F0594";
+          if (c == "cloudy") return "\U000F0590";
+          if (c == "partlycloudy") return "\U000F0595";
+          if (c == "fog") return "\U000F0591";
+          if (c == "rainy") return "\U000F0597";
+          if (c == "snowy") return "\U000F0598";
+          if (c == "lightning") return "\U000F0593";
+          if (c == "hail") return "\U000F0592";
+          if (c == "windy") return "\U000F059D";
+          if (c == "pouring") return "\U000F0596";
+          if (c == "snowy-rainy") return "\U000F067F";
+          if (c == "windy-variant") return "\U000F059E";
+          if (c == "lightning-rainy") return "\U000F067E";
+          if (c == "exceptional") return "\U000F0F37";
+          return "\U000F0590";
+        };
+        // Condition → English text
+        auto text_for = [](const std::string& c) -> const char* {
+          if (c == "sunny") return "Sunny";
+          if (c == "clear-night") return "Clear";
+          if (c == "cloudy") return "Cloudy";
+          if (c == "partlycloudy") return "Partly Cloudy";
+          if (c == "fog") return "Fog";
+          if (c == "rainy") return "Rain";
+          if (c == "snowy") return "Snow";
+          if (c == "lightning") return "Thunderstorm";
+          if (c == "hail") return "Hail";
+          if (c == "windy") return "Windy";
+          if (c == "pouring") return "Heavy Rain";
+          if (c == "snowy-rainy") return "Sleet";
+          if (c == "windy-variant") return "Windy";
+          if (c == "lightning-rainy") return "Thunderstorm";
+          if (c == "exceptional") return "Exceptional";
+          return "";
+        };
+        static const char* day_full[] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
+        static const char* day_short[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+        static const char* month_names[] = {"January","February","March","April","May","June",
+                                            "July","August","September","October","November","December"};
+
+        // --- Header: date + clock ---
+        auto now = id(my_time).now();
+        if (now.is_valid()) {
+          char date_buf[80];
+          snprintf(date_buf, sizeof(date_buf), "%s %d %s  %02d:%02d",
+                   day_full[now.day_of_week - 1], now.day_of_month,
+                   month_names[now.month - 1],
+                   now.hour, now.minute);
+          // Keep the complete clock on one line. Abbreviate the date only
+          // when the full names exceed the available weather-panel width.
+          lv_point_t text_size;
+          lv_text_get_size(&text_size, date_buf,
+                          lv_obj_get_style_text_font(id(weather_date_label), LV_PART_MAIN),
+                          lv_obj_get_style_text_letter_space(id(weather_date_label), LV_PART_MAIN),
+                          0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+          if (text_size.x > lv_obj_get_content_width(id(weather_date_label))) {
+            snprintf(date_buf, sizeof(date_buf), "%s %d %.3s  %02d:%02d",
+                     day_short[now.day_of_week - 1], now.day_of_month,
+                     month_names[now.month - 1], now.hour, now.minute);
+          }
+          lv_label_set_text(id(weather_date_label), date_buf);
+        }
+
+
+        // --- Current weather ---
+        auto cond = id(weather_condition).state;
+        if (!cond.empty()) {
+          lv_label_set_text(id(weather_icon_label), icon_for(cond));
+          lv_label_set_text(id(weather_condition_label), text_for(cond));
+        }
+
+        if (!std::isnan(id(weather_temperature).state)) {
+          char temp[16];
+          snprintf(temp, sizeof(temp), "%.0f\u00B0", id(weather_temperature).state);
+          lv_label_set_text(id(weather_temp_label), temp);
+        }
+
+        auto loc = id(weather_location).state;
+        if (!loc.empty()) {
+          lv_label_set_text(id(weather_location_label), loc.c_str());
+        }
+
+        // Humidity + wind
+        char details[64];
+        float hum = id(weather_humidity).state;
+        float wind = id(weather_wind_speed).state;
+        if (!std::isnan(hum) && !std::isnan(wind))
+          snprintf(details, sizeof(details), "Humidity: %.0f%%  |  Wind: %.0f km/h", hum, wind);
+        else if (!std::isnan(hum))
+          snprintf(details, sizeof(details), "Humidity: %.0f%%", hum);
+        else
+          details[0] = '\0';
+        lv_label_set_text(id(weather_details_label), details);
+
+        // --- Forecast 5 days ---
+        lv_obj_t* fc_day_labels[] = {id(fc0_day_label), id(fc1_day_label), id(fc2_day_label), id(fc3_day_label), id(fc4_day_label)};
+        lv_obj_t* fc_icon_labels[] = {id(fc0_icon_label), id(fc1_icon_label), id(fc2_icon_label), id(fc3_icon_label), id(fc4_icon_label)};
+        lv_obj_t* fc_max_labels[] = {id(fc0_max_label), id(fc1_max_label), id(fc2_max_label), id(fc3_max_label), id(fc4_max_label)};
+        lv_obj_t* fc_min_labels[] = {id(fc0_min_label), id(fc1_min_label), id(fc2_min_label), id(fc3_min_label), id(fc4_min_label)};
+        for (int i = 0; i < 5; i++) {
+          int dow = id(forecast_dow)[i];
+          if (dow >= 0 && dow <= 6)
+            lv_label_set_text(fc_day_labels[i], day_full[dow]);
+          auto& fc = id(forecast_condition)[i];
+          if (!fc.empty())
+            lv_label_set_text(fc_icon_labels[i], icon_for(fc));
+          char t[16];
+          snprintf(t, sizeof(t), "%.0f\u00B0", id(forecast_temp_max)[i]);
+          lv_label_set_text(fc_max_labels[i], t);
+          snprintf(t, sizeof(t), "%.0f\u00B0", id(forecast_temp_min)[i]);
+          lv_label_set_text(fc_min_labels[i], t);
+        }
+  - id: fetch_forecast
+    mode: single
+    then:
+    - homeassistant.action:
+        action: weather.get_forecasts
+        data:
+          entity_id: ${weather_entity_id}
+          type: daily
+        capture_response: true
+        on_success:
+        - lambda: !lambda |-
+            JsonObjectConst resp = response["response"];
+            JsonObjectConst data = resp["${weather_entity_id}"];
+            JsonArrayConst forecast = data["forecast"];
+            for (int i = 0; i < 5 && i < (int)forecast.size(); i++) {
+              JsonObjectConst day = forecast[i];
+              id(forecast_condition)[i] = day["condition"].as<std::string>();
+              id(forecast_temp_max)[i]  = day["temperature"]   | 0.0f;
+              id(forecast_temp_min)[i]  = day["templow"]       | 0.0f;
+              // Extract day of week from datetime
+              std::string dt = day["datetime"].as<std::string>();
+              int y, m, d;
+              sscanf(dt.c_str(), "%d-%d-%d", &y, &m, &d);
+              struct tm tm = {};
+              tm.tm_year = y - 1900;
+              tm.tm_mon = m - 1;
+              tm.tm_mday = d;
+              mktime(&tm);
+              id(forecast_dow)[i] = tm.tm_wday;
+            }
+        - script.execute: update_weather_display
+  - id: backlight_timer
+    mode: restart
+    then:
+    - output.set_level:
+        id: backlight_pwm
+        level: 100%
+    - delay: 60s
+    - output.set_level:
+        id: backlight_pwm
+        level: 60%
+    - delay: 120s
+    - output.set_level:
+        id: backlight_pwm
+        level: 20%
+  _p4_phone_scripts:
+  - id: show_voip_keypad
+    mode: single
+    then:
+    - lambda: !lambda |-
+        if (!${ 'id(phone).is_idle()' if _fw_voip else 'true' } || id(voip_keypad_visible)) return;
+        id(voip_keypad_visible) = true;
+        const int height = id(main_layout)[11];
+        lv_obj_clear_flag(id(call_idle_group), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(id(call_keypad_group), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_y(id(call_idle_group), 0);
+        lv_obj_set_y(id(call_keypad_group), height);
+        lv_anim_t contacts;
+        lv_anim_init(&contacts);
+        lv_anim_set_var(&contacts, id(call_idle_group));
+        lv_anim_set_values(&contacts, 0, -height);
+        lv_anim_set_duration(&contacts, 220);
+        lv_anim_set_exec_cb(&contacts, [](void *obj, int32_t y) {
+          lv_obj_set_y(static_cast<lv_obj_t *>(obj), y);
+        });
+        lv_anim_start(&contacts);
+        lv_anim_t keypad;
+        lv_anim_init(&keypad);
+        lv_anim_set_var(&keypad, id(call_keypad_group));
+        lv_anim_set_values(&keypad, height, 0);
+        lv_anim_set_duration(&keypad, 220);
+        lv_anim_set_exec_cb(&keypad, [](void *obj, int32_t y) {
+          lv_obj_set_y(static_cast<lv_obj_t *>(obj), y);
+        });
+        lv_anim_start(&keypad);
+  - id: hide_voip_keypad
+    mode: single
+    then:
+    - lambda: !lambda |-
+        if (!id(voip_keypad_visible)) return;
+        id(voip_keypad_visible) = false;
+        const int height = id(main_layout)[11];
+        lv_obj_clear_flag(id(call_idle_group), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(id(call_keypad_group), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_y(id(call_idle_group), -height);
+        lv_obj_set_y(id(call_keypad_group), 0);
+        lv_anim_t contacts;
+        lv_anim_init(&contacts);
+        lv_anim_set_var(&contacts, id(call_idle_group));
+        lv_anim_set_values(&contacts, -height, 0);
+        lv_anim_set_duration(&contacts, 220);
+        lv_anim_set_exec_cb(&contacts, [](void *obj, int32_t y) {
+          lv_obj_set_y(static_cast<lv_obj_t *>(obj), y);
+        });
+        lv_anim_start(&contacts);
+        lv_anim_t keypad;
+        lv_anim_init(&keypad);
+        lv_anim_set_var(&keypad, id(call_keypad_group));
+        lv_anim_set_values(&keypad, 0, height);
+        lv_anim_set_duration(&keypad, 220);
+        lv_anim_set_exec_cb(&keypad, [](void *obj, int32_t y) {
+          lv_obj_set_y(static_cast<lv_obj_t *>(obj), y);
+        });
+        lv_anim_start(&keypad);
+  - id: !extend 'ui_call_started'
+    then:
+    - script.execute: runtime_ui_call_begin
+    - script.stop: ai_animation_loop
+    - lambda: !lambda |-
+        id(peer_name) = peer;
+    - lvgl.label.update:
+        id: call_ringing_out_status_label
+        text: CALLING
+    - script.execute: backlight_timer
+    - script.execute: draw_display
+  - id: !extend 'ui_call_dest_ringing'
+    then:
+    - lambda: !lambda |-
+        id(peer_name) = peer;
+    - lvgl.label.update:
+        id: call_ringing_out_peer_label
+        text: !lambda |-
+          return id(peer_name);
+    - lvgl.label.update:
+        id: call_ringing_out_status_label
+        text: RINGING
+    - script.execute: backlight_timer
+  - id: !extend 'ui_call_ended'
+    mode: restart
+    then:
+    - script.execute: runtime_ui_call_end
+    - globals.set:
+        id: call_ended_active
+        value: 'true'
+    - lvgl.label.update:
+        id: call_ended_peer_label
+        text: !lambda |-
+          return peer.empty() ? std::string("Call ended.") : ("Call with " + peer + " ended.");
+    - lvgl.label.update:
+        id: call_ended_reason_label
+        text: !lambda |-
+          std::string r = reason;
+          std::string label;
+          if      (r == "local_hangup")    label = "Local hangup";
+          else if (r == "remote_hangup")   label = "Remote hangup";
+          else if (r == "declined")        label = "Declined";
+          else if (r == "timeout")         label = "Timeout";
+          else if (r == "busy")            label = "Busy";
+          else if (r == "unreachable")     label = "Unreachable";
+          else if (r == "protocol_error")  label = "Protocol error";
+          else if (r == "bridge_error")    label = "Bridge error";
+          else                             label = r.empty() ? std::string("Ended") : ("Declined: " + r);
+          return std::string("Reason: ") + label;
+    - script.execute: backlight_timer
+    - script.execute: draw_display
+    - delay: 4s
+    - if:
+        condition:
+          lambda: !lambda |-
+            return id(call_ended_active);
+        then:
+        - globals.set:
+            id: call_ended_active
+            value: 'false'
+        - script.execute: draw_display
+  - id: update_ic_idle_labels
+    then:
+    - lambda: !lambda |-
+        id(peer_name) = id(phone).get_current_destination();
+    - lvgl.label.update:
+        id: call_idle_peer_label
+        text: !lambda |-
+          return id(peer_name);
+    - lvgl.label.update:
+        id: call_idle_contacts_label
+        text: !lambda |-
+          char buf[32];
+          snprintf(
+              buf, sizeof(buf), "Contacts: %u",
+              static_cast<unsigned>(id(phone).get_contact_count()));
+          return std::string(buf);
+  _p4_phone_lifecycle:
+    packages:
+      lifecycle: !include '../../voip/presentation/lifecycle.yaml'
+  _p4_widgets_2:
+  - obj:
+      id: timer_overlay
+      align: TOP_MID
+      width: 400
+      height: 50
+      y: 5
+      bg_color: 16777215
+      border_color: 0
+      border_width: 1
+      radius: 8
+      hidden: true
+      widgets:
+      - bar:
+          id: timer_bar
+          align: CENTER
+          width: 390
+          height: 40
+          min_value: 0
+          max_value: 100
+          value: 100
+          indicator:
+            bg_color: 2551098
+      - label:
+          id: timer_label
+          align: CENTER
+          text: ''
+          text_color: 0
+          text_font: font_timer
+  _p4_widgets_4:
+  - id: initializing_page
+    bg_color: 0
+    widgets:
+    - label:
+        align: CENTER
+        text: Initializing...
+        text_color: 8947848
+        text_font: font_state
+  _p4_widgets_8:
+  - id: no_wifi_page
+    bg_color: 0
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 60
+        text: No WiFi
+        text_color: 15158332
+        text_font: font_state
+    - label:
+        align: TOP_MID
+        y: 120
+        text: Waiting for connection...
+        text_color: 8947848
+        text_font: font_body
+    - image:
+        align: CENTER
+        y: 40
+        src: error_no_wifi
+  _p4_widgets_12:
+  - id: no_ha_page
+    bg_color: 0
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 60
+        text: No Home Assistant
+        text_color: 15965202
+        text_font: font_state
+    - label:
+        align: TOP_MID
+        y: 120
+        text: Waiting for API connection...
+        text_color: 8947848
+        text_font: font_body
+    - image:
+        align: CENTER
+        y: 40
+        src: error_no_ha
+  _p4_widgets_16:
+  - id: timer_finished_page
+    bg_color: 0
+    widgets:
+    - label:
+        align: CENTER
+        y: -40
+        text: Timer!
+        text_color: 15965202
+        text_font: font_state
+    - button:
+        align: CENTER
+        y: 60
+        width: 200
+        height: 60
+        bg_color: 15158332
+        radius: 10
+        on_click:
+        - runtime_controller.event:
+            id: runtime
+            event: timer_stopped
+        widgets:
+        - label:
+            align: CENTER
+            text: Stop
+            text_color: 16777215
+            text_font: font_ui_medium
+  _p4_widgets_50:
+  - obj:
+      id: weather_tile
+      x: 0
+      y: 0
+      width: 1
+      height: 1
+      bg_color: 1054244
+      border_color: 3428461
+      border_width: 1
+      radius: 8
+      pad_all: 0
+      scrollable: false
+      scrollbar_mode: 'off'
+      widgets:
+      - label:
+          id: weather_date_label
+          align: TOP_MID
+          y: 20
+          width: 320
+          text: ''
+          text_color: 10134706
+          text_font: font_ui_medium
+          text_align: CENTER
+          long_mode: CLIP
+      - label:
+          id: weather_icon_label
+          align: TOP_MID
+          y: 76
+          text: 󰖙
+          text_font: font_weather_icon
+          text_color: 16765286
+      - label:
+          id: weather_temp_label
+          align: TOP_MID
+          y: 185
+          text: --°
+          text_font: font_state
+          text_color: 16777215
+      - label:
+          id: weather_condition_label
+          align: TOP_MID
+          y: 250
+          width: 320
+          text: ''
+          text_font: font_body
+          text_color: 13029599
+          text_align: CENTER
+          long_mode: DOT
+      - label:
+          id: weather_location_label
+          align: TOP_MID
+          y: 285
+          width: 320
+          text: ''
+          text_font: font_small
+          text_color: 9082022
+          text_align: CENTER
+          long_mode: DOT
+      - obj:
+          id: weather_rule
+          align: TOP_MID
+          y: 326
+          width: 312
+          height: 1
+          bg_color: 2964568
+          border_width: 0
+      - label:
+          id: weather_details_label
+          align: TOP_MID
+          y: 346
+          width: 320
+          text: ''
+          text_font: font_small
+          text_color: 11187394
+          text_align: CENTER
+          long_mode: DOT
+      - obj:
+          id: forecast_container
+          align: TOP_MID
+          y: 398
+          width: 330
+          height: 336
+          bg_color: 725274
+          bg_opa: COVER
+          border_color: 2241098
+          border_width: 1
+          radius: 8
+          scrollable: false
+          scrollbar_mode: 'off'
+          layout:
+            type: FLEX
+            flex_flow: COLUMN
+            flex_align_main: START
+            flex_align_cross: CENTER
+            pad_row: 6
+          pad_top: 10
+          pad_bottom: 10
+          pad_left: 10
+          pad_right: 10
+          widgets:
+          - obj:
+              id: fc0_row
+              width: 306
+              height: 58
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              layout:
+                type: FLEX
+                flex_flow: ROW
+                flex_align_main: SPACE_BETWEEN
+                flex_align_cross: CENTER
+              widgets:
+              - label:
+                  id: fc0_day_label
+                  width: 92
+                  text: --
+                  text_font: font_small
+                  text_color: 7268279
+                  text_align: LEFT
+              - label:
+                  id: fc0_icon_label
+                  width: 48
+                  text: 󰖙
+                  text_font: font_weather_icon_sm
+                  text_color: 16765286
+                  text_align: CENTER
+              - label:
+                  id: fc0_max_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 16739179
+                  text_align: RIGHT
+              - label:
+                  id: fc0_min_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 7054335
+                  text_align: RIGHT
+          - obj:
+              id: fc1_row
+              width: 306
+              height: 58
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              layout:
+                type: FLEX
+                flex_flow: ROW
+                flex_align_main: SPACE_BETWEEN
+                flex_align_cross: CENTER
+              widgets:
+              - label:
+                  id: fc1_day_label
+                  width: 92
+                  text: --
+                  text_font: font_small
+                  text_color: 7268279
+                  text_align: LEFT
+              - label:
+                  id: fc1_icon_label
+                  width: 48
+                  text: 󰖙
+                  text_font: font_weather_icon_sm
+                  text_color: 16765286
+                  text_align: CENTER
+              - label:
+                  id: fc1_max_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 16739179
+                  text_align: RIGHT
+              - label:
+                  id: fc1_min_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 7054335
+                  text_align: RIGHT
+          - obj:
+              id: fc2_row
+              width: 306
+              height: 58
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              layout:
+                type: FLEX
+                flex_flow: ROW
+                flex_align_main: SPACE_BETWEEN
+                flex_align_cross: CENTER
+              widgets:
+              - label:
+                  id: fc2_day_label
+                  width: 92
+                  text: --
+                  text_font: font_small
+                  text_color: 7268279
+                  text_align: LEFT
+              - label:
+                  id: fc2_icon_label
+                  width: 48
+                  text: 󰖙
+                  text_font: font_weather_icon_sm
+                  text_color: 16765286
+                  text_align: CENTER
+              - label:
+                  id: fc2_max_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 16739179
+                  text_align: RIGHT
+              - label:
+                  id: fc2_min_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 7054335
+                  text_align: RIGHT
+          - obj:
+              id: fc3_row
+              width: 306
+              height: 58
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              layout:
+                type: FLEX
+                flex_flow: ROW
+                flex_align_main: SPACE_BETWEEN
+                flex_align_cross: CENTER
+              widgets:
+              - label:
+                  id: fc3_day_label
+                  width: 92
+                  text: --
+                  text_font: font_small
+                  text_color: 7268279
+                  text_align: LEFT
+              - label:
+                  id: fc3_icon_label
+                  width: 48
+                  text: 󰖙
+                  text_font: font_weather_icon_sm
+                  text_color: 16765286
+                  text_align: CENTER
+              - label:
+                  id: fc3_max_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 16739179
+                  text_align: RIGHT
+              - label:
+                  id: fc3_min_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 7054335
+                  text_align: RIGHT
+          - obj:
+              id: fc4_row
+              width: 306
+              height: 58
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              layout:
+                type: FLEX
+                flex_flow: ROW
+                flex_align_main: SPACE_BETWEEN
+                flex_align_cross: CENTER
+              widgets:
+              - label:
+                  id: fc4_day_label
+                  width: 92
+                  text: --
+                  text_font: font_small
+                  text_color: 7268279
+                  text_align: LEFT
+              - label:
+                  id: fc4_icon_label
+                  width: 48
+                  text: 󰖙
+                  text_font: font_weather_icon_sm
+                  text_color: 16765286
+                  text_align: CENTER
+              - label:
+                  id: fc4_max_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 16739179
+                  text_align: RIGHT
+              - label:
+                  id: fc4_min_label
+                  width: 56
+                  text: --°
+                  text_font: font_small
+                  text_color: 7054335
+                  text_align: RIGHT
+  _p4_widgets_98:
+  - obj:
+      id: voip_tile
+      x: 0
+      y: 0
+      width: 1
+      height: 1
+      bg_color: 1119008
+      border_color: 4864888
+      border_width: 1
+      radius: 8
+      pad_all: 0
+      scrollable: false
+      scrollbar_mode: 'off'
+      widgets:
+      - obj:
+          id: call_idle_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          scrollbar_mode: 'off'
+          widgets:
+          - label:
+              id: call_idle_header_label
+              align: TOP_MID
+              y: 20
+              text: Keyboard
+              text_color: 8160255
+              text_font: font_ui_medium
+              clickable: true
+              gesture_bubble: false
+              on_click:
+              - script.execute: show_voip_keypad
+          - obj:
+              id: call_idle_header_rule
+              align: TOP_MID
+              y: 56
+              width: 112
+              height: 3
+              bg_color: 8160255
+              border_width: 0
+              radius: 2
+          - label:
+              id: call_idle_destination_label
+              align: TOP_MID
+              y: 82
+              width: 300
+              text: Destination
+              text_color: 9082022
+              text_font: font_small
+              text_align: CENTER
+          - label:
+              id: call_idle_peer_label
+              align: TOP_MID
+              y: 118
+              width: 300
+              text: '-'
+              text_color: 16777215
+              text_font: font_title
+              text_align: CENTER
+              long_mode: DOT
+          - label:
+              id: call_idle_contacts_label
+              align: TOP_MID
+              y: 172
+              text: 'Contacts: 0'
+              text_color: 9082022
+              text_font: font_small
+          - label:
+              id: call_idle_hint_label
+              align: TOP_MID
+              y: 212
+              width: 290
+              text: Swipe to browse or use controls
+              text_color: 6713477
+              text_font: font_small
+              text_align: CENTER
+              long_mode: DOT
+          - obj:
+              id: call_idle_swipe_area
+              align: TOP_MID
+              y: 80
+              width: 310
+              height: 170
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              clickable: true
+              gesture_bubble: false
+              on_swipe_left:
+              - voip_stack.next_contact: null
+              - script.execute: update_ic_idle_labels
+              on_swipe_right:
+              - voip_stack.prev_contact: null
+              - script.execute: update_ic_idle_labels
+          - button:
+              id: call_prev_btn
+              align: BOTTOM_LEFT
+              x: 22
+              y: -30
+              width: 78
+              height: 64
+              bg_color: 2435640
+              radius: 8
+              on_click:
+              - voip_stack.prev_contact: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: 󰅁
+                  text_color: 15067115
+                  text_font: font_action_icon
+          - button:
+              id: call_button_widget
+              align: BOTTOM_MID
+              y: -24
+              width: 92
+              height: 78
+              bg_color: 2278750
+              radius: 8
+              on_click:
+              - voip_stack.call_toggle: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: 󰏲
+                  text_color: 16777215
+                  text_font: font_action_icon
+          - button:
+              id: call_next_btn
+              align: BOTTOM_RIGHT
+              x: -22
+              y: -30
+              width: 78
+              height: 64
+              bg_color: 2435640
+              radius: 8
+              on_click:
+              - voip_stack.next_contact: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: 󰅂
+                  text_color: 15067115
+                  text_font: font_action_icon
+      - obj:
+          id: call_keypad_group
+          width: 1
+          height: 1
+          bg_color: 1119008
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          clickable: true
+          gesture_bubble: false
+          hidden: true
+          widgets:
+          - label:
+              id: call_keypad_header_label
+              align: TOP_MID
+              y: 20
+              text: Contacts
+              text_color: 8160255
+              text_font: font_ui_medium
+              clickable: true
+              gesture_bubble: false
+              on_click:
+              - script.execute: hide_voip_keypad
+          - obj:
+              id: call_keypad_header_rule
+              align: TOP_MID
+              y: 56
+              width: 100
+              height: 3
+              bg_color: 8160255
+              border_width: 0
+              radius: 2
+          - label:
+              id: call_keypad_value_label
+              align: TOP_MID
+              y: 74
+              width: 300
+              text: Enter extension or number
+              text_color: 16777215
+              text_font: font_small
+              text_align: CENTER
+              long_mode: DOT
+          - buttonmatrix:
+              id: call_keypad_matrix
+              align: TOP_MID
+              y: 100
+              width: 300
+              height: 252
+              bg_opa: TRANSP
+              border_width: 0
+              pad_row: 8
+              pad_column: 8
+              gesture_bubble: true
+              items:
+                bg_color: 2435640
+                text_color: 16777215
+                text_font: font_ui_medium
+                radius: 8
+              rows:
+              - buttons:
+                - text: '1'
+                - text: '2'
+                - text: '3'
+              - buttons:
+                - text: '4'
+                - text: '5'
+                - text: '6'
+              - buttons:
+                - text: '7'
+                - text: '8'
+                - text: '9'
+              - buttons:
+                - text: '*'
+                - text: '0'
+                - text: '#'
+              on_click:
+              - lambda: !lambda |-
+                  static constexpr char KEYS[] = "123456789*0#";
+                  if (x >= 12 || id(voip_dial_buffer).size() >= 32) return;
+                  id(voip_dial_buffer).push_back(KEYS[x]);
+                  lv_label_set_text(id(call_keypad_value_label), id(voip_dial_buffer).c_str());
+          - button:
+              align: BOTTOM_LEFT
+              x: 22
+              y: -24
+              width: 82
+              height: 58
+              bg_color: 2435640
+              radius: 8
+              on_click:
+              - lambda: !lambda |-
+                  id(voip_dial_buffer).clear();
+                  lv_label_set_text(id(call_keypad_value_label), "Enter extension or number");
+              widgets:
+              - label:
+                  align: CENTER
+                  text: CLEAR
+                  text_color: 15067115
+                  text_font: font_small
+          - button:
+              align: BOTTOM_MID
+              y: -24
+              width: 112
+              height: 58
+              bg_color: 2278750
+              radius: 8
+              on_click:
+              - if:
+                  condition:
+                    lambda: !lambda |-
+                      return !id(voip_dial_buffer).empty();
+                  then:
+                  - voip_stack.call:
+                      target: !lambda |-
+                        return id(voip_dial_buffer);
+                  - lambda: !lambda |-
+                      id(voip_dial_buffer).clear();
+                      lv_label_set_text(id(call_keypad_value_label), "Enter extension or number");
+              widgets:
+              - label:
+                  align: CENTER
+                  text: 󰏲
+                  text_color: 16777215
+                  text_font: font_action_icon
+          - button:
+              align: BOTTOM_RIGHT
+              x: -22
+              y: -24
+              width: 82
+              height: 58
+              bg_color: 2435640
+              radius: 8
+              on_click:
+              - lambda: !lambda |-
+                  if (!id(voip_dial_buffer).empty()) id(voip_dial_buffer).pop_back();
+                  lv_label_set_text(id(call_keypad_value_label), id(voip_dial_buffer).empty()
+                      ? "Enter extension or number" : id(voip_dial_buffer).c_str());
+              widgets:
+              - label:
+                  align: CENTER
+                  text: DEL
+                  text_color: 15067115
+                  text_font: font_ui_medium
+      - obj:
+          id: call_ringing_in_group
+          width: 1
+          height: 1
+          bg_color: 2754320
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              align: TOP_MID
+              y: 42
+              text: Incoming call
+              text_color: 16735086
+              text_font: font_ui_medium
+          - label:
+              id: call_ringing_in_peer_label
+              align: CENTER
+              y: -38
+              width: 300
+              text: ''
+              text_color: 16777215
+              text_font: font_title
+              text_align: CENTER
+              long_mode: DOT
+          - button:
+              align: BOTTOM_LEFT
+              x: 22
+              y: -38
+              width: 140
+              height: 78
+              bg_color: 2278750
+              radius: 8
+              on_click:
+              - voip_stack.answer_call: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: ANSWER
+                  text_color: 16777215
+                  text_font: font_ui_medium
+          - button:
+              align: BOTTOM_RIGHT
+              x: -22
+              y: -38
+              width: 140
+              height: 78
+              bg_color: 15680580
+              radius: 8
+              on_click:
+              - voip_stack.decline_call: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: DECLINE
+                  text_color: 16777215
+                  text_font: font_ui_medium
+      - obj:
+          id: call_ringing_out_group
+          width: 1
+          height: 1
+          bg_color: 2168330
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              id: call_ringing_out_status_label
+              align: TOP_MID
+              y: 42
+              text: CALLING
+              text_color: 16096779
+              text_font: font_ui_medium
+          - label:
+              id: call_ringing_out_peer_label
+              align: CENTER
+              y: -38
+              width: 300
+              text: ''
+              text_color: 16777215
+              text_font: font_title
+              text_align: CENTER
+              long_mode: DOT
+          - label:
+              align: CENTER
+              y: 22
+              text: Waiting for answer
+              text_color: 13029599
+              text_font: font_small
+          - button:
+              align: BOTTOM_MID
+              y: -38
+              width: 156
+              height: 78
+              bg_color: 15680580
+              radius: 8
+              on_click:
+              - voip_stack.call_toggle: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: HANG UP
+                  text_color: 16777215
+                  text_font: font_ui_medium
+      - obj:
+          id: call_in_call_group
+          width: 1
+          height: 1
+          bg_color: 402452
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              align: TOP_MID
+              y: 42
+              text: In call
+              text_color: 2278750
+              text_font: font_ui_medium
+          - label:
+              id: p4_call_media_route_label
+              align: TOP_MID
+              y: 78
+              width: 90%
+              text: ''
+              text_color: 9741240
+              text_font: font_body
+              text_align: CENTER
+              long_mode: DOT
+          - label:
+              id: call_in_call_peer_label
+              align: CENTER
+              y: -38
+              width: 300
+              text: ''
+              text_color: 16777215
+              text_font: font_title
+              text_align: CENTER
+              long_mode: DOT
+          - button:
+              align: BOTTOM_MID
+              y: -38
+              width: 156
+              height: 78
+              bg_color: 15680580
+              radius: 8
+              on_click:
+              - voip_stack.call_toggle: null
+              widgets:
+              - label:
+                  align: CENTER
+                  text: HANG UP
+                  text_color: 16777215
+                  text_font: font_ui_medium
+      - obj:
+          id: call_ended_group
+          width: 1
+          height: 1
+          bg_color: 1645861
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              id: call_ended_peer_label
+              align: CENTER
+              y: -44
+              width: 300
+              text: ''
+              text_color: 16777215
+              text_font: font_ui_medium
+              text_align: CENTER
+              long_mode: WRAP
+          - label:
+              id: call_ended_reason_label
+              align: CENTER
+              y: 42
+              width: 300
+              text: ''
+              text_color: 16765286
+              text_font: font_small
+              text_align: CENTER
+              long_mode: WRAP
+  _p4_widgets_99:
+  - label:
+      id: quick_controls_header
+      width: 300
+      height: 26
+      text: QUICK ACTIONS
+      text_color: 8246268
+      text_font: font_small
+      text_align: LEFT
+  _p4_widgets_101:
+  - button:
+      id: quick_settings_btn
+      width: 140
+      height: 56
+      bg_color: 2372681
+      radius: 8
+      on_click:
+      - lvgl.page.show:
+          id: settings_p4_page
+          animation: MOVE_TOP
+          time: 250ms
+      widgets:
+      - label:
+          align: CENTER
+          text: Settings
+          text_color: 16777215
+          text_font: font_small
+  _p4_widgets_103:
+  - button:
+      id: quick_mic_mute_btn
+      width: 140
+      height: 56
+      bg_color: 2827591
+      radius: 8
+      on_click:
+      - switch.toggle: mute
+      - delay: 100ms
+      - script.execute: draw_display
+      widgets:
+      - label:
+          id: quick_mic_mute_label
+          align: CENTER
+          text: Mic mute
+          text_color: 16777215
+          text_font: font_small
+  _p4_widgets_105:
+  - button:
+      id: quick_speaker_mute_btn
+      width: 140
+      height: 56
+      bg_color: 1390154
+      radius: 8
+      on_click:
+      - switch.toggle: speaker_mute
+      - delay: 100ms
+      - script.execute: draw_display
+      widgets:
+      - label:
+          id: quick_speaker_mute_label
+          align: CENTER
+          text: Speaker
+          text_color: 16777215
+          text_font: font_small
+  _p4_widgets_107:
+  - button:
+      id: quick_dnd_btn
+      width: 140
+      height: 56
+      bg_color: 4465949
+      radius: 8
+      on_click:
+      - switch.toggle: dnd_switch
+      - delay: 100ms
+      - script.execute: draw_display
+      widgets:
+      - label:
+          id: quick_dnd_label
+          align: CENTER
+          text: DND
+          text_color: 16777215
+          text_font: font_small
+  _p4_widgets_108:
+  - obj:
+      id: quick_controls_panel
+      x: 0
+      y: 0
+      width: 1
+      height: 1
+      bg_color: 725275
+      border_color: 3032674
+      border_width: 1
+      radius: 8
+      pad_all: 18
+      scrollable: false
+      scrollbar_mode: 'off'
+      layout:
+        type: FLEX
+        flex_flow: ROW_WRAP
+        flex_align_main: SPACE_BETWEEN
+        flex_align_cross: CENTER
+        pad_row: 12
+        pad_column: 10
+      widgets: ${ _p4_widgets_99 + _p4_widgets_101 + _p4_widgets_103 + _p4_widgets_105 + (_p4_widgets_107 if _fw_voip
+        else []) }
+  _p4_widgets_134:
+  - obj:
+      id: va_container
+      x: 0
+      y: 0
+      width: 1
+      height: 1
+      bg_color: 461590
+      border_color: 3103351
+      border_width: 1
+      radius: 8
+      pad_all: 0
+      scrollable: false
+      scrollbar_mode: 'off'
+      widgets:
+      - obj:
+          id: va_idle_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          scrollbar_mode: 'off'
+          widgets:
+          - label:
+              align: TOP_MID
+              y: 24
+              text: VOICE ASSISTANT
+              text_font: font_ui_medium
+              text_color: 8246268
+          - obj:
+              align: TOP_MID
+              y: 62
+              width: 110
+              height: 3
+              bg_color: 8246268
+              border_width: 0
+              radius: 2
+          - label:
+              id: va_hint_label
+              align: TOP_MID
+              y: 112
+              text: 'Push to talk or say:'
+              text_font: font_small
+              text_color: 9082022
+          - label:
+              id: va_wake_word_label
+              align: TOP_MID
+              y: 140
+              width: 400
+              text: ''
+              text_align: CENTER
+              text_font: font_small
+              text_color: 9082022
+              long_mode: DOT
+          - obj:
+              id: va_touch_area
+              align: BOTTOM_MID
+              y: -10
+              width: 400
+              height: 400
+              bg_opa: TRANSP
+              border_width: 0
+              scrollable: false
+              scrollbar_mode: 'off'
+              clickable: true
+              on_click: ${ _display_voice_action_0 if _fw_voice else [] }
+              widgets:
+              - animimg:
+                  id: idle_animation
+                  align: CENTER
+                  width: 400
+                  height: 400
+                  src:
+                  - idle_00
+                  - idle_01
+                  - idle_02
+                  - idle_03
+                  - idle_04
+                  - idle_05
+                  - idle_06
+                  - idle_07
+                  - idle_08
+                  - idle_09
+                  - idle_10
+                  - idle_11
+                  - idle_12
+                  - idle_13
+                  - idle_14
+                  - idle_15
+                  - idle_16
+                  - idle_17
+                  - idle_18
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_19
+                  - idle_18
+                  - idle_17
+                  - idle_16
+                  - idle_15
+                  - idle_14
+                  - idle_13
+                  - idle_12
+                  - idle_11
+                  - idle_10
+                  - idle_09
+                  - idle_08
+                  - idle_07
+                  - idle_06
+                  - idle_05
+                  - idle_04
+                  - idle_03
+                  - idle_02
+                  - idle_01
+                  duration: 6750ms
+                  auto_start: false
+      - obj:
+          id: va_listening_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              align: TOP_MID
+              y: 80
+              text: Listening...
+              text_color: 3066993
+              text_font: font_state
+          - image:
+              align: BOTTOM_MID
+              y: -10
+              src: img_listening
+              clickable: true
+              on_click: ${ _display_voice_action_1 if _fw_voice else [] }
+      - obj:
+          id: va_thinking_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              id: thinking_text_label
+              align: TOP_MID
+              y: 10
+              width: 460
+              text: ''
+              text_color: 16777215
+              text_font: font_body
+              long_mode: WRAP
+              text_align: CENTER
+          - label:
+              align: TOP_MID
+              y: 140
+              text: Thinking...
+              text_color: 15965202
+              text_font: font_state
+          - image:
+              align: BOTTOM_MID
+              y: -10
+              src: img_thinking
+              clickable: true
+              on_click: ${ _display_voice_action_2 if _fw_voice else [] }
+      - obj:
+          id: va_replying_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          scrollbar_mode: 'off'
+          hidden: true
+          widgets:
+          - label:
+              id: replying_text_label
+              align: TOP_MID
+              y: 10
+              width: 460
+              text: ''
+              text_color: 16777215
+              text_font: font_response
+              long_mode: WRAP
+              text_align: CENTER
+          - image:
+              id: mood_bg
+              align: BOTTOM_MID
+              y: -10
+              src: mood_neutral
+              clickable: true
+              on_click: ${ _display_voice_action_3 if _fw_voice else [] }
+      - obj:
+          id: va_error_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              align: TOP_MID
+              y: 80
+              text: Error
+              text_color: 15158332
+              text_font: font_state
+          - image:
+              align: BOTTOM_MID
+              y: -10
+              src: img_error
+              clickable: true
+              on_click: ${ _display_voice_action_4 if _fw_voice else [] }
+      - obj:
+          id: va_muted_group
+          width: 1
+          height: 1
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          scrollable: false
+          hidden: true
+          widgets:
+          - label:
+              align: CENTER
+              y: -40
+              text: Muted
+              text_color: 15158332
+              text_font: font_state
+          - label:
+              align: CENTER
+              y: 20
+              text: Touch to unmute
+              text_color: 8947848
+              text_font: font_body
+          - button:
+              align: CENTER
+              y: 100
+              width: 200
+              height: 60
+              bg_color: 3066993
+              radius: 10
+              on_click:
+              - switch.turn_off: mute
+              widgets:
+              - label:
+                  align: CENTER
+                  text: Unmute
+                  text_color: 16777215
+                  text_font: font_ui_medium
+  _p4_widgets_135:
+  - id: main_page
+    bg_color: 329485
+    on_unload:
+    - script.stop: ai_animation_loop
+    on_swipe_up:
+    - lvgl.page.show:
+        id: settings_p4_page
+        animation: MOVE_TOP
+        time: 250ms
+    widgets: ${ _p4_widgets_50 + (_p4_widgets_98 if _fw_voip else []) + _p4_widgets_108 + _p4_widgets_134 }
+  _p4_widgets_153:
+  - label:
+      width: ${settings_mid_width}
+      text: Auto answer
+      text_align: LEFT
+      text_color: 16777215
+      text_font: ${settings_label_font}
+  _p4_widgets_154:
+  - switch:
+      id: ui_auto_answer_sw
+      width: ${settings_switch_width}
+      height: ${settings_switch_height}
+      state:
+        checked: !lambda |-
+          return id(auto_answer_switch).state;
+      on_value:
+      - lambda: !lambda |-
+          if (x == id(auto_answer_switch).state) return;
+          if (x) id(auto_answer_switch).turn_on();
+          else id(auto_answer_switch).turn_off();
+  _p4_widgets_156:
+  - label:
+      width: ${settings_mid_width}
+      text: Do Not Disturb
+      text_align: LEFT
+      text_color: 16777215
+      text_font: ${settings_label_font}
+  _p4_widgets_157:
+  - switch:
+      id: ui_dnd_sw
+      width: ${settings_switch_width}
+      height: ${settings_switch_height}
+      state:
+        checked: !lambda |-
+          return id(dnd_switch).state;
+      on_value:
+      - lambda: !lambda |-
+          if (x == id(dnd_switch).state) return;
+          if (x) id(dnd_switch).turn_on();
+          else id(dnd_switch).turn_off();
+  _p4_widgets_172:
+  - label:
+      width: ${settings_mid_width}
+      text: Wake word
+      text_align: LEFT
+      text_color: 16777215
+      text_font: ${settings_label_font}
+  _p4_widgets_173:
+  - switch:
+      id: ui_wake_word_sw
+      width: ${settings_switch_width}
+      height: ${settings_switch_height}
+      state:
+        checked: !lambda |-
+          return id(wake_word_switch).state;
+      on_value:
+      - lambda: !lambda |-
+          if (x == id(wake_word_switch).state) return;
+          if (x) id(wake_word_switch).turn_on();
+          else id(wake_word_switch).turn_off();
+  _p4_widgets_176:
+  - id: settings_p4_page
+    bg_color: 2105376
+    on_swipe_down:
+    - lvgl.page.show:
+        id: main_page
+        animation: MOVE_BOTTOM
+        time: 250ms
+    widgets:
+    - obj:
+        id: settings_page_wrapper
+        x: 0
+        y: 0
+        width: 1
+        height: 1
+        bg_color: 2105376
+        border_width: 0
+        pad_top: 10
+        pad_bottom: 10
+        pad_left: 20
+        pad_right: 20
+        scrollable: true
+        scrollbar_mode: active
+        on_swipe_down:
+        - lvgl.page.show:
+            id: main_page
+            animation: MOVE_BOTTOM
+            time: 250ms
+        layout:
+          type: flex
+          flex_flow: COLUMN
+          flex_align_main: START
+          flex_align_cross: CENTER
+          pad_row: 4
+        widgets:
+        - label:
+            width: ${settings_row_width}
+            text: P4 Controls
+            text_align: CENTER
+            text_color: 16777215
+            text_font: ${settings_label_font}
+        - obj:
+            width: ${settings_row_width}
+            height: 2
+            bg_color: 4473924
+            border_width: 0
+            pad_all: 0
+        - label:
+            width: ${settings_row_width}
+            text: Audio
+            text_align: CENTER
+            text_color: 8956671
+            text_font: ${settings_label_font}
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: Master volume
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - slider:
+                width: ${settings_control_width}
+                id: ui_speaker_vol_slider
+                height: ${settings_slider_height}
+                adv_hittest: true
+                gesture_bubble: true
+                min_value: 0
+                max_value: 100
+                value: !lambda |-
+                  return id(master_volume).state;
+                on_release:
+                - number.set:
+                    id: master_volume
+                    value: !lambda |-
+                      return x;
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: Mic gain
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - slider:
+                width: ${settings_control_width}
+                id: ui_mic_vol_slider
+                height: ${settings_slider_height}
+                adv_hittest: true
+                gesture_bubble: true
+                min_value: ${mic_gain_min}
+                max_value: ${mic_gain_max}
+                value: !lambda |-
+                  return id(mic_gain).state;
+                on_release:
+                - number.set:
+                    id: mic_gain
+                    value: !lambda |-
+                      return x;
+        - obj:
+            width: ${settings_row_width}
+            height: 2
+            bg_color: 4473924
+            border_width: 0
+            pad_all: 0
+        - label:
+            width: ${settings_row_width}
+            text: Call and Mute
+            text_align: CENTER
+            text_color: 8956671
+            text_font: ${settings_label_font}
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: Speaker mute
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - switch:
+                id: ui_speaker_mute_sw
+                width: ${settings_switch_width}
+                height: ${settings_switch_height}
+                state:
+                  checked: !lambda |-
+                    return id(speaker_mute).state;
+                on_value:
+                - lambda: !lambda |-
+                    if (x == id(speaker_mute).state) return;
+                    if (x) id(speaker_mute).turn_on();
+                    else id(speaker_mute).turn_off();
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: Mic mute
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - switch:
+                id: ui_mic_mute_sw
+                width: ${settings_switch_width}
+                height: ${settings_switch_height}
+                state:
+                  checked: !lambda |-
+                    return id(mute).state;
+                on_value:
+                - lambda: !lambda |-
+                    if (x == id(mute).state) return;
+                    if (x) id(mute).turn_on();
+                    else id(mute).turn_off();
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets: ${ (_p4_widgets_153 if _fw_voip else []) + (_p4_widgets_154 if _fw_voip else []) }
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets: ${ (_p4_widgets_156 if _fw_voip else []) + (_p4_widgets_157 if _fw_voip else []) }
+        - obj:
+            width: ${settings_row_width}
+            height: 2
+            bg_color: 4473924
+            border_width: 0
+            pad_all: 0
+        - label:
+            width: ${settings_row_width}
+            text: Echo Cancellation
+            text_align: CENTER
+            text_color: 8956671
+            text_font: ${settings_label_font}
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: AEC
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - switch:
+                id: ui_aec_sw
+                width: ${settings_switch_width}
+                height: ${settings_switch_height}
+                state:
+                  checked: !lambda |-
+                    return id(aec_switch).state;
+                on_value:
+                - lambda: !lambda |-
+                    if (x == id(aec_switch).state) return;
+                    if (x) id(aec_switch).turn_on();
+                    else id(aec_switch).turn_off();
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: AEC mode
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - dropdown:
+                id: ui_aec_mode_dd
+                width: ${settings_dropdown_width}
+                options:
+                - fd_low_cost
+                - fd_high_perf
+                selected_text: !lambda |-
+                  return id(aec_mode_select).current_option();
+                on_value:
+                - select.set_index:
+                    id: aec_mode_select
+                    index: !lambda |-
+                      return x;
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets:
+            - label:
+                width: ${settings_mid_width}
+                text: Voice Activity Detector
+                text_align: LEFT
+                text_color: 16777215
+                text_font: ${settings_label_font}
+            - switch:
+                id: ui_vad_sw
+                width: ${settings_switch_width}
+                height: ${settings_switch_height}
+                state:
+                  checked: !lambda |-
+                    return id(vad_switch).state;
+                on_value:
+                - lambda: !lambda |-
+                    if (x) id(vad_switch).turn_on();
+                    else id(vad_switch).turn_off();
+        - obj:
+            width: ${settings_row_width}
+            height: 2
+            bg_color: 4473924
+            border_width: 0
+            pad_all: 0
+        - label:
+            width: ${settings_row_width}
+            text: Voice Assistant
+            text_align: CENTER
+            text_color: 8956671
+            text_font: ${settings_label_font}
+        - obj:
+            width: ${settings_row_width}
+            height: ${settings_row_height}
+            bg_opa: TRANSP
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: SPACE_BETWEEN
+              flex_align_cross: CENTER
+            widgets: ${ (_p4_widgets_172 if _fw_wake_word else []) + (_p4_widgets_173 if _fw_wake_word else [])
+              }
+  _display_voice_action_0:
+  - runtime_controller.event:
+      id: runtime
+      event: manual_voice_toggle
+  _display_voice_action_1:
+  - runtime_controller.event:
+      id: runtime
+      event: manual_voice_toggle
+  _display_voice_action_2:
+  - runtime_controller.event:
+      id: runtime
+      event: manual_voice_toggle
+  _display_voice_action_3:
+  - runtime_controller.event:
+      id: runtime
+      event: manual_voice_toggle
+  _display_voice_action_4:
+  - runtime_controller.event:
+      id: runtime
+      event: manual_voice_toggle

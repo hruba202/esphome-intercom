@@ -1,0 +1,75 @@
+# Device wiring and consumer parameters. Shared feature modules own lifecycle and controls.
+defaults:
+  aec_mode_options: ${ aec_mode_options | default(["fd_low_cost", "fd_high_perf"]) }
+substitutions:
+  firmware_led_package: ../../features/shared/absent.yaml
+  firmware_status_led_requires_display: true
+  firmware_button_stops_timer: false
+  aec_initial_mode: fd_high_perf
+  aec_mode_restore_value: true
+  firmware_voice_binding:
+    voice_assistant:
+      microphone: mic_main
+      media_player: speaker_media_player
+      noise_suppression_level: 2
+      auto_gain: 31dBFS
+      volume_multiplier: 2.0
+  firmware_wake_word_binding:
+    micro_wake_word:
+      microphone: mic_main
+      models:
+      - model: alexa
+  firmware_voip_binding:
+    voip_stack:
+      use_ha_as_first_contact: true
+      task_stacks_in_psram: true
+      signaling_buffers_in_psram: true
+      buffers_in_psram: true
+      audio:
+        tx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx:
+          sample_rate: 48000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx_formats:
+        - sample_rate: 32000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 32
+      microphone: mic_main
+      speaker: voip_speaker_input
+      delete_contact_missing_from:
+        updates_number: 1
+  firmware_controls:
+    packages:
+      buttons: !include '../features/controls/primary_button.yaml'
+      processing: !include '../features/audio_controls/aec_mode.yaml'
+  _box3_diagnostics: !include '../diagnostics/native.yaml'
+runtime_controller:
+  storage_in_psram: true
+packages:
+  hardware: !include '../board/esp32-s3-box-3-aec.yaml'
+  display_hardware: !include '${ ''../board/box3/display_aec.yaml'' if ''display'' in firmware_features else ''../features/shared/absent.yaml''
+    }'
+  sensor_dock: !include '${ ''../board/box3/sensor_dock_aec.yaml'' if ''sensor_dock'' in firmware_features else
+    ''../features/shared/absent.yaml'' }'
+  audio: !include '../audio/profiles/esp32-s3-box-3-aec.yaml'
+  diagnostics: ${ _box3_diagnostics if 'diagnostics' in firmware_features else {} }
+  application: !include '../profiles/application.yaml'

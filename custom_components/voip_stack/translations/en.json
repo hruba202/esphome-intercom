@@ -14,9 +14,7 @@
           "media_capture": "Record private call audio for diagnostics",
           "experimental_sip_video": "Enable SIP video for the Home Assistant softphone",
           "sip_registrar_enabled": "Enable local SIP accounts",
-          "trunk_enabled": "Enable optional SIP trunk",
-          "voicemail_enabled": "Enable voicemail",
-          "parking_enabled": "Enable call parking"
+          "trunk_enabled": "Enable optional SIP trunk"
         },
         "data_description": {
           "sip_port": "Listen port for the HA SIP endpoint. HA accepts SIP signaling over both UDP and TCP on this port.",
@@ -139,6 +137,15 @@
           "hold_media": "Hold audio",
           "clear_hold_media": "Remove the saved hold audio"
         }
+      },
+      "reconfigure": {
+        "title": "VoIP Stack settings",
+        "description": "Choose which settings to configure. All PBX applications are available; configure their resources when needed.",
+        "menu_options": {
+          "user": "General settings",
+          "parking": "Call parking",
+          "voicemail": "Voicemail voice"
+        }
       }
     },
     "error": {
@@ -157,7 +164,8 @@
       "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group.",
       "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec.",
       "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination.",
-      "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty."
+      "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty.",
+      "parking_slots_in_use": "Retrieve or end calls in the removed slots before changing the parking slot list."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",
@@ -484,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Duplicate phone extensions",
       "description": "These destinations use the same extension: {conflicts}. Assign a different extension to each phone, contact or Assist endpoint. Calls to an ambiguous extension are rejected; names and explicit SIP addresses remain available. For an ESPHome phone, change its extension on the device. This issue disappears when the phonebook has no conflicts."
+    },
+    "parking_configuration": {
+      "title": "Parking configuration needs attention",
+      "description": "Choose valid parking access and slot numbers that do not conflict with existing phones, contacts or groups. Existing destinations remain unchanged."
+    },
+    "mailbox_route_conflict": {
+      "title": "Voicemail feature codes conflict",
+      "description": "A phone, contact or group uses a voicemail feature address. Rename the conflicting destination; existing routes remain unchanged."
     }
   },
   "exceptions": {

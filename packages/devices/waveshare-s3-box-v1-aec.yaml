@@ -1,0 +1,109 @@
+# Device wiring and consumer parameters. Shared feature modules own lifecycle and controls.
+defaults:
+  aec_mode_options: ${ aec_mode_options | default(["sr_low_cost", "sr_high_perf"]) }
+  firmware_processing_modes: ${aec_mode_options}
+  _v1_diagnostics: !include '../diagnostics/native.yaml'
+substitutions:
+  firmware_lvgl: true
+  firmware_primary_button_id: main_button
+  firmware_display_package: ../features/presentation/devices/waveshare-s3-box-v1-aec.yaml
+  firmware_voice_binding:
+    voice_assistant:
+      id: va
+      microphone: mic_afe
+      media_player: speaker_media_player
+      noise_suppression_level: 0
+      auto_gain: 0dBFS
+      volume_multiplier: 2.0
+  firmware_wake_word_binding:
+    micro_wake_word:
+      id: mww
+      microphone: mic_afe
+      stop_after_detection: false
+      models:
+      - model: alexa
+  firmware_voip_binding:
+    voip_stack:
+      use_ha_as_first_contact: true
+      task_stacks_in_psram: true
+      signaling_buffers_in_psram: true
+      buffers_in_psram: true
+      id: phone
+      extension: '101'
+      audio:
+        tx:
+          sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        tx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx:
+          sample_rate: 48000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx_formats:
+        - sample_rate: 32000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 32
+      microphone: mic_afe
+      speaker: voip_speaker_input
+      delete_contact_missing_from:
+        updates_number: 1
+    speaker: []
+  firmware_music_binding:
+    media_source:
+    - id: !extend 'media_http_source'
+      buffer_size: 65536
+      task_stack_in_psram: true
+    speaker: []
+  firmware_announcement_binding:
+    media_source:
+    - id: !extend 'announcement_http_source'
+      buffer_size: 65536
+      task_stack_in_psram: true
+    speaker: []
+  firmware_controls:
+    packages:
+      buttons: !include '../features/controls/primary_button.yaml'
+      mode: !include '../features/audio_controls/aec_mode.yaml'
+  aec_initial_mode: sr_low_cost
+  aec_mode_restore_value: true
+  firmware_boot_display_actions:
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  - script.execute: compute_layout_metrics
+  - script.execute: reposition_widgets
+  - lambda: |-
+      id(g_settings_pages).clear();
+      id(g_settings_pages).push_back(id(settings_continuous_page)->obj);
+  - script.execute: backlight_timer
+runtime_controller:
+  storage_in_psram: true
+packages:
+  hardware: !include '../board/waveshare-s3-box-v1-aec.yaml'
+  display_hardware: !include '${ ''../board/waveshare-s3-box-v1-aec-display.yaml'' if ''display'' in firmware_features
+    else ''../features/shared/absent.yaml'' }'
+  audio: !include '../audio/profiles/waveshare-s3-box-v1-aec.yaml'
+  application: !include '../profiles/application.yaml'
+  flac_memory: !include '../audio/flac_codecs_psram.yaml'
+  diagnostics: ${ _v1_diagnostics if 'diagnostics' in firmware_features else {} }
+  boot: !include '../features/shared/round_boot.yaml'
