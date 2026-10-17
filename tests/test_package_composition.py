@@ -369,8 +369,9 @@ def test_legacy_runtime_packages_resolve_to_the_canonical_bindings(tmp_path):
         # Only substitute Git transport with an isolated local cache. Package
         # merge, action composition and IDs still use ESPHome's native parser.
         import re
-        text = re.sub(r'github://n-IA-hane/esphome-intercom/(packages/[^\s]+)@main',
+        text = re.sub(r'github://n-IA-hane/esphome-intercom/(packages/[^\s@]+)@[^\s]+',
                       lambda m: '!include ' + str(ROOT / m[1]), text)
+        assert 'github://n-IA-hane/esphome-intercom/packages/' not in text
         package.write_text(text)
     config = tmp_path / 'legacy.yaml'
     config.write_text('packages:\n  runtime: !include ' + str(legacy / 'runtime_controller/full_controller_no_led.yaml') + '\n')
