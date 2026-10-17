@@ -99,6 +99,7 @@ substitutions:
 runtime_controller:
   storage_in_psram: true
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/waveshare-s3-box-v1-aec.yaml'
   display_hardware: !include '${ ''../board/waveshare-s3-box-v1-aec-display.yaml'' if ''display'' in firmware_features
     else ''../features/shared/absent.yaml'' }'

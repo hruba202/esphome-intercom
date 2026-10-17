@@ -6,6 +6,7 @@ defaults:
   _phone_no_led_status: !include '../features/voip/no_status_light.yaml'
   _phone_telephone: !include '../features/voip/devices/waveshare-s3-phone.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/waveshare-s3-phone.yaml'
   audio: !include '../audio/profiles/waveshare-s3-phone.yaml'
   telephone: ${ _phone_telephone if 'voip' in firmware_features else {} }

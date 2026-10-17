@@ -172,6 +172,86 @@ def test_video_controls_do_not_overlap_timer_or_each_other(
 
 @pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
 @pytest.mark.parametrize("width", [280, 500])
+@pytest.mark.parametrize("endpoint_known", [False, True])
+def test_esp_mirror_keeps_call_status_without_duplicate_activity(
+    width, endpoint_known, tmp_path
+):
+    """Render the real mirror card using ESP entities and shared call identities."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as runner:
+        browser = runner.chromium.launch(
+            executable_path=shutil.which("chromium"), headless=True
+        )
+        try:
+            page = browser.new_page(viewport={"width": width + 40, "height": 550})
+
+            def serve(route):
+                name = route.request.url.split("/")[-1].split("?")[0]
+                path = FRONTEND / name
+                route.fulfill(
+                    content_type="text/javascript" if name.endswith(".js") else "text/html",
+                    body=path.read_text() if name.endswith(".js") and path.is_file()
+                    else "<html><body></body></html>",
+                )
+
+            page.route("http://card.test/**", serve)
+            page.goto("http://card.test/")
+            page.evaluate("""async ({width, endpointKnown}) => {
+                document.body.style.cssText='margin:20px;background:#161d1a;color:#ddd;font-family:Arial';
+                await import('/voip-stack-card.js');
+                const card=document.createElement('voip-stack-card');window.card=card;
+                card.style.cssText=`display:block;width:${width}px;--ha-card-background:#25352d;--primary-text-color:#eee;--secondary-text-color:#bbb;--primary-color:#75b596`;
+                card.config={mode:'esp_mirror',device_id:'ws3-device',name:'Waveshare S3'};
+                card._activeDeviceInfo={device_id:'ws3-device',name:'Waveshare S3',
+                    ...(endpointKnown?{endpoint_id:'ws3'}:{})};
+                card._voipStateEntityId='sensor.ws3_state';
+                card._destinationEntityId='sensor.ws3_destination';
+                card._callerEntityId='sensor.ws3_caller';
+                card._hass={language:'en',config:{location_name:'Home'},states:{
+                    'sensor.ws3_state':{state:'remote_ringing'},
+                    'sensor.ws3_destination':{state:'Kitchen'},
+                    'sensor.ws3_caller':{state:''},
+                }};
+                window.activity={parked:['701'],phones:[
+                    {endpoint_id:'ws3',device_id:'ws3-device',name:'Waveshare S3',state:'calling',call_ids:['shared-call']},
+                    {endpoint_id:'kitchen',device_id:'kitchen-device',name:'Kitchen',state:'ringing',call_ids:['shared-call']},
+                    {endpoint_id:'office',device_id:'office-device',name:'Office',state:'ringing',call_ids:['unrelated-call']},
+                ]};
+                card._onCallEvent({event_type:'voip_stack.activity',data:activity});
+                document.body.append(card);
+                window.setState=state=>{card._hass.states['sensor.ws3_state']={state};card._render();};
+                window.rows=()=>[...card._els.phoneActivity.children].map(e=>e.textContent);
+            }""", {"width": width, "endpointKnown": endpoint_known})
+            page.wait_for_function("card._els.card.style.getPropertyValue('--voip-button-size') !== ''")
+            page.screenshot(path=str(tmp_path / "esp-mirror-ringing.png"), full_page=True)
+            assert page.evaluate("card._els.statusText.textContent") == "Kitchen is ringing..."
+            assert page.evaluate("rows()") == ["Office: Ringing"]
+            assert page.evaluate("card._els.parkingNotice.textContent") == "Parked in slot: 701"
+            assert page.evaluate("card._softphoneSnapshot") is None
+            for state in ("calling", "connecting", "ringing", "incoming", "answering", "in_call", "terminating"):
+                page.evaluate("state=>setState(state)", state)
+                assert page.evaluate("rows()") == ["Office: Ringing"], state
+
+            # Call identity, not the displayed contact or a cached bridge event,
+            # excludes activity. Another phone with the same name stays visible.
+            page.evaluate("""()=>{activity.phones[2].name='Kitchen';
+                card._hass.states['sensor.ws3_destination']={state:'Unrelated selection'};
+                setState('remote_ringing');}""")
+            assert page.evaluate("rows()") == ["Kitchen: Ringing"]
+            page.evaluate("setState('idle')")
+            assert page.evaluate("rows()") == ["Kitchen: Ringing", "Kitchen: Ringing"]
+
+            # If the endpoint has no current dialog in the projection, do not
+            # hide a similarly named phone that is ringing on a different call.
+            page.evaluate("""()=>{activity.phones=activity.phones.slice(1);
+                setState('remote_ringing');}""")
+            assert page.evaluate("rows()") == ["Kitchen: Ringing", "Kitchen: Ringing"]
+        finally:
+            browser.close()
+
+
+@pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
+@pytest.mark.parametrize("width", [280, 500])
 @pytest.mark.parametrize("ringing", [False, True])
 def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
@@ -192,6 +272,9 @@ def test_activity_lists_leave_call_buttons_unchanged(width, ringing, tmp_path):
                 const p=customElements.get('voip-stack-card').prototype;
                 const owner={shadowRoot:host.attachShadow({mode:'open'}),_attachEventHandlers(){},
                     _getSoftphoneEndpointId(){return 'mine'},_getConfigDeviceId(){return 'my-device'},_t:v=>v,
+                    _isHaSoftphoneMode(){return true},
+                    _getEspState(){return p._getEspState.call(this)},
+                    _sessionCallId(){return p._sessionCallId.call(this)},
                     _measureLayout(){p._measureLayout.call(this)},_observeLayout(){p._observeLayout.call(this)},
                     _layoutPhoneActivity(){p._layoutPhoneActivity.call(this)}};
                 owner._resizeObserver=new ResizeObserver(()=>owner._measureLayout());

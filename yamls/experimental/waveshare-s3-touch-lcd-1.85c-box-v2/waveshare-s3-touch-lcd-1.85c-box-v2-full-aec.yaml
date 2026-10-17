@@ -1,6 +1,6 @@
 # =============================================================================
 # Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2 / FULL / SKU 30684
-# FULL AEC candidate for V2. Not hardware-qualified; check the flash budget before use.
+# FULL AEC candidate for V2. See README for measured hardware checks and remaining limits.
 # Eight animation poses match the maintained AFE profile; see this folder's README.
 # Keep AEC capture on Core 1 and MWW inference on Core 0 for this candidate.
 # One processed microphone plus the hardware playback reference; round-screen UI retained.

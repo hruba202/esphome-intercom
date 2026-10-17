@@ -11,5 +11,6 @@ defaults:
   voice_pe_base_ref: ${ voice_pe_base_ref | default('d4e6fa43d6a1a7d342b7d4d403567e06516719de') }
   _voice_pe_phone: !include '../features/voip/devices/voice_pe.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   official_firmware: github://esphome/home-assistant-voice-pe/home-assistant-voice.yaml@${voice_pe_base_ref}
   telephone: ${ _voice_pe_phone if 'voip' in firmware_features else {} }

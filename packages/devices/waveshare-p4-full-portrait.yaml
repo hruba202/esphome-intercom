@@ -97,6 +97,7 @@ substitutions:
   afe_initial_mode: fd_high_perf
   afe_mode_restore_value: false
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/waveshare-p4-full-portrait.yaml'
   display_hardware: !include '${ ''../board/waveshare-p4-full-portrait-display.yaml'' if ''display'' in firmware_features
     else ''../features/shared/absent.yaml'' }'

@@ -108,6 +108,7 @@ runtime_controller:
   id: runtime
   storage_in_psram: true
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/spotpear_ball_v2.yaml'
   display_hardware: !include '${ ''../board/spotpear_display.yaml'' if ''display'' in firmware_features else ''../features/shared/absent.yaml''
     }'

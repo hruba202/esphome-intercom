@@ -15,6 +15,9 @@ esp32:
     sdkconfig_options:
       CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB: y
       CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_1: y
+      # Release finite Wi-Fi RX buffers before concurrent HTTP readers retain
+      # their payloads in lwIP, leaving driver buffers available for VoIP RTP.
+      CONFIG_LWIP_L2_TO_L3_COPY: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: n
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: y

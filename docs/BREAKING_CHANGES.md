@@ -62,6 +62,12 @@ voices, mailbox settings and recordings are preserved. No mailbox is created
 and no forwarding rule is added by the migration. Per-phone mailbox removal
 remains an explicit destructive operation.
 
+This deliberately changes a previous global `enabled: false`: those application
+switches are removed rather than preserved as hidden disable flags. Application
+availability does not create mailboxes or start call recording. Review feature
+codes and each phone's resource/routing settings when migrating an installation
+that previously disabled parking or voicemail globally.
+
 Parking defaults to access 700 and slots 701-720. Previously disabled feature
 codes become available where they do not conflict with existing destinations.
 Conflicting routes are preserved and reported in Repairs; correct the feature

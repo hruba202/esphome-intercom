@@ -65,6 +65,7 @@ substitutions:
 runtime_controller:
   storage_in_psram: true
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/esp32-s3-box-3-afe.yaml'
   display_hardware: !include '${ ''../board/box3/display_afe.yaml'' if ''display'' in firmware_features else ''../features/shared/absent.yaml''
     }'

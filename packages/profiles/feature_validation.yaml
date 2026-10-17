@@ -1,0 +1,6 @@
+# Python schema validation only: no generated component, task, entity or runtime state.
+external_components:
+  - source: ${ext_components_source}
+    components: [firmware_feature_check]
+firmware_feature_check:
+  requested: ${firmware_features}

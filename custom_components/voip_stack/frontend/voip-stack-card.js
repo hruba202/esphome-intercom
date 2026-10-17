@@ -2077,12 +2077,21 @@ class VoipStackCard extends HTMLElement {
     const deviceId = this._getConfigDeviceId();
     const activity = this._phoneActivity || {};
     const active = ["calling", "connecting", "remote_ringing", "ringing", "incoming", "answering", "in_call", "terminating"]
-      .includes(this._softphoneSnapshot?.state);
+      .includes(this._getEspState().toLowerCase());
     const peer = active ? this._activeSoftphonePeerDevice() : null;
-    const callId = active ? String(this._softphoneSnapshot?.call_id || "") : "";
+    // Mirrors have ESP entity state, not a browser session snapshot. The shared
+    // activity projection already identifies their calls, even before answer or
+    // when this card was opened after the bridge event.
+    const ownActivity = active && !this._isHaSoftphoneMode()
+      ? (activity.phones || []).find(phone =>
+        (ownId && phone.endpoint_id === ownId) || (deviceId && phone.device_id === deviceId))
+      : null;
+    const callIds = new Set(active
+      ? [this._sessionCallId(), ...(ownActivity?.call_ids || [])].filter(Boolean)
+      : []);
     const parked = (activity.parked || []).map(slot => `${this._t("Parked in slot")}: ${slot}`);
     const phones = (activity.phones || [])
-      .filter(phone => (!callId || !(phone.call_ids || []).includes(callId)) &&
+      .filter(phone => !(phone.call_ids || []).some(callId => callIds.has(callId)) &&
         phone.endpoint_id !== ownId && (!deviceId || phone.device_id !== deviceId) &&
         (!peer?.device_id || phone.device_id !== peer.device_id) &&
         (!peer?.endpoint_id || phone.endpoint_id !== peer.endpoint_id))

@@ -66,6 +66,7 @@ substitutions:
       native_audio: !include '../features/audio_controls/native_controls.yaml'
   _fw_diagnostics: !include '../diagnostics/native.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/generic-s3-native.yaml'
   audio: !include '../audio/profiles/generic-s3-native.yaml'
   application: !include '../profiles/application.yaml'

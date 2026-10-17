@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from homeassistant.core import ServiceCall
+from homeassistant.core import ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.voip_stack.dial_fork import DialDisposition, ForkStrategy
@@ -166,7 +166,7 @@ async def test_declined_browser_pickup_retries_preserve_canonical_state(trunks):
 
     events = []
     unsubscribe = runtime.hass.bus.async_listen(
-        CALL_EVENT, lambda event: events.append(event.data)
+        CALL_EVENT, callback(lambda event: events.append(event.data))
     )
     revision = session.revision
     for _ in range(3):
@@ -266,8 +266,11 @@ async def test_browser_candidate_rollback_is_attempt_and_generation_scoped(
     events = []
     from custom_components.voip_stack.websocket_api import CALL_EVENT
 
+    # Observe publication order on HA's loop, just like the WebSocket consumer.
+    # An unmarked lambda is dispatched to the executor, whose threads can append
+    # the terminal event before the earlier ringing event even after draining.
     unsubscribe = runtime.hass.bus.async_listen(
-        CALL_EVENT, lambda event: events.append(event.data)
+        CALL_EVENT, callback(lambda event: events.append(event.data))
     )
     before_members = route["ring_group_endpoint_ids"]
     before_metadata = session.metadata["ring_endpoint_ids"]

@@ -208,8 +208,16 @@ removing one feature does not promise that every related library disappears.
 
 If a dependency is absent, its dependent feature is not instantiated. For example,
 `sendspin` without `music`, or `wake_word` without `voice`, contributes no consumer.
+Validation prints the requested features and an explicit warning for each such
+selection, for example `Firmware feature 'sendspin' is disabled: requires music`.
+Add the dependency or remove the unused entry. Unknown names such as `voiip` are
+configuration errors, with the supported choices shown by ESPHome.
+
+This check is a Python schema used while ESPHome validates the YAML. It creates no
+firmware component, task, entity or runtime state and never enables missing
+dependencies. The native package expressions remain responsible for composition.
 Use the documented names; the list is not a mechanism for loading arbitrary
-component names.
+component names. Hardware capabilities still come from the chosen board profile.
 
 Announcement playback is a shared dependency of voice, timers and configured
 ringtones. Removing music does not remove voice replies. One physical speaker

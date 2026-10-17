@@ -75,6 +75,7 @@ substitutions:
   _fw_diagnostics: !include '../diagnostics/native.yaml'
   _fw_voip_debug: !include '../voip/debug.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/waveshare_s3_audio.yaml'
   audio: !include '../audio/profiles/waveshare_s3_afe.yaml'
   application: !include '../profiles/application.yaml'

@@ -1045,6 +1045,13 @@ async def test_route_forward_invalidates_real_sip_pickup_before_ordinary_answer_
         session = next(iter(runtime.calls.sessions.values()))
         route = session.artifacts.pending_route
         await wait_for(lambda: runtime.calls.resource_for(session.call_id, "fork_answer") is not None)
+        # The peer's INVITE event only confirms that it sent 180. Wait until
+        # the PBX has consumed that progress and published this leg as ringing;
+        # otherwise the pickup can legitimately fail before testing arbitration.
+        await wait_for(lambda: any(
+            leg.endpoint_id == "sip:bedroom0" and leg.state == "remote_ringing"
+            for leg in session.legs.values()
+        ))
         controls = [t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-control-browser:route-control"]
         branches = [t for t in asyncio.all_tasks() if t.get_name() == "voip-dial-fork-branches"]
         assert len(controls) == len(branches) == 1

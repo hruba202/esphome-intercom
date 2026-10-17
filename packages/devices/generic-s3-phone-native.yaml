@@ -6,6 +6,7 @@ defaults:
   _phone_no_led_status: !include '../features/voip/no_status_light.yaml'
   _phone_telephone: !include '../features/voip/devices/generic-s3-phone-native.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/generic-s3-phone-native.yaml'
   audio: !include '../audio/profiles/generic-s3-phone-native.yaml'
   telephone: ${ _phone_telephone if 'voip' in firmware_features else {} }

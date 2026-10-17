@@ -61,6 +61,7 @@ substitutions:
       processing: !include '../features/audio_controls/aec_mode.yaml'
   _fw_diagnostics: !include '../diagnostics/native.yaml'
 packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
   hardware: !include '../board/generic-s3-dual-aec.yaml'
   audio: !include '../audio/profiles/generic-s3-dual-aec.yaml'
   application: !include '../profiles/application.yaml'
