@@ -25,6 +25,7 @@ number:
       name: Mic Gain
       min_value: ${mic_gain_min}
       max_value: ${mic_gain_max}
+      initial_value: ${ mic_gain_initial | default(0) }
 
 button:
   - platform: template
