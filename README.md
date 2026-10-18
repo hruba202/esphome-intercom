@@ -71,8 +71,8 @@ when installing the Home Assistant integration alone.
 ## PBX additions in the development preview
 
 The [2026.10.3-dev preview](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.3-dev)
-adds **multiple named SIP trunks, phone forwarding rules, voicemail, call parking,
-directed pickup and conversation recording**. These additions are available in
+adds **multiple named SIP trunks, phone forwarding rules, call transfers,
+voicemail, call parking, directed pickup and conversation recording**. These additions are available in
 the development preview; stable 2026.10.1 does not include them.
 
 Start with the [illustrated PBX walkthrough](docs/PBX_WORKFLOWS.md). It explains
@@ -99,6 +99,10 @@ before upgrading.
   an explicit line choice per action, a phone preference and a default line.
 - **[Parking and pickup](docs/CALL_PARKING.md):** leave a caller on a parking
   slot and retrieve the call elsewhere, or answer a phone that is still ringing.
+- **[Call transfers](docs/USER_GUIDE.md#forward-or-transfer-a-call):** send an
+  answered call to another contact from the card, or consult the destination
+  first using an attended-transfer-capable SIP handset. The card's Transfer
+  button performs a blind transfer.
 - **[Conversation recording](docs/CALL_RECORDING.md):** optional recording from
   the existing audio path, controlled by HA actions or a card shortcut.
 

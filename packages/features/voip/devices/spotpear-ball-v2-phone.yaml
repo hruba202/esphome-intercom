@@ -32,6 +32,7 @@ packages:
   voip_entities_full_duplex: !include '../../../voip/entities_full_duplex.yaml'
   call_settings: !include '../../../voip/call_settings.yaml'
   voip_transport: !include '../../../voip/transport.yaml'
+  ringtone_asset: !include '../../../voip/ringtone_asset.yaml'
 external_components:
 - source: ${voip_stack_components_source}
   components:
@@ -56,8 +57,11 @@ speaker:
 - platform: resampler
   id: ringtone_speaker
   output_speaker: ringtone_speaker_mix
+media_source:
+- platform: audio_file
+  id: ringtone_file_source
 media_player:
-- platform: speaker
+- platform: speaker_source
   id: speaker_media_player
   name: None
   internal: true
@@ -69,9 +73,8 @@ media_player:
     format: FLAC
     sample_rate: 48000
     num_channels: 1
-  files:
-  - id: voip_ringing_sound
-    file: ${assets_base}assets/sounds/ringtone.flac
+    sources:
+    - ringtone_file_source
 select:
 - platform: template
   name: AEC Mode
@@ -123,9 +126,9 @@ script:
       condition:
         voip_stack.is_ringing: null
       then:
-      - media_player.speaker.play_on_device_media_file:
+      - media_player.play_media:
           id: speaker_media_player
-          media_file: voip_ringing_sound
+          media_url: audio-file://voip_ringing_sound
           announcement: true
       - wait_until:
           condition:

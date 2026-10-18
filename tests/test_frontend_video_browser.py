@@ -9,12 +9,13 @@ import subprocess
 import pytest
 
 web = pytest.importorskip("aiohttp.web")
-async_playwright = pytest.importorskip("playwright.async_api").async_playwright
 ROOT = Path(__file__).resolve().parents[1]
 FRONT = ROOT / "custom_components/voip_stack/frontend"
 
 
 async def exercise(output):
+    from playwright.async_api import async_playwright
+
     frame = subprocess.check_output(
         [
             "ffmpeg",
@@ -160,6 +161,7 @@ async def exercise(output):
 
 
 @pytest.mark.js_runtime
+@pytest.mark.browser_real
 @pytest.mark.skipif(
     not shutil.which("chromium") or not shutil.which("ffmpeg"),
     reason="Chromium and FFmpeg required",

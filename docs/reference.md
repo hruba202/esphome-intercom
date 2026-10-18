@@ -501,9 +501,9 @@ for complete automation examples.
 See [mailbox configuration](SERVICES.md#voip_stackset_voicemail_settings) and
 [call handoff](SERVICES.md#voip_stacksend_to_voicemail) for limits and the current
 implementation boundary. SIP mailbox access and MWI use the common PBX call
-and subscription owners. The dedicated message-list controls are still being
-completed; the existing HA softphone dialpad can already dial *97 and send the
-same DTMF menu commands as a conventional SIP phone.
+and subscription owners. The HA phone card lists received messages and offers
+playback and deletion. Its dialpad can also dial *97 and send the same DTMF
+menu commands as a conventional SIP phone.
 
 
 ## Park an established call
@@ -512,8 +512,8 @@ same DTMF menu commands as a conventional SIP phone.
 selects the phone, `slot` optionally selects a configured parking slot, and
 `call_id` / `expected_generation` can identify a specific current call. The
 optional action response contains `slot`, `call_id` and `generation`.
-The selected phone must own the call. Parking must be enabled in the integration
-configuration. Retrieve the caller through the normal call action or SIP dialer
+The selected phone must own the call. Parking is available by default; configure
+its numbers and resolve any reported dial-plan conflicts. Retrieve the caller through the normal call action or SIP dialer
 using the slot number. See [Call parking](CALL_PARKING.md) for configuration,
 examples and the current development verification boundary.
 

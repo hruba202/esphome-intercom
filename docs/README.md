@@ -69,6 +69,7 @@ preview, not stable 2026.10.1.
 | Ring and conference groups | [Groups](GROUPS.md) |
 | Phone mailboxes, SIP message indicators and optional transcription | [Voicemail](VOICEMAIL.md) |
 | Parking, retrieval and directed pickup | [Call parking](CALL_PARKING.md) |
+| Blind transfer from the card and consultation transfer from a SIP handset | [Transfer a call](USER_GUIDE.md#forward-or-transfer-a-call) |
 | Play an ordinary ESPHome announcement or PCM sound | [ESPHome sound actions](ESPHOME_SOUND_ACTIONS.md) |
 | Record an established conversation | [Conversation recording](CALL_RECORDING.md) |
 | Provider registration and external routing | [SIP trunk](SIP_TRUNK.md) |
@@ -80,6 +81,8 @@ preview, not stable 2026.10.1.
 from real ESP timing, browser media and hardware-in-the-loop evidence.
 [Espressif components](ESPRESSIF_COMPONENTS.md) records component versions,
 local modifications and licensing boundaries.
+[Retiring compatibility forks](FORK_RETIREMENT.md) tracks which upstream
+changes have shipped and which local behavior still needs a replacement.
 
 ## Per-component docs
 
@@ -104,8 +107,9 @@ Each ESPHome component ships its own README with the full option list, YAML snip
 - Full-experience media now uses ESPHome's source-based `speaker_source` path:
   HA media, announcements, local files and optional Sendspin streams feed one
   media player before the mixer arbitrates with VoIP and Voice Assistant.
-  The local [`speaker`](../esphome/components/speaker/README.md) fork remains
-  documented for custom YAMLs that still use `platform: speaker`.
+  The native ESPHome `speaker` base remains in use; the local legacy player
+  fork has been removed. See the [migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork)
+  for custom YAMLs that selected it explicitly.
 - [`runtime_controller`](https://github.com/n-IA-hane/esphome-runtime-controller), a generic
   YAML-programmed reducer used by maintained full-experience profiles to derive
   LED, LVGL/display, audio ducking, ringtone and timer policies from one state

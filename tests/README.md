@@ -7,7 +7,8 @@ workflow works.
 
 ## Local commands
 
-Create the regular test environment from `requirements-test.txt`. Home
+Create the regular test environment from `requirements-test.txt` and
+`requirements-firmware-test.txt` for the ESPHome package/schema checks. Home
 Assistant API tests use the matching environment in
 `../ha-voip-lab/.venv`, or the interpreter selected by `HA_PYTHON`.
 
@@ -18,11 +19,29 @@ Assistant API tests use the matching environment in
 ./scripts/test_suite.sh coverage
 ./scripts/test_suite.sh ha
 ./scripts/test_suite.sh js-runtime
+./scripts/test_suite.sh browser
 ```
 
 Tests stop at the first failure by default. Use `--keep-going` only when an
 independent failure inventory is useful. Use `--seed N` to reproduce generated
 state-machine cases.
+
+`software-full` includes the Node runtime tests and excludes the real-browser
+cases. `browser` runs all Chromium regressions, including microphone/camera
+selection and the first audio samples after a slow worklet download. Install
+`requirements-browser-test.txt`, Chromium and FFmpeg for that suite. Missing
+browser dependencies fail its preflight instead of silently skipping tests.
+`js-runtime` selects the Node tests without launching Chromium.
+The real JPEG normalization and codec-to-codec RTP regressions run in the HA
+environment, where their runtime dependency and FFmpeg are installed. Their
+controlled media-owner adapter is restored after each test, so collection order
+does not supply missing HA imports or replace another test's runtime lookup.
+
+CI keeps separate JUnit artifacts for software, Home Assistant and browsers.
+`scripts/check_test_results.py` rejects empty reports, failures, errors and
+skipped cases. A test deliberately assigned to a different suite is deselected,
+not counted as a pass. An optional local dependency can still cause a direct
+pytest invocation to skip a test; that result is not a completed CI gate.
 
 `peer` runs sanitized Zoiper, Wildix, FRITZ!Box, registrar, DTMF and Assist
 regressions in separate Python processes. This prevents Home Assistant test

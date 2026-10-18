@@ -87,6 +87,10 @@ def test_ws3_native_feature_composition(tmp_path: Path, features: list[str]) -> 
     expanded.write_text(result.stdout)
     document = yaml_util.load_yaml(expanded)
     assert document['substitutions']['firmware_features'] == features
+    assert all('speaker' not in item.get('components', [])
+               for item in document.get('external_components', [])), (
+        'The maintained source-based player uses ESPHome native speaker'
+    )
     has_voice = 'voice' in features
     has_music = 'music' in features
     assert ('voip_stack' in document) is ('voip' in features)

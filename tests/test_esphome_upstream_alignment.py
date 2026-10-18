@@ -31,19 +31,16 @@ def test_voice_assistant_keeps_upstream_backpressure_and_speaker_drain() -> None
     assert "if (!this->api_client_->send_message(msg))" in source
     assert "this->speaker_buffer_index_ + msg.data_len <= SPEAKER_BUFFER_SIZE" in source
     assert "this->write_speaker_();" in source
-    assert 'timeout = this->tts_playback_start_timeout_;' in source
-    assert 'this->set_timeout("playing", timeout,' in source
+    assert 'this->set_timeout("playing", this->tts_playback_start_timeout_,' in source
 
 
 def test_local_forks_remain_narrow_and_documented() -> None:
-    speaker = (COMPONENTS / "speaker" / "UPSTREAM.md").read_text()
     voice_assistant = (COMPONENTS / "voice_assistant" / "UPSTREAM.md").read_text()
     audio = (COMPONENTS / "audio" / "UPSTREAM.md").read_text()
     mipi_dsi = (COMPONENTS / "mipi_dsi" / "UPSTREAM.md").read_text()
 
-    for document in (speaker, voice_assistant, audio, mipi_dsi):
+    for document in (voice_assistant, audio, mipi_dsi):
         assert UPSTREAM_DEV_SHA in document
-    assert "pause_releases_pipeline" in speaker
     assert "tts_playback_start_timeout" in voice_assistant
     assert "host simulator" in audio
 
@@ -55,3 +52,7 @@ def test_integrated_spi_and_http_components_are_not_shadowed() -> None:
     package = (ROOT / "packages/audio/http_media_codecs.yaml").read_text()
     assert "components: [audio_http_compat]" in package
     assert "min_version: 2026.9.0" in package
+
+
+def test_retired_speaker_provider_is_not_shipped() -> None:
+    assert not (COMPONENTS / "speaker").exists()

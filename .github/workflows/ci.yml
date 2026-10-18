@@ -43,10 +43,23 @@ jobs:
           cache: pip
       - name: Install test dependencies
         run: python -m pip install -r requirements-test.txt -r requirements-firmware-test.txt
+      - name: Verify Node frontend test dependency
+        run: node --version
       - name: Check Python code and test fixtures
         run: python -m ruff check custom_components/voip_stack scripts tests
       - name: Run software suite
+        env:
+          PYTEST_ADDOPTS: --junitxml=test-results/software.xml -ra
         run: PYTHON=python scripts/test_suite.sh software-full --keep-going
+      - name: Require executed software tests
+        run: python scripts/check_test_results.py test-results/software.xml
+      - name: Preserve software test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: software-results
+          path: test-results/software.xml
+          if-no-files-found: error
 
   home-assistant:
     runs-on: ubuntu-latest
@@ -71,7 +84,18 @@ jobs:
       - name: Install Home Assistant test dependencies
         run: python -m pip install -r requirements-test.txt -r requirements-ha-test.txt
       - name: Run Home Assistant suite
+        env:
+          PYTEST_ADDOPTS: --junitxml=test-results/home-assistant.xml -ra
         run: PYTHON=python HA_PYTHON=python scripts/test_suite.sh ha --keep-going
+      - name: Require executed Home Assistant tests
+        run: python scripts/check_test_results.py test-results/home-assistant.xml
+      - name: Preserve Home Assistant test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: home-assistant-results
+          path: test-results/home-assistant.xml
+          if-no-files-found: error
 
   browser-presentation:
     runs-on: ubuntu-latest
@@ -99,9 +123,18 @@ jobs:
           PY
           echo "$RUNNER_TEMP/browser-bin" >> "$GITHUB_PATH"
       - name: Check call controls and decoded video in Chromium
-        run: >-
-          python -m pytest -q tests/test_frontend_card_browser_layout.py
-          tests/test_frontend_video_browser.py
+        env:
+          PYTEST_ADDOPTS: --junitxml=test-results/browser.xml -ra
+        run: PYTHON=python scripts/test_suite.sh browser --keep-going
+      - name: Require executed browser tests
+        run: python scripts/check_test_results.py test-results/browser.xml
+      - name: Preserve browser test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-results
+          path: test-results/browser.xml
+          if-no-files-found: error
 
   documentation:
     runs-on: ubuntu-latest

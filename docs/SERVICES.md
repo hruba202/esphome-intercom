@@ -796,8 +796,8 @@ complete examples, supported STT input and attachment handling.
 selects the phone, `slot` optionally selects a configured parking slot, and
 `call_id` / `expected_generation` can identify a specific current call. The
 optional action response contains `slot`, `call_id` and `generation`.
-The selected phone must own the call. Parking must be enabled in the integration
-configuration. Retrieve the caller through the normal call action or SIP dialer
+The selected phone must own the call. Parking is available by default; configure
+its numbers and resolve any reported dial-plan conflicts. Retrieve the caller through the normal call action or SIP dialer
 using the slot number. See [Call parking](CALL_PARKING.md) for configuration,
 examples and the current development verification boundary.
 

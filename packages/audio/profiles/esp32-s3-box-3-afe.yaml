@@ -75,9 +75,6 @@ external_components:
   components:
   - esp_audio_stack
   - esp_afe
-- source: ${ext_components_source}
-  components:
-  - speaker
 packages:
   mute: !include '../../features/shared/microphone_mute.yaml'
   speaker_mute: !include '../../voip/speaker_mute_runtime.yaml'

@@ -21,18 +21,23 @@ behavior for every device.
 
 The following compatibility components remain project-owned. ESPHome-derived
 components record their upstream baseline in their directories.
+The [retirement inventory](FORK_RETIREMENT.md) distinguishes merged PRs,
+released changes and remaining local behavior, including the P4 panel fix.
 
 | Component | Local reason | Public compatibility |
 |---|---|---|
 | `audio_http_compat` | Adds the missing `audio/vnd.wave` MIME alias to micro-decoder. | No task or audio buffer; inactive when WAV is disabled or upstream already supports the alias. |
-| `speaker` | Optional pause policy releases a paused decoder pipeline, and decoder attachment uses an event instead of a fixed delay. | Existing pause behavior remains the default. |
 | `voice_assistant` | `tts_playback_start_timeout` allows slow TTS engines to exceed the upstream two-second start limit. | Upstream two-second default is preserved. |
 | `mipi_dsi` | Serializes LVGL and direct video submissions and exposes the immutable framebuffer to the narrow P4 renderer adapter. | Panel models and normal ESPHome display behavior remain aligned with the recorded upstream baseline. |
-| `audio` | Supplies the narrow host adapters required by protocol simulation. | ESP32 runtime dependency and decoder behavior remain upstream-compatible. |
+| `audio` | Supplies host simulation adapters and selects newer audio-library dependencies. | The dependency versions differ from stable 2026.9.1; compare the complete provider before removing it. |
 
 `p4_framebuffer_capture` and `runtime_diag` are diagnostic components, not
 production media owners. They are included only by explicit diagnostic YAML.
 The obsolete private `ring_buffer` fork has been removed.
+The local `speaker` fork, including its legacy media player, has also been
+removed. Maintained profiles use ESPHome's native speaker base. Custom YAMLs
+that selected the removed provider must follow the
+[speaker migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
 
 Full profiles retain the playback-completion corrections in the local mixer
 and speaker-source adapters. The optional Sendspin compatibility adapter keeps
@@ -68,12 +73,12 @@ profiles do not resolve either H.264 dependency. `esp_h264` is Apache-2.0;
 `esp_image_effects` uses Espressif Modified MIT and is restricted to Espressif
 products. The corresponding notices are retained under `licenses/`.
 
-Espressif component dependencies are intentionally latest-compatible unless a
-component wrapper needs a documented minimum API generation. `esp_aec` requires
-ESP-SR v2 because it wraps the `afe_aec_*` API, so it uses an ESP-SR v2
-constraint rather than allowing the resolver to fall back to ESP-SR 1.x. If a
-registry update breaks a supported board, add a pin with a short note naming the
-component version, board, symptom and rollback target.
+Each wrapper declares its supported version range or exact dependency pin.
+The current development processors explicitly select ESP-SR 2.6.0; the AFE
+wrapper selects the pinned GMF AI Audio 1.1.1 fork. The firmware's generated
+`dependencies.lock` records the complete resolved versions and source hashes.
+Do not infer automatic use of the latest registry release from the component
+name, or substitute a new major API without checking its wrapper and lifecycle.
 
 There is no P4 downgrade pin for `esp-sr`. The P4 full AFE target uses the same
 GMF/ESP-SR generation as the S3 dual-mic target, including the `esp32p4` and

@@ -17,5 +17,9 @@ interfaces without ESP-IDF. The local fork permits `audio:` on the host,
 skips IDF component registration there and provides the narrow non-ESP32
 speaker and error-code adapters needed by `audio_transfer_buffer`.
 
-ESP32 dependency versions, decoder behavior and Kconfig names remain aligned
-with the recorded upstream baseline. Re-run the diff after every ESPHome update.
+The current development provider also selects esp-audio-libs 4.1.0 and
+micro-flac 0.3.0. Stable ESPHome 2026.9.1 still selects 3.2.1 and 0.2.0;
+upstream dev already selects the newer pair. The host support and dependency
+selection are distinct reasons for retaining this provider. Re-run the diff
+after every ESPHome update instead of treating the old baseline record as
+proof of dependency parity.

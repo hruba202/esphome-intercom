@@ -106,7 +106,6 @@ external_components:
   - resampler
 - source: ${ext_components_source}
   components:
-  - speaker
   - audio_dsp_iram
 packages:
   mute: !include '../../features/shared/microphone_mute.yaml'

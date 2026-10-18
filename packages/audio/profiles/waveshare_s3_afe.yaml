@@ -112,9 +112,6 @@ external_components:
   components:
   - esp_audio_stack
   - esp_afe
-- source: ${ext_components_source}
-  components:
-  - speaker
 packages:
   controls: !include '../../esp_audio_stack/controls.yaml'
   afe_controls: !include '../../esp_afe/dual_mic_entities.yaml'

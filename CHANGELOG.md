@@ -4,6 +4,21 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### Maintenance and native component cleanup
+
+- Returning from Options through Contacts/Keypad now reveals the selected view
+  on browser phones, ESP mirror cards and the transfer view. The call controls
+  and layout remain the same.
+- Remove the local speaker fork and its legacy player. Maintained profiles use
+  the native ESPHome speaker base; the Spotpear phone-only ringtone now uses
+  `speaker_source` too. Custom configurations need the
+  [speaker migration](docs/BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
+  The [fork retirement inventory](docs/FORK_RETIREMENT.md)
+  lists remaining upstream dependencies, including the P4 panel timing fix.
+- Browser startup, media-device selection and FFmpeg regressions have explicit
+  CI ownership. Test results are retained per suite, and missing/skipped
+  mandatory checks cannot silently produce a successful validation gate.
+
 ### Firmware configuration migration
 
 **When adopting the reorganized firmware packages, start from the updated YAML

@@ -80,9 +80,6 @@ external_components:
   - esp_audio_stack
   - esp_aec
   - resampler
-- source: ${ext_components_source}
-  components:
-  - speaker
 packages:
   mute: !include '../../features/shared/microphone_mute.yaml'
   controls: !include '../../esp_audio_stack/controls.yaml'

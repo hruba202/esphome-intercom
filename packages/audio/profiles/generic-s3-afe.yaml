@@ -57,6 +57,3 @@ external_components:
   components:
   - esp_audio_stack
   - esp_afe
-- source: ${ext_components_source}
-  components:
-  - speaker

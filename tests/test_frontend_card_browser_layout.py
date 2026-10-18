@@ -8,7 +8,67 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "custom_components/voip_stack/frontend"
-pytestmark = pytest.mark.js_runtime
+pytestmark = [pytest.mark.js_runtime, pytest.mark.browser_real]
+
+
+@pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
+@pytest.mark.parametrize("mode", ["ha_softphone", "esp_mirror", "ha_transfer"])
+@pytest.mark.parametrize("initial_keypad", [False, True])
+def test_contacts_keypad_navigation_leaves_options(mode, initial_keypad, tmp_path):
+    """Issue 142: a changed toggle label must match the visible panel."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as runner:
+        browser = runner.chromium.launch(executable_path=shutil.which("chromium"), headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 420, "height": 700})
+
+            def serve(route):
+                name = route.request.url.split("/")[-1].split("?")[0]
+                path = FRONTEND / name
+                route.fulfill(
+                    content_type="text/javascript" if name.endswith(".js") else "text/html",
+                    body=path.read_text() if name.endswith(".js") and path.is_file()
+                    else "<html><body></body></html>",
+                )
+
+            page.route("http://card.test/**", serve)
+            page.goto("http://card.test/")
+            page.evaluate("""async ({mode}) => {
+                await import('/voip-stack-card.js');
+                const transfer=mode==='ha_transfer';
+                const card=document.createElement('voip-stack-card');window.card=card;
+                card.style.cssText='display:block;width:360px';
+                card.config={mode:transfer?'ha_softphone':mode,device_id:'desk-device',name:'Desk'};
+                card._activeDeviceInfo={device_id:'desk-device',endpoint_id:'desk',name:'Desk'};
+                card._softphoneSnapshot={state:transfer?'in_call':'idle',enabled:true,
+                    call_id:transfer?'current-call':'',device_id:'desk-device'};
+                if(transfer)card._transferDraft={callId:'current-call',keypad:false,manual:''};
+                card._startCallService='call';
+                card._voipStateEntityId='sensor.desk_state';
+                card._destinationEntityId='sensor.desk_destination';
+                card._hass={language:'en',user:{is_admin:true},config:{location_name:'Home'},states:{
+                    'sensor.desk_state':{state:'idle'},
+                    'sensor.desk_destination':{state:'Kitchen'},
+                }};
+                document.body.append(card);
+            }""", {"mode": mode})
+            if initial_keypad:
+                page.get_by_role("button", name="Keypad", exact=True).click()
+            page.get_by_role("button", name="Options", exact=True).click()
+            assert page.evaluate("card._settingsOpen") is True
+            page.get_by_role("button", name="Contacts" if initial_keypad else "Keypad", exact=True).click()
+            page.screenshot(path=str(tmp_path / "returned-from-options.png"))
+            assert page.evaluate("card._settingsOpen") is False
+            assert page.evaluate("card._els.card.classList.contains('settings-open')") is False
+            visible = page.evaluate("""initial => {
+                const element=initial ? card._els.destRow : card._els.keypadPanel;
+                return !element.hidden && getComputedStyle(element).display !== 'none'
+                    && element.getBoundingClientRect().height > 0;
+            }""", initial_keypad)
+            assert visible, "Selected contacts/keypad panel remains hidden by Options"
+            page.evaluate("card.remove()")
+        finally:
+            browser.close()
 
 
 @pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")

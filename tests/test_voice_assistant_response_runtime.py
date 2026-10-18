@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_tts_end_after_playback_completion(tmp_path):
     source = (ROOT / 'esphome/components/voice_assistant/voice_assistant.cpp').read_text()
     case = source.split('case api::enums::VOICE_ASSISTANT_TTS_END: {', 1)[1].split('case api::enums::VOICE_ASSISTANT_RUN_END:', 1)[0]
+    event_handler = source.split('void VoiceAssistant::on_event(', 1)[1]
+    event_guard = event_handler.split('msg.event_type);', 1)[1].split('switch (msg.event_type)', 1)[0]
     stub = r'''
 #define USE_MEDIA_PLAYER
 #define ESP_LOGW(...)
@@ -19,7 +21,9 @@ def test_tts_end_after_playback_completion(tmp_path):
 enum class MediaPlayerResponseState {IDLE, URL_SENT, PLAYING, FINISHED, ABORTED};
 enum class State {IDLE, STREAMING_RESPONSE};
 struct Arg {std::string name, value;};
-struct Msg {std::vector<Arg> data;};
+namespace api::enums {enum {VOICE_ASSISTANT_TTS_START, VOICE_ASSISTANT_TTS_END,
+ VOICE_ASSISTANT_INTENT_PROGRESS, VOICE_ASSISTANT_INTENT_END};}
+struct Msg {std::vector<Arg> data; int event_type=api::enums::VOICE_ASSISTANT_TTS_END;};
 struct Player {
  int requests=0;
  Player& make_call(){return *this;}
@@ -60,6 +64,7 @@ int main(){
 }
 '''
     cpp = tmp_path / 'response.cpp'
+    stub = stub.replace('void end(const Msg& msg){switch', 'void end(const Msg& msg){' + event_guard + 'switch')
     cpp.write_text(stub + case + checks)
     binary = tmp_path / 'response'
     subprocess.run(['g++', '-std=c++20', str(cpp), '-o', str(binary)], check=True, capture_output=True)
@@ -82,10 +87,11 @@ enum class State {IDLE, START_MICROPHONE, STARTING_MICROPHONE, WAIT_FOR_VAD,
  RESPONSE_FINISHED};
 namespace media_player {constexpr int MEDIA_PLAYER_COMMAND_STOP=0;}
 struct Player {
+ int stop_requests=0;
  Player& make_call(){return *this;}
  Player& set_command(int){return *this;}
  Player& set_announcement(bool){return *this;}
- void perform(){}
+ void perform(){++stop_requests;}
 };
 struct Voice {
  bool continuous_=false, continue_conversation_=false, started_streaming_tts_=false;
@@ -109,8 +115,17 @@ int main(){
  }
  for(auto state:{MediaPlayerResponseState::IDLE,MediaPlayerResponseState::FINISHED,
                  MediaPlayerResponseState::ABORTED}){
-  Voice v;v.media_player_response_state_=state;v.stop();assert(v.completions.empty());
+  Voice v;v.state_=State::IDLE;v.media_player_response_state_=state;v.stop();assert(v.completions.empty());
  }
+ Voice queued;queued.state_=State::STOP_MICROPHONE;
+ queued.media_player_response_state_=MediaPlayerResponseState::URL_SENT;
+ queued.stop();queued.stop();
+ assert(queued.player.stop_requests==1);
+ assert(queued.completions.size()==1 && !queued.completions.front());
+ Voice finished;finished.media_player_response_state_=MediaPlayerResponseState::FINISHED;
+ finished.stop();finished.stop();
+ assert(finished.completions.size()==1 && finished.completions.front());
+ assert(finished.player.stop_requests==0);
 }
 '''
     cpp = tmp_path / "stop_response.cpp"

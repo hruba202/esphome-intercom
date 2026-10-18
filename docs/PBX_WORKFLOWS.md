@@ -18,6 +18,7 @@ rules or mailbox. ESP hardware is optional.
 | Take messages when nobody answers | Create the phone's mailbox and no-answer rule; configure a voice for spoken menus |
 | Listen to your messages | Voicemail in the HA phone card, or dial `*97` |
 | Continue a conversation on another phone | Park it, then dial its assigned slot |
+| Hand an answered call to another person | Transfer from the card, or consult first from a compatible SIP handset |
 | Answer a different phone that is still ringing | Dial `pickup.<phone>` or `*8` followed by its extension |
 | Save a conversation | Enable recording controls or use Start recording in an automation |
 | Change routing according to presence or time | Use native VoIP triggers and actions in an HA automation |

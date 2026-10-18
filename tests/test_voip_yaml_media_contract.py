@@ -186,8 +186,36 @@ def test_spotpear_concurrency_memory_policy_is_explicit_and_preallocated() -> No
     assert int(phone['tx_task_stack_size']) == 12288
     assert int(phone['rx_task_stack_size']) == 12288
     providers = {name for provider in config['external_components'] for name in provider['components']}
-    assert {'speaker', 'voice_assistant'} <= providers
+    assert 'voice_assistant' in providers
+    assert 'speaker' not in providers
     assert by_id(config['display'], 's3_box_lcd')['psram_dma'] is True
+
+
+@pytest.mark.parametrize('relative', [
+    'voip-only/single-bus/spotpear-ball-v2-voip.yaml',
+    'voip-only/single-bus/waveshare-s3-voip.yaml',
+])
+def test_standalone_ringtone_uses_the_file_source_and_player_owner(relative) -> None:
+    config = profile(relative)
+    player = by_id(config['media_player'], 'speaker_media_player')
+    assert player['platform'] == 'speaker_source'
+    assert float(player['volume_initial']) == 1.0
+    pipeline = player['announcement_pipeline']
+    assert pipeline['sources'] == ['ringtone_file_source']
+    assert int(pipeline['sample_rate']) == 48000
+    assert int(pipeline['num_channels']) == 1
+    assert by_id(config['media_source'], 'ringtone_file_source')['platform'] == 'audio_file'
+    assert by_id(config['audio_file'], 'voip_ringing_sound')
+    ring = by_id(config['script'], 'voip_ringing_loop')
+    plays = [node['media_player.play_media'] for node in nodes(ring)
+             if 'media_player.play_media' in node]
+    assert len(plays) == 1
+    assert plays[0]['media_url'] == 'audio-file://voip_ringing_sound'
+    assert cv.boolean(plays[0]['announcement']) is True
+    stops = [node['media_player.stop'] for node in nodes(config['script'])
+             if 'media_player.stop' in node]
+    assert any(cv.boolean(stop['announcement']) for stop in stops)
+    assert 'media_player.speaker.play_on_device_media_file' not in values_text(ring)
 
 
 def test_sendspin_artwork_uses_the_official_image_platform() -> None:
@@ -216,8 +244,9 @@ def test_spotpear_layout_and_aec_sync_use_runtime_contracts() -> None:
 def test_p4_full_profile_has_native_camera_and_sip_jpeg() -> None:
     config = profile(P4_LANDSCAPE_FULL_AFE)
     providers = {name for provider in config['external_components'] for name in provider['components']}
-    assert {'speaker', 'voice_assistant', 'mipi_dsi', 'esp_video_camera',
+    assert {'voice_assistant', 'mipi_dsi', 'esp_video_camera',
             'esp_jpeg_video_source', 'p4_video_renderer'} <= providers
+    assert 'speaker' not in providers
     assert 'esp_h264_video_source' not in providers
     camera = config['esp_video_camera']
     for key, expected in {'id': 'p4_camera', 'name': 'P4 Camera', 'i2c_id': 'internal_i2c',

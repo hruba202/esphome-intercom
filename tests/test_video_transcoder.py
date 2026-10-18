@@ -1,60 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import os
 from pathlib import Path
 import shutil
 import socket
 import struct
-import sys
 import types
 import unittest
 from unittest import mock
 
 import pytest
 
+from custom_components.voip_stack.core import rtp, sdp, video_rtp
+from custom_components.voip_stack import video_transcoder
 
-pytestmark = pytest.mark.slow
+
+pytestmark = [pytest.mark.ha, pytest.mark.slow, pytest.mark.usefixtures("socket_enabled")]
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PKG_NAME = "custom_components.voip_stack"
-PKG_DIR = ROOT / "custom_components" / "voip_stack"
-CORE_MODULES = {"rtp", "sdp", "video_rtp"}
-
-
-def _load(name: str):
-    if "custom_components" not in sys.modules:
-        package = types.ModuleType("custom_components")
-        package.__path__ = [str(ROOT / "custom_components")]
-        sys.modules["custom_components"] = package
-    if PKG_NAME not in sys.modules:
-        package = types.ModuleType(PKG_NAME)
-        package.__path__ = [str(PKG_DIR)]
-        sys.modules[PKG_NAME] = package
-    is_core = name in CORE_MODULES
-    if is_core and f"{PKG_NAME}.core" not in sys.modules:
-        core_pkg = types.ModuleType(f"{PKG_NAME}.core")
-        core_pkg.__path__ = [str(PKG_DIR / "core")]
-        sys.modules[f"{PKG_NAME}.core"] = core_pkg
-    full_name = f"{PKG_NAME}.{'core.' if is_core else ''}{name}"
-    if full_name in sys.modules:
-        return sys.modules[full_name]
-    path = PKG_DIR / ("core" if is_core else "") / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(full_name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[full_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_load("const")
-sdp = _load("sdp")
-rtp = _load("rtp")
-video_rtp = _load("video_rtp")
-video_transcoder = _load("video_transcoder")
 
 
 class _Hass:
@@ -69,7 +34,10 @@ class _Hass:
         )
 
 
-video_transcoder.require_runtime_data = lambda hass: hass.runtime
+@pytest.fixture(autouse=True)
+def _runtime_data_adapter(monkeypatch):
+    # Keep the controlled media owner local to each test, including unittest cases.
+    monkeypatch.setattr(video_transcoder, "require_runtime_data", lambda hass: hass.runtime)
 
 
 class TranscoderInputTimelineTests(unittest.TestCase):

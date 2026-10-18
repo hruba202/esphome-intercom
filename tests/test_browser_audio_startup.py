@@ -10,7 +10,7 @@ import time
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-pytestmark = pytest.mark.js_runtime
+pytestmark = [pytest.mark.js_runtime, pytest.mark.browser_real]
 
 
 @pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")

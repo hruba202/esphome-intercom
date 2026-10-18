@@ -23,4 +23,9 @@ the installed ESPHome core. A future upstream proposal should extend the shared
 StaticTask helper instead of keeping this copy.
 
 Only YAMLs that explicitly select this external component use the fork.
-The Waveshare V2 candidate is experimental; no upstream PR has been submitted.
+The upstream implementation was merged in
+[ESPHome #20126](https://github.com/esphome/esphome/pull/20126) on October 14,
+2026. It extends the shared StaticTask API instead of retaining this local
+helper. It is not included in ESPHome 2026.9.1 or 2026.10.0b4. Retire this
+external component when the selected ESPHome release contains both the core
+and component changes, then qualify the existing task placement on the boards.

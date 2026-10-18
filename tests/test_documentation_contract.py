@@ -22,6 +22,9 @@ WEBSOCKET_API = ROOT / "custom_components" / "voip_stack" / "websocket_api.py"
 MARKDOWN_FILES = (
     ROOT / "README.md",
     *sorted(path for path in DOCS.rglob("*.md") if "private" not in path.parts),
+    *sorted((ROOT / "packages").rglob("*.md")),
+    *sorted(path for path in (ROOT / "yamls").rglob("*.md")
+            if not any(part.startswith(".") for part in path.relative_to(ROOT).parts)),
 )
 STYLE_MARKDOWN_FILES = (
     ROOT / "README.md",

@@ -4,6 +4,32 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## Development firmware: retired speaker fork
+
+The local `speaker` provider, including its legacy media player, has been
+removed. Maintained profiles use ESPHome's native speaker interface and the
+source-based `speaker_source` player. The Spotpear phone-only ringtone also
+uses the local-file source now, keeping its existing sound, volume and call
+state controls.
+
+For custom YAMLs:
+
+1. Remove `speaker` from any `external_components` entry pointing to this
+   repository. Keep other components in that entry, or remove the entry if
+   its component list becomes empty. Keep the actual `speaker:` hardware,
+   mixer and resampler configuration.
+2. Remove the fork-only `pause_releases_pipeline` option. ESPHome's native
+   `platform: speaker` media player remains available, but its normal pause
+   behavior keeps the playback pipeline. The removed pause-release behavior
+   is not silently reproduced by the native player.
+3. To adopt the maintained source-based path, start from the current board
+   profile and its player/source packages. Do not only rename the platform:
+   local files are `audio_file` assets played through `audio-file://` URLs,
+   and sources belong to the corresponding player pipeline.
+
+This removes a copied ESPHome component, not ESP Audio Stack or echo
+cancellation. Updating HA alone does not change installed ESP firmware.
+
 ## Development firmware: new device packages
 
 **For this firmware update, start again from the current YAML for your exact

@@ -2353,6 +2353,7 @@ class VoipStackCard extends HTMLElement {
 
   _toggleKeypad() {
     if (this._transferDraft) {
+      this._settingsOpen = false;
       this._transferDraft.keypad = !this._transferDraft.keypad;
       this._render();
       if (this._transferDraft.keypad) this._els?.keypadInput?.focus();
@@ -2365,9 +2366,7 @@ class VoipStackCard extends HTMLElement {
       this._mirrorKeypadOpen = !this._mirrorKeypadOpen;
       if (this._mirrorKeypadOpen) this._mirrorManualTarget = "";
     }
-    if (this._keypadOpen()) {
-      this._settingsOpen = false;
-    }
+    this._settingsOpen = false;
     this._render();
     if (this._keypadOpen()) {
       requestAnimationFrame(() => this._els?.keypadInput?.focus());

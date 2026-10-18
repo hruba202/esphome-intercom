@@ -75,8 +75,9 @@ package (RFC 4235) for a busy-lamp indication.
 
 ## From the dashboard card
 
-During an established audio call, **Park call** appears when parking is enabled
-in the backend. Occupied slots appear in the list on the left of the card,
+During an established audio call, **Park call** is available without a global
+enable switch. Resolve any parking-number conflict reported by HA Repairs
+before using it. Occupied slots appear in the list on the left of the card,
 including calls parked by another phone. The list updates when a call is
 retrieved, returned or ended. The Park control is disabled during a browser video call: parking currently
 supports audio-only calls, even if the local webcam is switched off. It invokes the same action described below and displays the
@@ -113,10 +114,10 @@ fields; a phone selected with the GUI does not require a hand-written device ID.
 
 ## Answer another ringing phone
 
-With parking enabled, dial `pickup.kitchen` to answer the individual phone named
+Dial `pickup.kitchen` to answer the individual phone named
 `kitchen`, or `*8101` if its extension is `101`. An occupied parking slot still
 uses its normal slot number or `pickup.701`. Slot names take precedence.
-The `*8` prefix is reserved while this feature is enabled; it is a local dial-plan
+The `*8` prefix is reserved by the pickup feature; it is a local dial-plan
 convention, not a standardized SIP feature code. Asterisk also exposes directed
 pickup through its dial plan, although its configured access code may differ.
 
