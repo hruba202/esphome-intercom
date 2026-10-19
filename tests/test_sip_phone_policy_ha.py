@@ -117,8 +117,9 @@ async def test_final_sip_answer_wins_noanswer_timer_before_media_commit(
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
 @pytest.mark.parametrize("registered_phones", [{"manual": "transfer_b"}], indirect=True)
+@pytest.mark.parametrize("destination_kind", ["sip_account", "browser", "browser_with_esp_events"])
 async def test_native_sip_noanswer_reaches_own_mailbox(
-    trunks, registered_phones, tmp_path, monkeypatch
+    trunks, registered_phones, tmp_path, monkeypatch, destination_kind
 ):
     from homeassistant.components import tts
     from homeassistant.config_entries import ConfigSubentry
@@ -132,6 +133,20 @@ async def test_native_sip_noanswer_reaches_own_mailbox(
     import numpy as np
 
     runtime = trunks
+    destination_id = "transfer_b"
+    if destination_kind.startswith("browser"):
+        from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
+        from custom_components.voip_stack.roster import RosterEntry
+
+        destination_id = "casa"
+        runtime.runtime.endpoints.register(PhoneEndpoint(
+            endpoint_id=destination_id, name=destination_id,
+            device_id="browser-casa", kind=EndpointKind.BROWSER,
+            availability="available",
+        ))
+        runtime.roster.append(RosterEntry(
+            destination_id, metadata={"local_ha": True, "endpoint_id": destination_id},
+        ))
     runtime.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(runtime.hass)
     runtime.hass.config_entries.async_update_entry(
@@ -149,23 +164,23 @@ async def test_native_sip_noanswer_reaches_own_mailbox(
         entry,
         ConfigSubentry(
             subentry_type="phone",
-            title="transfer_b",
-            unique_id="phone:transfer_b",
+            title=destination_id,
+            unique_id=f"phone:{destination_id}",
             data={
-                "endpoint_id": "transfer_b",
-                "name": "transfer_b",
-                "username": "transfer_b",
-                "kind": "sip_account",
+                "endpoint_id": destination_id,
+                "name": destination_id,
+                "username": destination_id,
+                "kind": "browser" if destination_kind.startswith("browser") else "sip_account",
                 "voicemail": {"enabled": True, "max_seconds": 2},
             },
         ),
     )
     runtime.runtime.endpoints.update(
-        "transfer_b",
+        destination_id,
         policy=PhonePolicy.from_data(
             {
                 "ringing_timeout": 1,
-                "no_answer": {"kind": "voicemail", "target": "transfer_b"},
+                "no_answer": {"kind": "voicemail", "target": destination_id},
             }
         ),
     )
@@ -195,16 +210,37 @@ async def test_native_sip_noanswer_reaches_own_mailbox(
     remove_state = runtime.hass.bus.async_listen(CALL_EVENT, state)
     remove_saved = runtime.hass.bus.async_listen(EVENT_VOICEMAIL_RECEIVED, message)
     try:
-        await asyncio.to_thread(registered_phones[0].dial, "transfer_b")
+        await asyncio.to_thread(registered_phones[0].command, f"/dial {destination_id}")
+        if destination_kind == "browser_with_esp_events":
+            # Baresip supplies the real SIP/RTP leg. Mirror the ESP caller's
+            # state through the production bridge, as a physical phone does
+            # after receiving 180 Ringing. Only entity discovery is adapted.
+            from unittest.mock import AsyncMock
+            from custom_components.voip_stack import esphome_state_bridge
+
+            async with asyncio.timeout(2):
+                while not any(s.state == "ringing" for s in runtime.calls.sessions.values()):
+                    await asyncio.sleep(0.01)
+            source = next(s for s in runtime.calls.sessions.values() if s.state == "ringing")
+            monkeypatch.setattr(esphome_state_bridge, "_get_voip_devices", AsyncMock(return_value=[{
+                "device_id": "esp-caller", "name": "Waveshare",
+                "entities": {"voip_state": "sensor.esp_voip_state"},
+            }]))
+            await esphome_state_bridge.async_emit_state_event(
+                runtime.hass, "sensor.esp_voip_state", "remote_ringing", "calling",
+                expected_endpoint_id="transfer_a", expected_call_id=source.call_id,
+            )
+            assert source.state == "ringing"
+            assert runtime.calls.event_context(source.call_id).state == "remote_ringing"
         await asyncio.wait_for(recording.wait(), 3)
-        assert not runtime.runtime.endpoints.get("transfer_b").active_call_id
+        assert not runtime.runtime.endpoints.get(destination_id).active_call_id
         await asyncio.wait_for(saved.wait(), 4)
         assert len(events) == 1
         archive = await get_archive(runtime.hass)
-        messages = archive.list("transfer_b")
+        messages = archive.list(destination_id)
         assert len(messages) == 1 and messages[0]["caller"] == "transfer_a"
         with wave.open(
-            str(archive.segment_path(messages[0]["id"], "transfer_b")), "rb"
+            str(archive.segment_path(messages[0]["id"], destination_id)), "rb"
         ) as wav:
             rate = wav.getframerate()
             samples = np.frombuffer(
@@ -853,3 +889,41 @@ async def test_noanswer_policy_tracks_destination_leg_of_answered_caller(
         while runtime.calls.sessions:
             await asyncio.sleep(0.01)
     assert not runtime.runtime.rtp_port_pool.get("used")
+
+
+@pytest.mark.parametrize("trunks", [True], indirect=True)
+async def test_sip_browser_answer_confirms_the_same_phone_leg(trunks, registered_phones):
+    """Card answer and BLF/get_phone_state must describe the same live call."""
+    from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
+    from custom_components.voip_stack.roster import RosterEntry
+    from custom_components.voip_stack.phone_state import phone_states
+    from custom_components.voip_stack.dialog_info import snapshot
+
+    runtime = trunks
+    runtime.runtime.endpoints.register(PhoneEndpoint(
+        endpoint_id="casa", name="casa", device_id="browser-casa",
+        kind=EndpointKind.BROWSER, availability="available",
+    ))
+    runtime.roster.append(RosterEntry("casa", metadata={"local_ha": True, "endpoint_id": "casa"}))
+    caller = registered_phones[0]
+    await asyncio.to_thread(caller.command, "/dial casa")
+    try:
+        async with asyncio.timeout(3):
+            while phone_states(runtime.hass)["casa"]["state"] != "ringing":
+                await asyncio.sleep(.01)
+        source = next(iter(runtime.calls.sessions.values()))
+        await runtime.hass.services.async_call("voip_stack", "answer", {
+            "device_id": "browser-casa", "call_id": source.call_id,
+            "media_client_id": "answer-proof",
+        }, blocking=True)
+        assert source.state == "in_call"
+        assert phone_states(runtime.hass)["casa"]["state"] == "in_call"
+        assert all(dialog.state == "confirmed" for dialog in snapshot(runtime.runtime, "casa"))
+        assert source.legs["browser:casa"].state == "in_call"
+    finally:
+        await asyncio.to_thread(caller.hangup)
+        async with asyncio.timeout(3):
+            while runtime.calls.sessions:
+                await asyncio.sleep(.01)
+    assert not runtime.calls.endpoint_claims_snapshot()
+    assert not runtime.runtime.rtp_port_pool.get('used')

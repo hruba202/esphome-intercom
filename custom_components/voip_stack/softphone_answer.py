@@ -383,6 +383,13 @@ async def async_answer_browser_call(
         )
         if claimed is None:
             return False
+        # The pending destination already owns a browser leg. Commit its
+        # answer with the session so phone state and BLF stop reporting early.
+        registry.observe_leg(
+            call_id, f"browser:{endpoint_id}", role="ha_softphone",
+            state=CallState.IN_CALL.value, endpoint_id=endpoint_id,
+            generation=authoritative_session.generation,
+        )
         registry.take_pending_invite(call_id)
         return True
 

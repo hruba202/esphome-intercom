@@ -330,6 +330,10 @@ async def async_forward_existing_call(
             )
         current_forward.cancel()
         await asyncio.gather(current_forward, return_exceptions=True)
+    if current_forward is not None and current_forward.done():
+        # Completion callbacks run on the next loop turn. Retire this exact
+        # finished task before assigning its name to the next forward.
+        registry.release_task(call_id, current_forward)
     if call_artifacts.forward_claim:
         raise _service_error(
             f"call_id {call_id} is already being forwarded",

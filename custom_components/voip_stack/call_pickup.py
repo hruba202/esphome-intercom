@@ -72,7 +72,8 @@ async def pickup_browser(call, endpoint, target):
         call_id=session.call_id,
         destination=endpoint.name,
         on_failure="resume",
-        expected_state=session.state,
+        expected_state=session.event_context.state,
+        expected_sequence=session.event_context.sequence,
     )
     task = runtime.sip.task_for(session.call_id, "forward")
     if task is not None:
@@ -605,7 +606,8 @@ async def async_pickup_call(call):
                 call_id=session.call_id,
                 destination=endpoint.name,
                 on_failure="resume",
-                expected_state=session.state,
+                expected_state=session.event_context.state,
+                expected_sequence=session.event_context.sequence,
             )
             task = runtime.sip.task_for(session.call_id, "forward")
             if task is not None:

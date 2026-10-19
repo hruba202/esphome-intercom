@@ -103,7 +103,10 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
                 raise RuntimeError("SIP forwarding is unavailable")
             await registry.forward_call(
                 call_id=token.call_id, destination=target_name, on_failure="terminate",
-                expected_state=session.state, expected_sequence=sequence,
+                # Forwarding validates the public event snapshot. The caller's
+                # ESP projection can be remote_ringing while this receiving
+                # session still has the lifecycle state ringing.
+                expected_state=context.state, expected_sequence=sequence,
             )
         except Exception:
             _LOGGER.exception("Phone no-answer route failed call_id=%s", token.call_id)

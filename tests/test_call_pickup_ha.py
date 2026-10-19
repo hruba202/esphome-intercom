@@ -352,8 +352,9 @@ async def test_sip_phone_picks_up_local_browser_call(
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
 @pytest.mark.parametrize("registered_phones", [{"manual": "transfer_b"}], indirect=True)
+@pytest.mark.parametrize("pickup_path", ["sip_request", "sip_service", "browser_service"])
 async def test_sip_pickup_after_forward_to_browser_retains_original_caller(
-    trunks, registered_phones
+    trunks, registered_phones, pickup_path
 ):
     from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointKind
     from custom_components.voip_stack.roster import RosterEntry, dump_roster_json
@@ -404,15 +405,41 @@ async def test_sip_pickup_after_forward_to_browser_retains_original_caller(
     await wait_for(
         lambda: session.owner == "ha_softphone" and session.state == "ringing"
     )
-    await asyncio.to_thread(picker.dial, "pickup.browser-target")
+    # A physical ESP caller publishes its own outgoing projection while the
+    # receiving browser session retains its internal ringing state.
+    from custom_components.voip_stack.websocket_api import _fire_call_event
+    _fire_call_event(runtime.hass, {
+        "call_id": session.call_id, "state": "remote_ringing",
+        "direction": "outgoing", "endpoint_id": "transfer_a",
+    }, "esp")
+    assert session.state == "ringing"
+    if pickup_path == "sip_request":
+        await asyncio.to_thread(picker.dial, "pickup.browser-target")
+    else:
+        if pickup_path == "browser_service":
+            runtime.runtime.endpoints.register(PhoneEndpoint(
+                endpoint_id="browser-picker", name="browser-picker", device_id="picker-device",
+                kind=EndpointKind.BROWSER, availability="available",
+                capabilities=frozenset({"audio", "dtmf"}),
+            ))
+            runtime.roster.append(RosterEntry(
+                "browser-picker", metadata={"local_ha": True, "endpoint_id": "browser-picker"},
+            ))
+        else:
+            runtime.runtime.endpoints.update("transfer_c", device_id="picker-device")
+        await runtime.hass.services.async_call("voip_stack", "pickup", {
+            "device_id": "picker-device", "target_device_id": "browser-device",
+            "media_client_id": "test-browser-picker",
+        }, blocking=True, return_response=True)
     assert (
         runtime.calls.get_session(session.call_id) is session
         and session.state == "in_call"
     )
-    relay = runtime.calls.resource_for(session.call_id, "relay")
-    await wait_for(lambda: relay.left_tx_packets > 20 and relay.right_tx_packets > 20)
+    if pickup_path != "browser_service":
+        relay = runtime.calls.resource_for(session.call_id, "relay")
+        await wait_for(lambda: relay.left_tx_packets > 20 and relay.right_tx_packets > 20)
     assert caller.read().count("Call established") == 1
-    await asyncio.to_thread(picker.hangup)
+    await asyncio.to_thread(caller.hangup)
     await wait_for(lambda: not runtime.calls.sessions)
     assert not runtime.runtime.rtp_port_pool.get("used")
 
