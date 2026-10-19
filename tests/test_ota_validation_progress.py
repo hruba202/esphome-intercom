@@ -71,6 +71,7 @@ struct Md5{bool matches=true;void calculate(){}bool equals_hex(const char*){retu
 struct IDFOTABackend {
  Partition partition;Partition *partition_=&partition;bool md5_set_=true;
  Md5 md5_;const char *expected_bin_md5_="digest";int update_handle_=7;bool aborted=false;
+ OTAResponseTypes hold_lock_if_ok_(OTAResponseTypes result){return result;}
  void abort(){aborted=true;}
  OTAResponseTypes end();
 };

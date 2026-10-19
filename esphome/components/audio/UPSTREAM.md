@@ -1,25 +1,18 @@
-# ESPHome audio fork upstream record
+# Upstream alignment
 
-Upstream baseline: ESPHome `dev` commit
-`5f6a910e2d6e41d3716668a66e5dff8cca25f2ea`, component path
-`esphome/components/audio`.
+Source baseline: ESPHome `dev` commit `2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`,
+component `esphome/components/audio`. Checked on 2026-10-19.
+The machine-readable reference is `esphome/upstream_sources.json`.
 
-Checked with:
+## Remaining adaptations
 
-```bash
-git diff --no-index ../esphome-pr-work/esphome/components/audio esphome/components/audio
-```
+The source follows upstream audio conversions, decoder changes and readable-buffer APIs.
+Local differences support the host simulator and tests and stable code-generation/HTTP APIs.
+The host adapters are project test infrastructure, not an upstream PR proposal.
 
-## Local patch
+## Export the source difference
 
-The host simulator uses the shared audio format, transfer buffer and decoder
-interfaces without ESP-IDF. The local fork permits `audio:` on the host,
-skips IDF component registration there and provides the narrow non-ESP32
-speaker and error-code adapters needed by `audio_transfer_buffer`.
-
-The current development provider also selects esp-audio-libs 4.1.0 and
-micro-flac 0.3.0. Stable ESPHome 2026.9.1 still selects 3.2.1 and 0.2.0;
-upstream dev already selects the newer pair. The host support and dependency
-selection are distinct reasons for retaining this provider. Re-run the diff
-after every ESPHome update instead of treating the old baseline record as
-proof of dependency parity.
+Use `scripts/export_fork_diff.py` from the project root with an ESPHome checkout
+containing the recorded commit. The export includes functional changes and
+stable-core compatibility adapters; separate the latter before an upstream PR.
+Existing licenses and upstream authorship remain applicable.

@@ -40,7 +40,9 @@ struct Task {
 };
 struct Source {bool is_stopped(){return false;}};
 struct Output {bool stopped=true;unsigned stops=0;bool is_stopped(){return stopped;}void stop(){++stops;stopped=true;}void set_audio_stream_info(audio::AudioStreamInfo){}};
+struct Mutex {}; struct LockGuard {explicit LockGuard(Mutex&) {}};
 struct MixerSpeaker {
+ Mutex playback_mutex_;
  uint32_t bits=MIXER_TASK_STATE_STOPPED;uint32_t* event_group_=&bits;
  Output output;Output *output_speaker_=&output;bool restarting_output_=false;
  std::optional<audio::AudioStreamInfo> audio_stream_info_;bool queue_mode_=false;unsigned output_bits_per_sample_=16,output_channels_=1;

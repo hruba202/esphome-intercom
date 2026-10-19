@@ -1,31 +1,21 @@
-# Experimental microWakeWord task affinity
+# Upstream alignment
 
-Based on ESPHome 2026.9.0, tag commit
-`c6e4c87e525dd343e470d8dea368957a002f6505`. ESPHome licensing and authorship
-apply to the copied source files. The upstream LICENSE is included: runtime
-C++ code is GPLv3 and Python code is MIT.
+Source baseline: ESPHome `dev` commit `2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`,
+component `esphome/components/micro_wake_word`. Checked on 2026-10-19.
+The machine-readable reference is `esphome/upstream_sources.json`.
 
-This fork adds `task_core: -1 | 0 | 1`. The default `-1` keeps the upstream
-unpinned task creation behavior. Core 1 is rejected on single-core targets.
-Choosing a core does not change the model, detection thresholds, audio format,
-task priority, stack placement or task cleanup.
+## Remaining adaptations
 
-On ESP32-S3, FreeRTOS pins a previously unpinned task when it executes floating
-point instructions. Explicit affinity lets a constrained full audio profile
-keep wake word inference separate from AFE feed processing across restarts.
-It does not guarantee adequate processing capacity; real audio qualification
-is still required.
+Upstream model loading, optional internal-memory preference and configurable
+ring-buffer duration are retained. Their defaults are unchanged. Task affinity
+uses native StaticTask where its API is available; ESPHome 2026.9.1 selects the
+existing local InferenceTask fallback at compile time. There is one task owner.
+Legacy automation bindings and log/status spellings support the stable core.
+The task-affinity change itself is already upstream in PR #20126.
 
-`inference_task.h/.cpp` preserve ESPHome 2026.9.0 StaticTask's allocation and
-cleanup, with a namespace-local name and an optional core argument passed to
-`xTaskCreateStaticPinnedToCore`. This temporary local helper avoids modifying
-the installed ESPHome core. A future upstream proposal should extend the shared
-StaticTask helper instead of keeping this copy.
+## Export the source difference
 
-Only YAMLs that explicitly select this external component use the fork.
-The upstream implementation was merged in
-[ESPHome #20126](https://github.com/esphome/esphome/pull/20126) on October 14,
-2026. It extends the shared StaticTask API instead of retaining this local
-helper. It is not included in ESPHome 2026.9.1 or 2026.10.0b4. Retire this
-external component when the selected ESPHome release contains both the core
-and component changes, then qualify the existing task placement on the boards.
+Use `scripts/export_fork_diff.py` from the project root with an ESPHome checkout
+containing the recorded commit. The export includes functional changes and
+stable-core compatibility adapters; separate the latter before an upstream PR.
+Existing licenses and upstream authorship remain applicable.

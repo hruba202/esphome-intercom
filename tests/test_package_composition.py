@@ -509,3 +509,41 @@ def test_local_gmf_override_only_binds_the_selected_afe(tmp_path):
     expanded = tmp_path / 'expanded.yaml'
     expanded.write_text(result.stdout)
     assert yaml_util.load_yaml(expanded)['esp_afe']['gmf_source'] == str(source)
+
+
+@pytest.mark.parametrize('profile_path', [
+    'full-experience/single-bus/waveshare-s3-full-afe.yaml',
+    'full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full-afe.yaml',
+    'full-experience/single-bus/generic-s3-full-aec.yaml',
+    'voip-only/single-bus/waveshare-s3-voip.yaml',
+    'full-experience/esphome-native/generic-s3-full-esphome-native.yaml',
+])
+def test_resampler_source_matches_selected_audio_backend(profile_path: str) -> None:
+    from tests.native_profile import profile
+
+    document = profile(profile_path)
+    providers = [item['source'] for item in document.get('external_components', [])
+                 if 'resampler' in item.get('components', [])]
+    if 'esp_audio_stack' not in document:
+        assert not providers, 'Native audio must remain usable without Audio Stack adapters'
+        return
+    assert any(speaker['platform'] == 'resampler' for speaker in document['speaker'])
+    expected = str(Path(os.environ.get('AUDIO_STACK_REPO', ROOT.parent / 'esphome-audio-stack')) / 'esphome/components')
+    assert providers and all(source == expected for source in providers), (
+        'Audio Stack playback must use its matching resampler; falling back to native '
+        'silently loses bounded writes for decoder blocks larger than the input ring',
+        providers,
+    )
+
+
+@pytest.mark.parametrize('backend', [
+    path for path in sorted((ROOT / 'packages/audio/profiles').glob('*.yaml'))
+    if 'esp_audio_stack' in yaml_util.load_yaml(path)
+], ids=lambda path: path.stem)
+def test_audio_stack_backend_owns_its_resampler_selection(backend: Path) -> None:
+    document = yaml_util.load_yaml(backend)
+    providers = [item for item in document.get('external_components', [])
+                 if 'esp_audio_stack' in item.get('components', [])]
+    assert len(providers) == 1
+    assert providers[0]['source'] == '${audio_stack_components_source}'
+    assert 'resampler' in providers[0]['components']

@@ -1,7 +1,8 @@
 # ESPHome playback adapter
 
-Based on ESPHome 2026.9.0. The original ESPHome license is included in this
-directory: runtime sources use GPLv3, Python configuration uses MIT.
+Synchronized with the upstream revision and remaining adaptations recorded in
+[UPSTREAM.md](UPSTREAM.md). Runtime sources retain GPLv3 and Python configuration
+retains MIT licensing; see the included LICENSE.
 
 This adapter keeps the native configuration and speaker interfaces. It is
 selected by the shared playback compatibility package for full media profiles.

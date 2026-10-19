@@ -11,7 +11,9 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
+#include "esphome/core/static_task.h"
 #include "inference_task.h"
+#include <type_traits>
 
 #ifdef USE_OTA_STATE_LISTENER
 #include "esphome/components/ota/ota_backend.h"
@@ -23,6 +25,14 @@
 #include <frontend_util.h>
 
 namespace esphome::micro_wake_word {
+
+// Select one task owner. Older ESPHome lacks StaticTask's core-affinity parameter.
+template<typename T> inline constexpr bool HAS_TASK_CORE = requires(T &task) {
+  task.create(nullptr, nullptr, 0, nullptr, 0, false, tskNO_AFFINITY);
+};
+using InferenceTaskOwner = std::conditional_t<HAS_TASK_CORE<StaticTask>, StaticTask, InferenceTask>;
+
+static constexpr uint16_t DEFAULT_RING_BUFFER_DURATION_MS = 120;
 
 enum State {
   STARTING,
@@ -54,13 +64,14 @@ class MicroWakeWord final : public Component
 
   void set_features_step_size(uint8_t step_size) { this->features_step_size_ = step_size; }
 
+  void set_ring_buffer_duration_ms(uint16_t duration_ms) { this->ring_buffer_duration_ms_ = duration_ms; }
+
   void set_microphone_source(microphone::MicrophoneSource *microphone_source) {
     this->microphone_source_ = microphone_source;
   }
 
   void set_stop_after_detection(bool stop_after_detection) { this->stop_after_detection_ = stop_after_detection; }
 
-  void set_task_core(int core) { this->task_core_ = core < 0 ? tskNO_AFFINITY : core; }
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
 
   Trigger<std::string> *get_wake_word_detected_trigger() { return &this->wake_word_detected_trigger_; }
@@ -94,8 +105,8 @@ class MicroWakeWord final : public Component
   uint8_t get_features_step_size() const { return this->features_step_size_; }
 
 #ifdef USE_MICRO_WAKE_WORD_VAD
-  void add_vad_model(const uint8_t *model_start, uint8_t probability_cutoff, size_t sliding_window_size,
-                     size_t tensor_arena_size);
+  void add_vad_model(const uint8_t *model_start, size_t model_size, uint8_t probability_cutoff,
+                     size_t sliding_window_size, size_t tensor_arena_size);
 
   // Intended for the voice assistant component to fetch VAD status
   bool get_vad_state() { return this->vad_state_; }
@@ -125,9 +136,9 @@ class MicroWakeWord final : public Component
   bool stop_after_detection_;
 
   bool task_stack_in_psram_{false};
-  BaseType_t task_core_{tskNO_AFFINITY};
 
   uint8_t features_step_size_;
+  uint16_t ring_buffer_duration_ms_{DEFAULT_RING_BUFFER_DURATION_MS};  // at most a second, see the schema
 
   // Audio frontend handles generating spectrogram features
   struct FrontendConfig frontend_config_;
@@ -139,7 +150,7 @@ class MicroWakeWord final : public Component
   // Used to send messages about the models' states to the main loop
   QueueHandle_t detection_queue_;
 
-  InferenceTask inference_task_;
+  InferenceTaskOwner inference_task_;
 
   static void inference_task(void *params);
 

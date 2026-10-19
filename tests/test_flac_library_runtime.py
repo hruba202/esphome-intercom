@@ -99,7 +99,7 @@ struct Input {
   size_t available() const { return limit-position; }
   void consume(size_t n) { assert(n<=available()); position+=n; }
   bool has_buffered_data() const { return position<bytes.size(); }
-  size_t fill(int, bool) { if(position==limit)limit=std::min(bytes.size(),limit+chunk); return available(); }
+  size_t fill(int) { if(position==limit)limit=std::min(bytes.size(),limit+chunk); return available(); }
 };
 struct Output {
   std::vector<uint8_t> delivered;

@@ -88,16 +88,20 @@ def test_single_core_target_rejects_core_one(monkeypatch):
     import importlib.util
     import pytest
     import esphome.config_validation as cv
+    from esphome.core import CORE
+    from types import SimpleNamespace
+    monkeypatch.setitem(CORE.data, "core", {"target_platform": "esp32"})
 
     spec = importlib.util.spec_from_file_location(
         "mww_affinity_config", ROOT / "esphome/components/micro_wake_word/__init__.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module.fv, "full_config", SimpleNamespace(get=lambda: {"esp32": {"framework": {"sdkconfig_options": {}}}}))
     monkeypatch.setattr(module.esp32, "get_esp32_variant", lambda: module.esp32.VARIANT_ESP32S2)
     for core in (-1, 0):
         assert module._validate_task_core({"task_core": core})["task_core"] == core
-    with pytest.raises(cv.Invalid, match="dual-core"):
+    with pytest.raises(cv.Invalid, match="task_core"):
         module._validate_task_core({"task_core": 1})
     monkeypatch.setattr(module.esp32, "get_esp32_variant", lambda: module.esp32.VARIANT_ESP32S3)
     assert module._validate_task_core({"task_core": 1})["task_core"] == 1

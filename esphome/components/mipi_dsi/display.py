@@ -44,8 +44,9 @@ from esphome.const import (
     CONF_ENABLE_PIN,
     CONF_ID,
     CONF_INIT_SEQUENCE,
-    CONF_INVERT_COLORS,
     CONF_LAMBDA,
+    CONF_RAW_DATA_ID,
+    CONF_INVERT_COLORS,
     CONF_MODEL,
     CONF_RESET_PIN,
     CONF_ROTATION,
@@ -102,6 +103,7 @@ def model_schema(config: ConfigType) -> cv.All:
         {
             model.option(CONF_RESET_PIN, cv.UNDEFINED): pins.gpio_output_pin_schema,
             cv.GenerateID(): cv.declare_id(MipiDsi),
+            cv.GenerateID(CONF_RAW_DATA_ID): cv.declare_id(cg.uint8),
             cv_dimensions(CONF_DIMENSIONS): dimension_schema(
                 model.get_default(CONF_DRAW_ROUNDING, 1)
             ),
@@ -198,10 +200,15 @@ async def to_code(config: ConfigType) -> None:
         model.get_dimensions(config)
     )
     var = cg.new_Pvariable(config[CONF_ID], width, height, color_depth, pixel_mode)
+    cg.add(var.set_big_endian(config[CONF_BYTE_ORDER] == BYTE_ORDER_BIG))
 
     sequence = model.get_sequence(config)
     cg.add(var.set_model(config[CONF_MODEL]))
-    cg.add(var.set_init_sequence(sequence))
+    if hasattr(cg, "shared_progmem_array"):
+        table = cg.shared_progmem_array("mipi_dsi_init_sequence", cg.uint8, sequence)
+    else:
+        table = cg.progmem_array(config[CONF_RAW_DATA_ID], sequence)
+    cg.add(var.set_init_sequence(table, len(sequence)))
     cg.add(var.set_invert_colors(config[CONF_INVERT_COLORS]))
     cg.add(var.set_hsync_pulse_width(config[CONF_HSYNC_PULSE_WIDTH]))
     cg.add(var.set_hsync_back_porch(config[CONF_HSYNC_BACK_PORCH]))
@@ -223,7 +230,5 @@ async def to_code(config: ConfigType) -> None:
         config[CONF_ROTATION] = 0
     await display.register_display(var, config)
     if lamb := config.get(CONF_LAMBDA):
-        lambda_ = await cg.process_lambda(
-            lamb, [(display.DisplayRef, "it")], return_type=cg.void
-        )
+        lambda_ = await cg.process_lambda(lamb, [(display.DisplayRef, "it")], return_type=cg.void)
         cg.add(var.set_writer(lambda_))

@@ -1,11 +1,9 @@
 # Retiring the compatibility forks
 
-Status checked on October 17, 2026 against ESPHome 2026.9.1 and upstream dev
-`1a28a9220ba1f77f8d9576562adb0baacba3ed0c`. The latest published beta checked was
-2026.10.0b4. A merged PR is not necessarily present in either release.
-
-PR links below were refreshed on October 18; the version/source comparison
-above remains the stated October 17 snapshot.
+Sources synchronized on 2026-10-19 against ESPHome dev
+`2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`, with compatibility retained for
+ESPHome 2026.9.1. This is a local source baseline, not a published release or
+physical-device qualification.
 
 The goal is to use native components whenever they cover the behavior the
 device needs. Audio Stack, VoIP Stack and Runtime Controller are our components;
@@ -26,25 +24,55 @@ this inventory concerns copied upstream components and dependency patches.
   the legacy extension was merged upstream. Custom YAMLs must follow the
   [migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
 
-## What still blocks removal
+## Current source alignment
 
-| Provider | Current difference | Upstream status and removal condition |
-| --- | --- | --- |
-| `micro_wake_word` | Inference task affinity and a temporary local StaticTask helper | [#20126](https://github.com/esphome/esphome/pull/20126) merged October 14. Neither 2026.9.1 nor 2026.10.0b4 includes it. Use a release containing both the shared core API and the component change, then remove the local helper and provider together. |
-| `voice_assistant` | Configurable TTS startup deadline, completion/abort tracking, late-event handling and interruption acknowledgement | [#18707](https://github.com/esphome/esphome/pull/18707) merged October 13, but its option is absent from 2026.9.1 and 2026.10.0b4. The response-lifecycle and preparation-hook changes are proposed in draft [#21050](https://github.com/esphome/esphome/pull/21050); the timeout PR alone is insufficient. |
-| `speaker_source` | Playback accounting, pending-source cancellation, stop dispatch and worker-exit verification | [#19499](https://github.com/esphome/esphome/pull/19499) is merged and included in 2026.10.0b4. [#19501](https://github.com/esphome/esphome/pull/19501) remains open. The worker-exit issue also has [ESP-IDF #19123](https://github.com/espressif/esp-idf/pull/19123), still open. Compare the complete local stop path after those land. |
-| `mixer` | Per-source playback credit and coordinated stop/restart of a shared output | The [restart fix #19368](https://github.com/esphome/esphome/pull/19368) is merged. The remaining accounting and shared-output changes are proposed in [#21053](https://github.com/esphome/esphome/pull/21053). Keep the provider until the selected release covers the complete behavior. |
-| Audio Stack's `resampler` provider | Explicit core/priority, bounded writes and backpressure during stop | Scheduling is proposed in [#21055](https://github.com/esphome/esphome/pull/21055), and shared ring-buffer write progress in [#21058](https://github.com/esphome/esphome/pull/21058). Compare both released changes before removing the local compatibility code. |
-| `audio` | Host simulation support and newer dependency selection | Local development selects esp-audio-libs 4.1.0 and micro-flac 0.3.0; 2026.9.1 selects 3.2.1 and 0.2.0. Dev contains the newer dependencies but still restricts the component to ESP32. Treat host support separately from the firmware dependency update. |
-| `mipi_dsi` | Panel settling delay, serialized display submissions, completion ownership and diagnostic framebuffer access | The three-band initialization correction remains absent from stable and dev. New upstream drawing APIs do not establish equivalent transfer ownership. See the panel-specific section below. |
-| GMF fork | Immediate processed PCM output and ESP-SR 2.6.0 selection | Stack placement is already upstream in [dabc2873](https://github.com/espressif/esp-gmf/commit/dabc2873b0987206080e538784e8afccb313e0f4), included in release v1.1, despite [PR #71](https://github.com/espressif/esp-gmf/pull/71) still appearing open. The output-callback API is proposed in [#73](https://github.com/espressif/esp-gmf/pull/73). The remaining version constraint is separate: upstream GMF AI Audio 1.1.1 still constrains ESP-SR to `2.5.*`, while the validated local build selects 2.6.0. |
-| `audio_http_compat` | `audio/vnd.wave` MIME alias | [micro-decoder #27](https://github.com/esphome-libs/micro-decoder/pull/27) remains open. Remove the adapter after the selected decoder release recognizes the MIME alias. |
-| `sendspin_compat` | Worker-memory flags and partially late chunk handling | Stable ESPHome selects sendspin-cpp 0.7.2. Dev selects 0.9.3 and the library's latest release is 0.9.5. Upgrade the ESPHome adapter and library as a matched pair; compare both patches instead of applying the old replacement units to a new API. |
+The 2026-10-19 consolidation uses ESPHome dev
+`2d0e3faa3d1282d1ec6928d4e76b62db3d37434c` as the common source baseline. A merged PR is not necessarily available
+in the stable ESPHome release selected by a user.
 
-The status above is a source/release comparison, not a promise that every
-upstream beta is compatible with the current device packages. In particular,
-current dev changes the display bulk-draw signature. Swapping only one display
-file into the older core is not an equivalent upgrade.
+The authoritative mapping is [upstream_sources.json](../esphome/upstream_sources.json).
+Each copied provider has an UPSTREAM.md identifying functional patches and
+stable-core compatibility. The source diff can be regenerated directly:
+
+```bash
+python scripts/export_fork_diff.py mipi_dsi --upstream ../esphome --output mipi-dsi.patch
+```
+
+Use an ESPHome checkout containing the pinned revision. The command only reads
+both trees and writes the requested patch. It does not fetch, commit, push or
+publish. Compatibility code for older cores must be separated from an upstream
+proposal, rather than submitted indiscriminately.
+
+| Provider | Remaining work |
+| --- | --- |
+| micro_wake_word | Native affinity where available, legacy task and automation adapters otherwise. Optional upstream internal RAM and buffer-duration settings retain upstream defaults. |
+| voice_assistant | Existing draft #21050 plus stable API adapters. No first-PCM or HTTP/TLS experiment. |
+| mixer | Runtime aligned with #21053's shared queue; old per-source timeline removed. |
+| resampler | #21055 scheduling, older ring-buffer progress and task-creation compatibility. Native microphone resampling is also retained. |
+| audio | Current primitives plus host simulator and stable API compatibility. Host support is not a proposed public PR. |
+| speaker_source | Pending cancellation, pipeline STOP ownership and worker-exit guard; upstream volume/mute fixes with stable-core silence compatibility. |
+| mipi_dsi | Panel settling, transfer ownership and capture access; current upstream drawing/model changes retained. Physical P4 qualification remains required. |
+| GMF AI Audio | Runtime source comparison against 255fb531 confirms upstream changes already present; remaining differences are the callback proposed in #73 and ESP-SR 2.6.0 selection. |
+| Sendspin compatibility | Adapter reviewed for pinned 0.7.2, 0.9.3 and 0.9.5 sources. This does not migrate firmware to the new protocol. |
+| ota | Native update lock and progressive erase; retained watchdog boundaries during final image validation. |
+| audio_http_compat | MIME alias pending micro-decoder #27; no task or parallel decoder. |
+
+The removed first-PCM experiments are preserved outside the active source and
+test collection. No rejected experimental path is part of the synchronization.
+
+### Keep playback providers together
+
+Audio Stack backend packages explicitly select `resampler` from
+`audio_stack_components_source`, alongside `esp_audio_stack`. Merely selecting
+the audio backend does not override ESPHome's native resampler automatically.
+The matching adapter bounds writes to the input ring's capacity, so an oversized
+decoder block waits or makes partial progress instead of repeatedly retrying an
+impossible write. The package composition tests guard this provider selection.
+Fully native ESPHome profiles continue to use the native resampler.
+
+For firmware qualification, compare the generated component sources with their
+intended providers as well as recording repository SHAs. A local fork existing
+in the checkout is not proof that a particular board compiled it.
 
 ## Preserve the P4 panel fix
 

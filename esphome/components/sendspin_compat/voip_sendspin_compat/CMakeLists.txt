@@ -9,11 +9,24 @@ set(early_discard [=[        if (client_timestamp < sync_context.new_audio_clien
             return DecodeResult::SKIPPED;
         }
 ]=])
+# Sendspin 0.9 uses the shared inbound ring instead of the legacy encoded ring.
+# Preserve decoded-prefix trimming in both versions; never guess for an unknown source.
+set(shared_early_discard [=[        if (client_timestamp < sync_context.new_audio_client_playtime - HARD_SYNC_THRESHOLD_US) {
+            // This chunk will arrive too late to be played, skip it!
+            this->inbound_.return_item(sync_context.encoded_item);
+            sync_context.encoded_item = nullptr;
+            return DecodeResult::SKIPPED;
+        }
+]=])
 string(FIND "${sync_source}" "${early_discard}" early_discard_position)
-if(early_discard_position EQUAL -1)
+string(FIND "${sync_source}" "${shared_early_discard}" shared_discard_position)
+if(NOT early_discard_position EQUAL -1)
+  string(REPLACE "${early_discard}" "" sync_source "${sync_source}")
+elseif(NOT shared_discard_position EQUAL -1)
+  string(REPLACE "${shared_early_discard}" "" sync_source "${sync_source}")
+else()
   message(FATAL_ERROR "Sendspin compatibility adapter requires review for this SDK source")
 endif()
-string(REPLACE "${early_discard}" "" sync_source "${sync_source}")
 file(READ "${CMAKE_CURRENT_LIST_DIR}/thread_config.h" thread_config_source)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/thread_config.h" "${thread_config_source}")
 get_target_property(sendspin_sources ${sendspin_library} SOURCES)

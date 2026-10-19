@@ -27,7 +27,7 @@ released changes and remaining local behavior, including the P4 panel fix.
 | Component | Local reason | Public compatibility |
 |---|---|---|
 | `audio_http_compat` | Adds the missing `audio/vnd.wave` MIME alias to micro-decoder. | No task or audio buffer; inactive when WAV is disabled or upstream already supports the alias. |
-| `voice_assistant` | `tts_playback_start_timeout` allows slow TTS engines to exceed the upstream two-second start limit. | Upstream two-second default is preserved. |
+| `voice_assistant` | Response completion, Stop and intent preparation from the existing draft PR. | Stable automation APIs remain supported; playback state is not first-PCM detection. |
 | `mipi_dsi` | Serializes LVGL and direct video submissions and exposes the immutable framebuffer to the narrow P4 renderer adapter. | Panel models and normal ESPHome display behavior remain aligned with the recorded upstream baseline. |
 | `audio` | Supplies host simulation adapters and selects newer audio-library dependencies. | The dependency versions differ from stable 2026.9.1; compare the complete provider before removing it. |
 

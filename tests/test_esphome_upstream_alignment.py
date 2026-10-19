@@ -1,6 +1,7 @@
 """Contracts for the narrow ESPHome component forks shipped by this project."""
 
 from pathlib import Path
+import json
 
 import pytest
 
@@ -10,7 +11,7 @@ COMPONENTS = ROOT / "esphome" / "components"
 pytestmark = pytest.mark.architecture
 
 
-UPSTREAM_DEV_SHA = "5f6a910e2d6e41d3716668a66e5dff8cca25f2ea"
+UPSTREAM_DEV_SHA = json.loads((ROOT / "esphome/upstream_sources.json").read_text())["revision"]
 
 
 def test_audio_dependencies_match_recorded_esphome_dev() -> None:

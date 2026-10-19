@@ -1,11 +1,8 @@
 # ESPHome playback adapter
 
-Based on the stable ESPHome `release` branch, version `2026.9.0`, commit
-[`c6e4c87e525dd343e470d8dea368957a002f6505`](https://github.com/esphome/esphome/tree/c6e4c87e525dd343e470d8dea368957a002f6505/esphome/components/speaker_source).
-ESPHome has no `main` branch. Compare future updates against the stable release,
-not unreleased `dev` changes. Volume and mute behavior match this stable baseline.
-The original ESPHome license is included in this directory: runtime sources use
-GPLv3, Python configuration uses MIT.
+Synchronized with the upstream revision and remaining adaptations recorded in
+[UPSTREAM.md](UPSTREAM.md). Runtime sources retain GPLv3 and Python configuration
+retains MIT licensing; see the included LICENSE.
 
 This adapter keeps the native configuration and speaker interfaces. It is
 selected by the shared playback compatibility package for full media profiles.
@@ -34,7 +31,7 @@ Upstream proposals for the remaining compatibility changes:
 - [Pending-source cancellation](https://github.com/esphome/esphome/pull/19501).
 - [ESP-IDF join completion](https://github.com/espressif/esp-idf/pull/19123).
 
-Recheck these differences when updating the stable ESPHome baseline. An open
+Recheck these differences against the pinned upstream baseline. An open
 proposal is not a replacement for a released upstream fix.
 
 ## Diagnose a stalled control queue

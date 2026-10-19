@@ -20,14 +20,14 @@ def _method(text, signature):
 def test_paused_output_stop_does_not_strand_other_source(tmp_path):
     source = (ROOT / 'esphome/components/mixer/speaker/mixer_speaker.cpp').read_text()
     code = r'''
-#include "playback_timeline.h"
+#include "playback_queue.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <cstdio>
 #include <vector>
-using esphome::mixer_speaker::PlaybackTimeline;
+using esphome::mixer_speaker::PlaybackQueue;
 namespace speaker {enum State {STATE_STOPPED,STATE_STARTING,STATE_RUNNING,STATE_STOPPING};}
 using esp_err_t=int;
 constexpr int ESP_OK=0,ESP_ERR_NO_MEM=1,ESP_ERR_NOT_SUPPORTED=2,ESP_ERR_INVALID_ARG=3,ESP_ERR_INVALID_STATE=4;
@@ -52,7 +52,7 @@ struct Parent {
  Output output;Output *output_speaker_=&output;bool restarting_output_=false;
  struct Task {bool is_created(){return true;}} task_;
  unsigned bits=0,*event_group_=&bits;
- std::atomic<unsigned> frames_in_pipeline_{200};Mutex playback_mutex_;
+ PlaybackQueue playback_;Mutex playback_mutex_;
  std::vector<SourceSpeaker*> source_speakers_;
  void enable_loop_soon_any_context(){}
  void stop_output_();void complete_worker_stop();
@@ -62,7 +62,7 @@ struct Parent {
 using MixerSpeaker=Parent;
 struct AudioSource {bool buffered=false;bool has_buffered_data(){return buffered;}};
 struct SourceSpeaker {
- Parent *parent_;PlaybackTimeline playback_;
+ Parent *parent_;uint8_t source_index_=0;
  speaker::State state_=speaker::STATE_RUNNING;
  unsigned bits=0,*event_group_=&bits,last_seen_data_ms_=0,stopping_start_ms_=0;
  bool stop_gracefully_=false,disabled=false;
@@ -72,13 +72,13 @@ struct SourceSpeaker {
  void status_clear_error(){}void status_set_error(const char*){}void disable_loop(){disabled=true;}
  void loop();void enter_stopping_state_();
 };
-void Parent::reset_source_playback_(SourceSpeaker *s){s->playback_.clear();}
+void Parent::reset_source_playback_(SourceSpeaker *s){playback_.discard_source(s->source_index_);}
 ''' + _method(source, 'void MixerSpeaker::stop_output_()') + '\n' + _method(source, 'void SourceSpeaker::loop()') + '\n' + _method(source, 'void SourceSpeaker::enter_stopping_state_()') + r'''
 int main(){
- Parent parent;SourceSpeaker media{&parent},announcement{&parent};
+ Parent parent;SourceSpeaker media{&parent,0},announcement{&parent,1};
  parent.source_speakers_={&media,&announcement};
  // Both sources contributed to the same 200 hardware-bound frames.
- media.playback_.append(0,200);announcement.playback_.append(0,200);
+ assert(parent.playback_.append(3,200));
  // Explicit output pause is a supported speaker operation, not a lost IRQ.
  // STOP on one source invokes the production force-stop path while paused.
  parent.output.paused=true;media.bits=SOURCE_SPEAKER_COMMAND_STOP;
@@ -91,20 +91,20 @@ int main(){
  announcement.bits=SOURCE_SPEAKER_COMMAND_FINISH;
  for(unsigned i=0;i<3;++i){now+=20000;announcement.loop();}
  std::printf("discarded=%u announcement_state=%d pending=%u buffered=%d\n",parent.output.discarded,
-             announcement.state_,announcement.playback_.pending_frames(),announcement.audio_source_ ? announcement.audio_source_->has_buffered_data() : false);
+             announcement.state_,parent.playback_.pending_frames(1),announcement.audio_source_ ? announcement.audio_source_->has_buffered_data() : false);
  // The hardware has discarded these frames. No valid playback completion can
  // ever arrive for them; the other source must reconcile and reach STOPPED.
  assert(announcement.state_==speaker::STATE_STOPPED);
- assert(announcement.playback_.pending_frames()==0 && parent.frames_in_pipeline_==0);
+ assert(parent.playback_.pending_frames(1)==0 && parent.playback_.pending_frames()==0);
  // Buffered input on another source survives output cleanup and remains active.
- Parent other;SourceSpeaker stopping{&other},buffered{&other};
+ Parent other;SourceSpeaker stopping{&other,0},buffered{&other,1};
  other.source_speakers_={&stopping,&buffered};
- stopping.playback_.append(0,200);buffered.playback_.append(0,200);
+ assert(other.playback_.append(3,200));
  buffered.audio_source_->buffered=true;
  other.output.paused=true;stopping.bits=SOURCE_SPEAKER_COMMAND_STOP;stopping.loop();
  other.complete_worker_stop();other.output.stop();buffered.bits=SOURCE_SPEAKER_COMMAND_FINISH;buffered.loop();
  assert(buffered.state_==speaker::STATE_RUNNING && buffered.audio_source_->has_buffered_data());
- assert(buffered.playback_.pending_frames()==0);
+ assert(other.playback_.pending_frames(1)==0);
 
 }
 '''

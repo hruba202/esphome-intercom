@@ -37,6 +37,7 @@ enum SourceSpeakerEventBits : uint32_t {
 enum MixerTaskEventBits : uint32_t {
   MIXER_TASK_COMMAND_START = (1 << 0),
   MIXER_TASK_COMMAND_STOP = (1 << 1),
+  MIXER_TASK_OUTPUT_AVAILABLE = (1 << 2),
   MIXER_TASK_STATE_STARTING = (1 << 10),
   MIXER_TASK_STATE_RUNNING = (1 << 11),
   MIXER_TASK_STATE_STOPPING = (1 << 12),
@@ -44,19 +45,6 @@ enum MixerTaskEventBits : uint32_t {
   MIXER_TASK_ERR_ESP_NO_MEM = (1 << 19),
   MIXER_TASK_ALL_BITS = 0x00FFFFFF,  // All valid FreeRTOS event group bits
 };
-
-static inline uint32_t atomic_subtract_clamped(std::atomic<uint32_t> &var, uint32_t amount) {
-  uint32_t current = var.load(std::memory_order_acquire);
-  uint32_t subtracted = 0;
-  if (current > 0) {
-    uint32_t new_value;
-    do {
-      subtracted = std::min(amount, current);
-      new_value = current - subtracted;
-    } while (!var.compare_exchange_weak(current, new_value, std::memory_order_release, std::memory_order_acquire));
-  }
-  return subtracted;
-}
 
 static bool create_event_group(EventGroupHandle_t &event_group, Component *component) {
   event_group = xEventGroupCreate();
@@ -128,7 +116,7 @@ void SourceSpeaker::loop() {
     case speaker::STATE_STARTING: {
       esp_err_t err = this->start_();
       if (err == ESP_OK) {
-        this->parent_->reset_source_playback_(this);  // reset pending playback frames
+        this->parent_->reset_source_playback_(this);
         this->state_ = speaker::STATE_RUNNING;
         this->stop_gracefully_ = false;
         this->last_seen_data_ms_ = millis();
@@ -158,7 +146,7 @@ void SourceSpeaker::loop() {
     }
     case speaker::STATE_RUNNING:
       if (!this->audio_source_->has_buffered_data() &&
-          (this->playback_.pending_frames() == 0)) {
+          (this->parent_->playback_.pending_frames(this->source_index_) == 0)) {
         // No audio data in buffer waiting to get mixed and no frames are pending playback
         if ((this->timeout_ms_.has_value() && ((millis() - this->last_seen_data_ms_) > this->timeout_ms_.value())) ||
             this->stop_gracefully_) {
@@ -169,7 +157,7 @@ void SourceSpeaker::loop() {
       break;
     case speaker::STATE_STOPPING: {
       if (this->parent_->get_output_speaker()->is_stopped() ||
-          (this->playback_.pending_frames() == 0)) {
+          (this->parent_->playback_.pending_frames(this->source_index_) == 0)) {
         // Output speaker is stopped OR all pending playback frames have played
         this->parent_->reset_source_playback_(this);
         this->stop_gracefully_ = false;
@@ -177,7 +165,6 @@ void SourceSpeaker::loop() {
         this->state_ = speaker::STATE_STOPPED;
       } else if (this->parent_->get_output_speaker()->get_pause_state() ||
                  ((millis() - this->stopping_start_ms_) > STOPPING_TIMEOUT_MS)) {
-        // A forced stop discards mixed output belonging to every source.
         this->parent_->stop_output_();
       }
       break;
@@ -284,13 +271,13 @@ size_t SourceSpeaker::process_data_from_source(std::shared_ptr<audio::RingBuffer
     return 0;
   }
 
-  size_t bytes_read = audio_source->fill(ticks_to_wait, false);
+  size_t bytes_read = audio_source->fill(ticks_to_wait);
 
   uint32_t samples_to_duck = this->audio_stream_info_.bytes_to_samples(bytes_read);
   if (samples_to_duck > 0) {
     this->ducking_ramp_.process(audio_source->mutable_data(),
-                                   static_cast<uint8_t>(this->audio_stream_info_.get_bits_per_sample() / 8),
-                                   samples_to_duck);
+                                static_cast<uint8_t>(this->audio_stream_info_.get_bits_per_sample() / 8),
+                                samples_to_duck);
   }
 
   return bytes_read;
@@ -320,22 +307,27 @@ void MixerSpeaker::setup() {
     return;
   }
 
-  // One owner advances every source against the same hardware completion.
-  this->output_speaker_->add_audio_output_callback([this](uint32_t new_frames, int64_t timestamp) {
-    uint32_t rate = 0;
+  // Attribute each output completion to the sources that contributed those frames.
+  this->output_speaker_->add_audio_output_callback([this](uint32_t new_frames, int64_t write_timestamp) {
+    PlaybackQueue::Completions completed;
+    uint32_t rate;
     {
       LockGuard lock(this->playback_mutex_);
-      atomic_subtract_clamped(this->frames_in_pipeline_, new_frames);
-      rate = this->audio_stream_info_.has_value() ? this->audio_stream_info_.value().get_sample_rate() : 0;
-      for (auto *source : this->source_speakers_) source->completion_ = source->playback_.consume(new_frames);
+      const bool was_full = this->playback_.full();
+      completed = this->playback_.consume(new_frames);
+      if (was_full && !this->playback_.full())
+        xEventGroupSetBits(this->event_group_, MIXER_TASK_OUTPUT_AVAILABLE);
+      rate = this->audio_stream_info_.has_value() ? this->audio_stream_info_->get_sample_rate() : 0;
     }
-    // Listener code runs outside the accounting lock. Output callbacks are
-    // serialized by the output speaker's playback task.
-    for (auto *source : this->source_speakers_) {
-      const auto result = source->completion_;
-      if (result.frames != 0 && rate != 0) {
-        const int64_t end = timestamp - static_cast<int64_t>((uint64_t(result.trailing_frames) * 1000000U) / rate);
-        source->audio_output_callback_(result.frames, end);
+    // A listener may write more audio. Never call it while holding the accounting lock.
+    for (size_t i = 0; i < this->source_speakers_.size(); ++i) {
+      if (completed[i].frames != 0) {
+        const int64_t end =
+            rate == 0
+                ? write_timestamp
+                : write_timestamp - static_cast<int64_t>((uint64_t(completed[i].trailing_frames) * 1000000U) / rate);
+        this->source_speakers_[i]->audio_output_callback_(completed[i].frames, end);
+        this->playback_.acknowledge(i, completed[i].frames);
       }
     }
   });
@@ -346,27 +338,26 @@ void MixerSpeaker::setup() {
 
 void MixerSpeaker::reset_source_playback_(SourceSpeaker *source) {
   LockGuard lock(this->playback_mutex_);
-  source->playback_.clear();
+  this->playback_.discard_source(source->source_index_);
 }
 
 bool MixerSpeaker::reserve_playback_(const FixedVector<SourceSpeaker *> &sources, size_t count, uint32_t frames) {
+  uint8_t mask = 0;
+  for (size_t i = 0; i < count; ++i)
+    mask |= 1U << sources[i]->source_index_;
   LockGuard lock(this->playback_mutex_);
-  const uint32_t depth = this->frames_in_pipeline_.load(std::memory_order_acquire);
-  for (size_t i = 0; i < count; ++i) if (!sources[i]->playback_.can_append(depth, frames)) return false;
-  for (size_t i = 0; i < count; ++i) sources[i]->playback_.append(depth, frames);
-  this->frames_in_pipeline_.fetch_add(frames, std::memory_order_release);
-  return true;
+  xEventGroupClearBits(this->event_group_, MIXER_TASK_OUTPUT_AVAILABLE);
+  return this->playback_.append(mask, frames);
 }
 
 void MixerSpeaker::stop_output_() {
-  if (this->restarting_output_) return;
+  if (this->restarting_output_)
+    return;
   this->restarting_output_ = true;
-  // The worker's existing cleanup drops its transfer buffer and reconciles all
-  // source timelines. Source input buffers remain available for the restart.
+  // The writer must release its transfer buffer before the shared output is stopped.
   xEventGroupSetBits(this->event_group_, MIXER_TASK_COMMAND_STOP | MIXER_TASK_COMMAND_START);
-  // Stop the sink only after the writer has exited. An in-flight play() can
-  // otherwise restart the sink and strand this restart barrier.
-  if (!this->task_.is_created()) this->output_speaker_->stop();
+  if (!this->task_.is_created())
+    this->output_speaker_->stop();
   this->enable_loop_soon_any_context();
 }
 
@@ -410,8 +401,9 @@ void MixerSpeaker::loop() {
   // Retries on a subsequent loop if the task is still running on the other core
   if ((event_group_bits & MIXER_TASK_STATE_STOPPED) && this->task_.deallocate()) {
     ESP_LOGD(TAG, "Stopped");
-    if (this->restarting_output_) this->output_speaker_->stop();
-    // Preserve a start requested while the previous task was stopping.
+    if (this->restarting_output_)
+      this->output_speaker_->stop();
+    // Keep a start request that arrived while the task was stopping, otherwise it is lost for good
     xEventGroupClearBits(this->event_group_, MIXER_TASK_ALL_BITS & ~MIXER_TASK_COMMAND_START);
     this->all_stopped_since_ms_ = 0;
   }
@@ -435,7 +427,7 @@ void MixerSpeaker::loop() {
     } else {
       this->all_stopped_since_ms_ = 0;
       // New activity detected; clear any stale auto-stop request before it can stop the running task.
-      if (event_group_bits & MIXER_TASK_COMMAND_STOP) {
+      if (!this->restarting_output_ && (event_group_bits & MIXER_TASK_COMMAND_STOP)) {
         xEventGroupClearBits(this->event_group_, MIXER_TASK_COMMAND_STOP);
       }
     }
@@ -450,24 +442,25 @@ void MixerSpeaker::loop() {
 }
 
 esp_err_t MixerSpeaker::start(audio::AudioStreamInfo &stream_info) {
-  if (!this->audio_stream_info_.has_value()) {
-    this->audio_stream_info_ =
-        audio::AudioStreamInfo(this->output_bits_per_sample_, this->output_channels_, stream_info.get_sample_rate());
-    this->output_speaker_->set_audio_stream_info(this->audio_stream_info_.value());
-  } else {
-    if (!this->queue_mode_ && (stream_info.get_sample_rate() != this->audio_stream_info_.value().get_sample_rate())) {
-      // The two audio streams must have the same sample rate to mix properly if not in queue mode
-      return ESP_ERR_INVALID_ARG;
+  {
+    LockGuard lock(this->playback_mutex_);
+    if (!this->audio_stream_info_.has_value()) {
+      this->audio_stream_info_ =
+          audio::AudioStreamInfo(this->output_bits_per_sample_, this->output_channels_, stream_info.get_sample_rate());
+      this->output_speaker_->set_audio_stream_info(this->audio_stream_info_.value());
+    } else {
+      if (!this->queue_mode_ && (stream_info.get_sample_rate() != this->audio_stream_info_.value().get_sample_rate())) {
+        // The two audio streams must have the same sample rate to mix properly if not in queue mode
+        return ESP_ERR_INVALID_ARG;
+      }
     }
   }
 
   this->enable_loop_soon_any_context();  // ensure loop processes command
 
-  // A new source may cancel an idle stop, but cannot cancel shared-output
-  // cleanup after accepted mixed frames have been discarded.
-  if (!this->restarting_output_) {
+  // Starting a new stream supersedes any previously queued stop request.
+  if (!this->restarting_output_)
     xEventGroupClearBits(this->event_group_, MIXER_TASK_COMMAND_STOP);
-  }
 
   uint32_t event_bits = xEventGroupGetBits(this->event_group_);
   if (!(event_bits & MIXER_TASK_COMMAND_START)) {
@@ -565,7 +558,8 @@ void MixerSpeaker::audio_mixer_task(void *params) {
               active_stream_info.bytes_to_frames(audio_sources_with_data[0]->available());
           frames_to_mix = std::min(frames_to_mix, frames_available_in_buffer);
           if (!this_mixer->reserve_playback_(speakers_with_data, 1, frames_to_mix)) {
-            delay(TASK_DELAY_MS);
+            xEventGroupWaitBits(this_mixer->event_group_, MIXER_TASK_OUTPUT_AVAILABLE | MIXER_TASK_COMMAND_STOP,
+                                pdFALSE, pdFALSE, pdMS_TO_TICKS(TASK_DELAY_MS));
             continue;
           }
           esp_audio_libs::pcm_convert::copy_frames(
@@ -586,13 +580,15 @@ void MixerSpeaker::audio_mixer_task(void *params) {
             }
           } else {
             // Speaker has finished writing the current audio, update the stream information and restart the speaker
-            this_mixer->audio_stream_info_ =
-                audio::AudioStreamInfo(this_mixer->output_bits_per_sample_, this_mixer->output_channels_,
-                                       active_stream_info.get_sample_rate());
-            this_mixer->output_speaker_->set_audio_stream_info(this_mixer->audio_stream_info_.value());
+            {
+              LockGuard lock(this_mixer->playback_mutex_);
+              this_mixer->audio_stream_info_ =
+                  audio::AudioStreamInfo(this_mixer->output_bits_per_sample_, this_mixer->output_channels_,
+                                         active_stream_info.get_sample_rate());
+              this_mixer->output_speaker_->set_audio_stream_info(this_mixer->audio_stream_info_.value());
+              this_mixer->playback_.clear();
+            }
             this_mixer->output_speaker_->start();
-            // Reset pipeline frame count since we're starting fresh with a new sample rate
-            this_mixer->frames_in_pipeline_.store(0, std::memory_order_release);
             sent_finished = false;
           }
         }
@@ -607,7 +603,8 @@ void MixerSpeaker::audio_mixer_task(void *params) {
         audio::AudioStreamInfo primary_stream_info = speakers_with_data[0]->get_audio_stream_info();
 
         if (!this_mixer->reserve_playback_(speakers_with_data, speakers_with_data.size(), frames_to_mix)) {
-          delay(TASK_DELAY_MS);
+          xEventGroupWaitBits(this_mixer->event_group_, MIXER_TASK_OUTPUT_AVAILABLE | MIXER_TASK_COMMAND_STOP, pdFALSE,
+                              pdFALSE, pdMS_TO_TICKS(TASK_DELAY_MS));
           continue;
         }
 
@@ -627,6 +624,7 @@ void MixerSpeaker::audio_mixer_task(void *params) {
           }
         }
 
+        // Update source audio source consumption and add new audio durations to the source speaker pending playbacks
         for (size_t i = 0; i < audio_sources_with_data.size(); ++i) {
           audio_sources_with_data[i]->consume(
               speakers_with_data[i]->get_audio_stream_info().frames_to_bytes(frames_to_mix));
@@ -643,8 +641,7 @@ void MixerSpeaker::audio_mixer_task(void *params) {
   // Reset pipeline frame count since the task is stopping
   {
     LockGuard lock(this_mixer->playback_mutex_);
-    this_mixer->frames_in_pipeline_.store(0, std::memory_order_release);
-    for (auto *source : this_mixer->source_speakers_) source->playback_.clear();
+    this_mixer->playback_.clear();
   }
 
   xEventGroupSetBits(this_mixer->event_group_, MIXER_TASK_STATE_STOPPED);
