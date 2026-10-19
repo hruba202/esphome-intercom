@@ -547,3 +547,24 @@ def test_audio_stack_backend_owns_its_resampler_selection(backend: Path) -> None
     assert len(providers) == 1
     assert providers[0]['source'] == '${audio_stack_components_source}'
     assert 'resampler' in providers[0]['components']
+
+
+@pytest.mark.parametrize('features', [FULL, ['voip'], ['voice'], ['music']])
+def test_ws3_resamplers_stay_off_the_afe_feed_core(tmp_path: Path, features: list[str]) -> None:
+    config = device_config(tmp_path, features)
+    result = subprocess.run(
+        [sys.executable, '-m', 'esphome', 'config', '--no-defaults', str(config)],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    expanded = tmp_path / 'expanded.yaml'
+    expanded.write_text(result.stdout)
+    document = yaml_util.load_yaml(expanded)
+    assert document['esp_afe']['feed_task_core'] == 0
+    resamplers = [speaker for speaker in document['speaker'] if speaker['platform'] == 'resampler']
+    assert resamplers
+    for speaker in resamplers:
+        # A floating-point task without affinity gets pinned implicitly by IDF
+        # on its first FPU use. Core 0 already hosts the full AFE feed workload.
+        assert speaker.get('task_core', -1) == 1, speaker['id']
+        assert speaker.get('task_priority', 1) == 1

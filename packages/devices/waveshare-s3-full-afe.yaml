@@ -60,14 +60,25 @@ substitutions:
       speaker: voip_speaker_input
       delete_contact_missing_from:
         updates_number: 1
+    # AFE feed and MWW occupy core 0. IDF pins floating-point tasks on
+    # first use, so select the playback core before resampling starts.
+    speaker:
+    - id: !extend 'voip_speaker_input'
+      task_core: 1
   firmware_music_binding:
     media_source:
     - id: !extend 'media_http_source'
       persistent_ring_buffer: true
+    speaker:
+    - id: !extend 'media_speaker_input'
+      task_core: 1
   firmware_announcement_binding:
     media_source:
     - id: !extend 'announcement_http_source'
       persistent_ring_buffer: true
+    speaker:
+    - id: !extend 'tts_speaker_input'
+      task_core: 1
   firmware_controls:
     packages:
       buttons: !include '../features/controls/waveshare_s3.yaml'
