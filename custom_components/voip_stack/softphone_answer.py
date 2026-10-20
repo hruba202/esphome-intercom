@@ -160,12 +160,6 @@ async def async_answer_browser_call(
         )
         registry.attach_media(call_id, conference_media)
         bind_service_call_controller(registry, call_id, call)
-        registry.add_leg(
-            call_id,
-            call_id,
-            role="ha_softphone",
-            state=CallState.IN_CALL.value,
-        )
         publish_phone_projection(
             hass,
             session,
@@ -383,13 +377,6 @@ async def async_answer_browser_call(
         )
         if claimed is None:
             return False
-        # The pending destination already owns a browser leg. Commit its
-        # answer with the session so phone state and BLF stop reporting early.
-        registry.observe_leg(
-            call_id, f"browser:{endpoint_id}", role="ha_softphone",
-            state=CallState.IN_CALL.value, endpoint_id=endpoint_id,
-            generation=authoritative_session.generation,
-        )
         registry.take_pending_invite(call_id)
         return True
 
@@ -461,12 +448,6 @@ async def async_answer_browser_call(
                 call_id,
                 desired_video_direction,
             )
-    registry.add_leg(
-        call_id,
-        call_id,
-        role="ha_softphone",
-        state=CallState.IN_CALL.value,
-    )
     _LOGGER.info("SIP answered call_id=%s", call_id)
     video_active = bool(
         invite.video_format is not None

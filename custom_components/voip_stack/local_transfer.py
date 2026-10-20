@@ -91,8 +91,9 @@ async def try_local_audio_transfer(hass, runtime, grant, referrer):
             return task
 
         if from_callee:
-            old_leg.phase = LegPhase.CLOSING
-            old_leg.endpoint_id = transferrer
+            if not calls.retire_leg(original.call_id, old_leg, endpoint_id=transferrer,
+                                    generation=original.generation):
+                raise RuntimeError("transfer participant changed before retirement")
             referrer.on_media_update = None
             referrer.on_info_dtmf = None
         else:

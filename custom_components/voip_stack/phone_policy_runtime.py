@@ -8,6 +8,7 @@ from homeassistant.core import callback
 
 from .automation_routing import automation_event_type, matches_call
 from .call_deadlines import CallDeadline
+from .call_state import CallPrecondition
 from .call_scope import has_ringing_destination
 from .endpoint_session import TerminationIntent
 from .inbound_routing.automation import SIP_ROUTE_DECISION_TIMEOUT
@@ -83,9 +84,9 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
             return False
         return True
 
-    async def execute(sequence):
+    async def execute(sequence, precondition):
         context = registry.event_context(token.call_id)
-        if not current() or context is None or context.sequence != sequence:
+        if not current() or not precondition.matches(session) or context is None or context.sequence != sequence:
             return
         destination = policy.no_answer
         if destination.kind is DestinationKind.HANGUP:
@@ -103,10 +104,7 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
                 raise RuntimeError("SIP forwarding is unavailable")
             await registry.forward_call(
                 call_id=token.call_id, destination=target_name, on_failure="terminate",
-                # Forwarding validates the public event snapshot. The caller's
-                # ESP projection can be remote_ringing while this receiving
-                # session still has the lifecycle state ringing.
-                expected_state=context.state, expected_sequence=sequence,
+                precondition=precondition,
             )
         except Exception:
             _LOGGER.exception("Phone no-answer route failed call_id=%s", token.call_id)
@@ -114,9 +112,9 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
             if current() and context is not None and context.sequence == sequence:
                 registry.request_termination(token.call_id, TerminationIntent("route_failed"), generation=token.generation)
 
-    def commit(sequence):
+    def commit(sequence, precondition):
         if current():
-            task = session.create_task(execute(sequence), name="phone-policy-fallback")
+            task = session.create_task(execute(sequence, precondition), name="phone-policy-fallback")
             # Session.create_task is the existing task/cleanup owner.
             return task
         return None
@@ -128,6 +126,7 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
         if context is None:
             return
         sequence = context.sequence
+        precondition = CallPrecondition.capture(session)
         event = {**payload, "scope": "phone_policy", "event_type": "ringing_timeout_requested",
                  "reason": "no_answer", "sequence": sequence, "timeout": policy.ringing_timeout}
         interested = any(
@@ -137,10 +136,10 @@ def apply_phone_policy_event(hass, payload: dict) -> None:
         )
         hass.bus.async_fire(CALL_EVENT, event, context=registry.ha_context(token.call_id))
         if interested:
-            decision = CallDeadline(registry, session, f"{_DECISION}:{session.call_id}", lambda: commit(sequence))
+            decision = CallDeadline(registry, session, f"{_DECISION}:{session.call_id}", lambda: commit(sequence, precondition))
             decision.arm(hass.loop, SIP_ROUTE_DECISION_TIMEOUT)
         else:
-            commit(sequence)
+            commit(sequence, precondition)
 
     deadline = CallDeadline(registry, session, f"{_TIMER}:{session.call_id}", expired)
     deadline.arm(hass.loop, policy.ringing_timeout)

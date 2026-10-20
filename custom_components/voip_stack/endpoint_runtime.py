@@ -398,12 +398,6 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             endpoint_id,
             role="destination",
         )
-        registry.add_leg(
-            invite.call_id,
-            invite.call_id,
-            role="ha_softphone",
-            state=CallState.RINGING.value,
-        )
         expected_revision = session.revision
 
         def _publish_ringing_if_current() -> None:
@@ -456,6 +450,8 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         expected_sequence: int = 0,
         initial_selection: bool = False,
         trunk_id: str = "",
+        precondition=None,
+        control_endpoint_id: str = "",
     ) -> None:
         await async_forward_existing_call(
             ForwardRuntime(
@@ -476,6 +472,8 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             expected_sequence=expected_sequence,
             initial_selection=initial_selection,
             trunk_id=trunk_id,
+            precondition=precondition,
+            control_endpoint_id=control_endpoint_id,
         )
 
     async def _run_trunk_inbound_route_guarded(
@@ -859,6 +857,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
                     and session.live and manager is not None
                     and registry.resolve_session_id(actual.call_id) == session.call_id
                     and manager.invite_for_call(actual.call_id) is actual):
+                session.state_changed()
                 publish_bridge_projection(hass, session, event_type="state_changed")
         return replace(result, on_committed=published)
 

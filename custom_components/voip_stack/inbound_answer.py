@@ -14,6 +14,7 @@ from .endpoint_session import (
     CleanupStage,
     EndpointCallSession,
     ManagedResource,
+    SessionHandoff,
     TerminationIntent,
 )
 from .fsm import CallState
@@ -27,6 +28,10 @@ _LOGGER = logging.getLogger(__name__)
 
 SendFinalResponse: TypeAlias = Callable[[int, str, str], bool]
 ClaimAnswer: TypeAlias = Callable[[], bool]
+
+
+class _AnswerClaimRejected(Exception):
+    """Abort state mutation before transferring resources or sending success."""
 
 
 def bind_final_response(
@@ -119,6 +124,22 @@ class AnswerTransaction:
         reason: str = "OK",
         response_already_sent: bool = False,
     ) -> AnswerCommitResult:
+        """Publish only the completed answer or its completed compensation."""
+        with self.session.defer_state_notifications():
+            return await self._commit(
+                answer_sdp, claim=claim, status=status, reason=reason,
+                response_already_sent=response_already_sent,
+            )
+
+    async def _commit(
+        self,
+        answer_sdp: str,
+        *,
+        claim: ClaimAnswer,
+        status: int = 200,
+        reason: str = "OK",
+        response_already_sent: bool = False,
+    ) -> AnswerCommitResult:
         """Claim without yielding, transfer resources, then send final response."""
 
         if self._finished:
@@ -140,11 +161,17 @@ class AnswerTransaction:
         # state claim, resource transfer, and final response.  This makes the
         # sequence atomic relative to asyncio termination callbacks.
         try:
-            claimed = (
-                claim()
-                if response_already_sent and self.session.answer_committed
-                else self.session.claim_answer(self.token, claim)
-            )
+            with SessionHandoff(self.session.state_runtime, self.session):
+                claimed = (
+                    claim()
+                    if response_already_sent and self.session.answer_committed
+                    else self.session.claim_answer(self.token, claim)
+                )
+                if not claimed or not self.session.owns(self.token):
+                    raise _AnswerClaimRejected
+        except _AnswerClaimRejected:
+            await self.rollback("stale_call")
+            return AnswerCommitResult(False, False, "stale_call")
         except Exception:
             _LOGGER.exception(
                 "Inbound answer state claim failed call_id=%s",

@@ -460,7 +460,8 @@ async def _handle_sip_forward_service(call: ServiceCall) -> None:
             on_failure=call.data.get("on_failure", "resume"),
             trunk_id=str(call.data.get("trunk_id") or ""),
             expected_state=call.data.get("expected_state", ""),
-            expected_sequence=int(call.data.get("expected_sequence") or 0))
+            expected_sequence=int(call.data.get("expected_sequence") or 0),
+            control_endpoint_id=phone.endpoint_id if phone is not None and call.data.get("expected_state") else "")
 
 
 async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:

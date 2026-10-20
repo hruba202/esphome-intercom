@@ -251,6 +251,11 @@ def _fire_call_event(
     )
     call_id = str(event.get("call_id") or "").strip()
     registry = call_registry(hass)
+    session = registry.get_session(registry.resolve_session_id(call_id))
+    publisher = registry.component("state_publisher")
+    if session is not None and publisher is not None and scope in {"session", "sip_bridge"}:
+        publisher.acknowledge(session, "phone" if scope == "session" else "sip_bridge",
+                              str(event.get("endpoint_id") or "") if scope == "session" else "")
     forwardable_state = event["state"] in {
         "route_requested",
         CallState.CONNECTING.value,

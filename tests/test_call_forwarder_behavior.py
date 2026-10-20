@@ -51,6 +51,7 @@ def _registry(
         event_context=Mock(return_value=context),
         resource_for=lambda *_args: None,
         get_session=lambda _identity: None,
+        resolve_session_id=lambda identity: identity,
         bridge_link_for=lambda _identity: "",
         component=lambda _name: None,
     )

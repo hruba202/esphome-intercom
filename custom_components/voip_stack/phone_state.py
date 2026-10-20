@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import asdict, replace
+from types import SimpleNamespace
 import logging
 
 from homeassistant.core import callback
@@ -116,7 +117,6 @@ class PhoneStateObserver:
     def _start(self):
         from .mailbox import EVENT_VOICEMAIL_CHANGED
         from .parking import PARKING_CHANGED
-        from .websocket_api import CALL_EVENT
         from .dialog_info import activity_snapshot
 
         if self.unsubscribers:
@@ -127,9 +127,28 @@ class PhoneStateObserver:
         self.activity = activity_snapshot(runtime, dialogs=self.dialogs)
         self.unsubscribers = [
             self.hass.bus.async_listen(name, self.refresh)
-            for name in (CALL_EVENT, EVENT_VOICEMAIL_CHANGED, PARKING_CHANGED)
+            for name in (EVENT_VOICEMAIL_CHANGED, PARKING_CHANGED)
         ]
+        self.unsubscribers.append(runtime.sip.subscribe_state(self._committed))
         self.unsubscribers.append(runtime.endpoints.subscribe(self._endpoint_changed))
+
+    @callback
+    def _committed(self, snapshot):
+        runtime = require_runtime_data(self.hass)
+        self.refresh(SimpleNamespace(
+            event_type="call_commit",
+            data=self._call_fields(runtime.sip, snapshot),
+            context=runtime.sip.ha_context(snapshot.call_id),
+        ))
+
+    @staticmethod
+    def _call_fields(registry, snapshot):
+        return {"call_id": snapshot.call_id, "generation": snapshot.generation,
+                "sequence": snapshot.sequence, "revision": snapshot.revision,
+                "state": snapshot.state, "caller": snapshot.caller,
+                "callee": snapshot.callee, "route_kind": snapshot.route_kind,
+                "event_type": "state_changed", "scope": "call_commit",
+                **registry.event_fields(snapshot.call_id, snapshot.state)}
 
     @callback
     def _endpoint_changed(self, event: EndpointRegistryEvent):
@@ -188,7 +207,7 @@ class PhoneStateObserver:
         if dialogs is None:
             dialogs = (
                 snapshot_all(runtime)
-                if event is None or event.event_type in {CALL_EVENT, PARKING_CHANGED}
+                if event is None or event.event_type in {CALL_EVENT, PARKING_CHANGED, "call_commit"}
                 else self.dialogs
             )
         current = phone_states(self.hass, dialogs=dialogs)
@@ -208,12 +227,24 @@ class PhoneStateObserver:
                 "phone": after,
                 "removed": after is None,
             }
+            phone_context = context
             if event_data.get("call_id"):
-                payload["call"] = dict(event_data)
+                candidates = (after or {}).get("calls", ()) or (before or {}).get("calls", ())
+                selected = next((item for item in candidates
+                                 if item["call_id"] == event_data["call_id"]),
+                                candidates[0] if candidates else None)
+                selected_id = selected["call_id"] if selected else event_data["call_id"]
+                session = runtime.sip.get_session(selected_id)
+                payload["call"] = (
+                    self._call_fields(runtime.sip, session.committed_state)
+                    if selected_id != event_data["call_id"] and session is not None
+                    and session.committed_state is not None else dict(event_data)
+                )
+                phone_context = runtime.sip.ha_context(selected_id)
             self.hass.bus.async_fire(
-                PHONE_STATE_CHANGED, deepcopy(payload), context=context
+                PHONE_STATE_CHANGED, deepcopy(payload), context=phone_context
             )
-            self._deliver(self.listeners, payload, context)
+            self._deliver(self.listeners, payload, phone_context)
         if previous != current or previous_dialogs != dialogs:
             self._deliver(self.dialog_listeners, dialogs)
         if previous_activity != activity:

@@ -37,8 +37,13 @@ def _connected_identity_for_call(
         return "", ""
     metadata = session.metadata
     endpoints = endpoint_directory(hass)
+    source_endpoint_id = str(metadata.get("source_endpoint_id") or "").strip()
     for key in ("dest_endpoint_id", "target_endpoint_id", "endpoint_id"):
         endpoint_id = str(metadata.get(key) or "").strip()
+        # A local application retains the caller's endpoint claim. That
+        # ownership fallback is not the connected callee's SIP identity.
+        if key == "endpoint_id" and endpoint_id == source_endpoint_id:
+            continue
         endpoint = endpoints.get(endpoint_id) if endpoint_id else None
         if endpoint is not None:
             return str(endpoint.name), str(endpoint.sip_uri_user)

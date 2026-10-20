@@ -402,6 +402,9 @@ async def test_final_sip_answer_wins_timeout_while_media_is_starting(lab, monkey
     task = asyncio.create_task(script.async_run(context=Context()))
     try:
         await asyncio.wait_for(ringing.wait(), 2)
+        call_id = phone.last_request.header("Call-ID")
+        deadline = lab.calls.resource_for(call_id, "deadline:phone_policy")
+        assert deadline is not None
         phone.answer()
         await asyncio.wait_for(starting.wait(), 2)
         if remote_hangup:
@@ -413,8 +416,8 @@ async def test_final_sip_answer_wins_timeout_while_media_is_starting(lab, monkey
             return
         call_id = phone.last_request.header("Call-ID")
         session = lab.calls.get_session(call_id)
-        deadline = lab.calls.resource_for(call_id, "deadline:phone_policy")
-        assert deadline is not None
+        # A committed final answer may now cancel this owned deadline
+        # automatically. Its already-queued callback must also remain harmless.
         deadline._expired()
         fallback = next((item for item in session.tasks if item.get_name() == "phone-policy-fallback"), None)
         if fallback is not None:

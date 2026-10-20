@@ -90,6 +90,8 @@ def is_logbook_call_summary(payload: dict[str, Any]) -> bool:
     state = str(payload.get("state") or "").strip().lower()
     phase = str(payload.get("pbx_phase") or "").strip().lower()
     owner = str(payload.get("owner") or "").strip().lower()
+    if phase and phase not in {"terminating", "terminated"}:
+        return False
     if payload.get("duration_seconds") is not None or state == "idle":
         return True
     if owner not in {"router", "bridge"}:

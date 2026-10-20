@@ -756,9 +756,15 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
     monkeypatch.setattr(softphone_originate, "_resolve_target_device", AsyncMock(return_value=None))
     recording = asyncio.Event()
     sessions = []
+    phone_updates = []
+    connected_identity = asyncio.Event()
 
     @callback
     def state(event):
+        if event.data.get("endpoint_id") == source.endpoint_id:
+            phone_updates.append(event.data)
+            if event.data.get("last_sip_event") == "UPDATE":
+                connected_identity.set()
         if event.data.get("event_type") == "answered":
             application = lab.calls.resource_for(event.data["call_id"], "voicemail")
             if application is not None and application.playback is not None:
@@ -780,6 +786,15 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
         assert not any(phone.invites for phone in lab.phones)
         application = lab.calls.resource_for(sessions[0], "voicemail")
         assert application is not None and application.mailbox_id == "kitchen"
+        # A real browser attaches audio only while its own participant is
+        # connected. The playback adapter above must not hide stale calling
+        # state after the mailbox acquires the application owner.
+        participant = application.session.legs[f"browser:{source.endpoint_id}"]
+        assert participant.state == "in_call"
+        assert lab.runtime.softphones[source.endpoint_id]["state"] == "in_call"
+        assert phone_updates[-1]["state"] == "in_call"
+        await asyncio.wait_for(connected_identity.wait(), 3)
+        assert lab.runtime.softphones[source.endpoint_id]["peer_name"] == "Kitchen"
         for session in tuple(lab.calls.sessions.values()):
             if session.live:
                 await lab.calls.request_termination(session.call_id, TerminationIntent("test_hangup"))

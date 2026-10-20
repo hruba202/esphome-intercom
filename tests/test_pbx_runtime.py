@@ -232,6 +232,7 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
         runtime = SipEndpointRuntime()
         runtime.activate()
         session = runtime.create_session("call-1")
+        runtime.transition("call-1", state="in_call")
         runtime.event_fields("call-1", "in_call")
         runtime.record_route("call-1", action="forward", destination="Casa")
 

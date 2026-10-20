@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from .endpoint_session import (
     CallToken,
     EndpointCallSession,
+    LegPhase,
     SessionPhase,
     TerminationIntent,
 )
@@ -33,6 +34,99 @@ class CallProjectionEvent:
 _RESERVED_FIELDS = {"state", "sip_state", "call_id", "caller", "callee", "endpoint_id"}
 _TERMINAL_PHONE_PROJECTIONS = "terminal_phone_projections"
 _LOGGER = logging.getLogger(__name__)
+
+
+class CallStatePublisher:
+    """Deliver committed state through the existing HA projection adapters.
+
+    A single loop callback per live generation lets the operation attach its
+    presentation details synchronously. Missing explicit projections are filled
+    from the committed state, never by changing the call to match a card.
+    """
+
+    def __init__(self, hass, registry):
+        self.hass = hass
+        self.registry = registry
+        self.pending = {}
+        self.delivered = {}
+        self.unsubscribe = registry.subscribe_state(self.changed)
+
+    def changed(self, snapshot):
+        token = (snapshot.call_id, snapshot.generation)
+        if snapshot.phase == SessionPhase.TERMINATED.value:
+            handle = self.pending.pop(token, None)
+            if handle is not None:
+                handle.cancel()
+            self.delivered.pop(token, None)
+            return
+        if token not in self.pending:
+            self.pending[token] = self.hass.loop.call_soon(self.flush, token)
+
+    def acknowledge(self, session, scope, endpoint_id=""):
+        if session.committed_state is not None and session.live:
+            token = (session.call_id, session.generation)
+            self.delivered.setdefault(token, {})[(scope, endpoint_id)] = session.committed_state
+
+    def flush(self, token):
+        self.pending.pop(token, None)
+        session = self.registry.get_session(token[0], generation=token[1])
+        if session is None or not session.live or session.committed_state is None:
+            self.delivered.pop(token, None)
+            return
+        snapshot = session.committed_state
+        if not session.owner or session.metadata.get("event_only"):
+            return
+        runtime = require_runtime_data(self.hass)
+        deliveries = self.delivered.setdefault(token, {})
+        endpoint_ids = set(snapshot.participants)
+        endpoint_ids.update(leg.endpoint_id for leg in snapshot.legs if leg.endpoint_id)
+        endpoint_ids.update(endpoint for scope, endpoint in deliveries if scope == "phone")
+        for endpoint_id in endpoint_ids:
+            endpoint = runtime.endpoints.get(endpoint_id)
+            if endpoint is None or not endpoint.kind.is_softphone:
+                continue
+            if deliveries.get(("phone", endpoint_id)) == snapshot:
+                continue
+            if endpoint.active_call_id and endpoint.active_call_id != session.call_id:
+                continue
+            leg_id = f"browser:{endpoint_id}"
+            leg = session.legs.get(leg_id)
+            if endpoint_id not in session.endpoint_claims:
+                store = runtime.softphones.get(endpoint_id, {})
+                if store.get("call_id") == session.call_id:
+                    from .websocket_api import _set_ha_softphone_call_state
+                    _set_ha_softphone_call_state(
+                        self.hass, "cancelled", endpoint_id=endpoint_id,
+                        call_id=session.call_id, caller=session.caller, callee=session.callee,
+                        reason="forwarded", event_type="state_changed",
+                    )
+                continue
+            if leg is not None and leg.phase in {LegPhase.CLOSING, LegPhase.CLOSED}:
+                continue
+            source = endpoint_id == session.metadata.get("source_endpoint_id")
+            publish_phone_projection(
+                self.hass, session, endpoint_id,
+                leg_id=leg_id if leg is not None else "",
+                direction="outgoing" if source else "incoming",
+                peer_name=session.callee if source else session.caller,
+                event_type="state_changed",
+            )
+        if snapshot not in deliveries.values():
+            publish_bridge_projection(self.hass, session, route_kind=session.route_kind,
+                                      event_type="state_changed")
+
+    async def close(self):
+        self.unsubscribe()
+        for handle in self.pending.values():
+            handle.cancel()
+        self.pending.clear()
+        self.delivered.clear()
+
+
+def bind_state_publisher(hass, registry):
+    if registry.component("state_publisher") is None:
+        publisher = CallStatePublisher(hass, registry)
+        registry.adopt_component("state_publisher", publisher, closer=publisher.close)
 
 
 def publish_esp_media_route(hass: HomeAssistant, call_id: str, route: str) -> None:
@@ -161,8 +255,11 @@ def publish_call_projection(
         ):
             return False
     state = event.intent.public_state if event.intent is not None else session.state
-    if event.leg_id:
-        leg = session.legs.get(event.leg_id)
+    leg_id = event.leg_id
+    if not leg_id and event.scope == "phone" and f"browser:{event.endpoint_id}" in session.legs:
+        leg_id = f"browser:{event.endpoint_id}"
+    if leg_id:
+        leg = session.legs.get(leg_id)
         if leg is None:
             return False
         state = event.intent.public_state if event.intent is not None else leg.state
@@ -171,6 +268,9 @@ def publish_call_projection(
         for key, value in event.details.items()
         if key not in _RESERVED_FIELDS
     }
+    publisher = runtime.component("state_publisher")
+    if publisher is not None:
+        publisher.acknowledge(session, event.scope, event.endpoint_id)
     metadata = session.metadata
     if event.scope == "phone":
         from .websocket_api import _set_ha_softphone_call_state

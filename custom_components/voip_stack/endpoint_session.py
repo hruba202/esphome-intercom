@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager, nullcontext
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import IntEnum, StrEnum
 import inspect
 import logging
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TYPE_CHECKING
 from weakref import WeakKeyDictionary
 
 from .fsm import sip_public_state
 from .session_cleanup import async_wait_for_cleanup
+
+if TYPE_CHECKING:
+    from .call_state import CallStateSnapshot
+    from .pbx_runtime import SipEndpointRuntime
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -308,6 +313,7 @@ class EndpointCallSession:
         termination_observer: TerminationObserver | None = None,
         on_terminated: Callable[["EndpointCallSession", SessionTerminationResult], None]
         | None = None,
+        state_runtime: "SipEndpointRuntime | None" = None,
     ) -> None:
         clean_call_id = str(call_id or "").strip()
         if not clean_call_id:
@@ -315,6 +321,7 @@ class EndpointCallSession:
         if int(generation) <= 0:
             raise ValueError("generation must be positive")
         self.call_id = clean_call_id
+        self.state_runtime = state_runtime
         self.generation = int(generation)
         self.revision = 0
         self._state = phase.value
@@ -333,6 +340,10 @@ class EndpointCallSession:
         self.named_tasks: dict[str, asyncio.Task[Any]] = {}
         self.endpoint_claims: dict[str, str] = {}
         self.event_context = CallEventContext()
+        self.committed_state: CallStateSnapshot | None = None
+        self._state_observer: Callable[[EndpointCallSession], None] | None = None
+        self._state_notification_depth = 0
+        self._state_notification_pending = False
         self.artifacts = CallArtifacts()
         self.metadata: dict[str, Any] = {}
         self.termination_started = asyncio.Event()
@@ -408,6 +419,26 @@ class EndpointCallSession:
 
         self.ensure_live()
         self.metadata.update(values)
+        self.state_changed()
+
+    def state_changed(self) -> None:
+        """Notify the existing runtime after an owner mutation, never from a UI."""
+        if self._state_notification_depth:
+            self._state_notification_pending = True
+        elif self._state_observer is not None:
+            self._state_observer(self)
+
+    @contextmanager
+    def defer_state_notifications(self):
+        """Keep answer/resource commit failures out of successful projections."""
+        self._state_notification_depth += 1
+        try:
+            yield
+        finally:
+            self._state_notification_depth -= 1
+            if not self._state_notification_depth and self._state_notification_pending:
+                self._state_notification_pending = False
+                self.state_changed()
 
     def add_leg(self, leg: CallLeg) -> CallLeg:
         self.ensure_live()
@@ -720,6 +751,8 @@ class SessionHandoff:
         self.attributes = []
         self.index = {}
         self.claims = {}
+        self.leg_states = []
+        self._state_batch = None
 
     def preserve(self, owner, *names):
         self.attributes.extend((owner, name, getattr(owner, name)) for name in names)
@@ -727,26 +760,46 @@ class SessionHandoff:
     def __enter__(self):
         for session in self.sessions:
             session.ensure_live()
+            self.preserve(session, "caller", "callee", "route_kind")
+            self.preserve(session.artifacts, *(item.name for item in fields(CallArtifacts)))
             self.saved.append((session, dict(session.legs), list(session.resources),
                                dict(session.metadata), dict(session.endpoint_claims),
                                set(session.tasks), dict(session.named_tasks),
                                session.answer_committed, session.owner, session._state, session.phase))
+            self.leg_states.extend((leg, leg.state, leg.phase, leg.role,
+                                    leg.endpoint_id, leg.sip_call_id)
+                                   for leg in session.legs.values())
             for key in session.legs:
-                self.index[key] = self.registry.leg_index.get(key)
+                if self.registry is not None:
+                    self.index[key] = self.registry.leg_index.get(key)
             for endpoint_id in session.endpoint_claims:
                 self.claims[endpoint_id] = session.call_id
-        self.claims = self.registry.endpoint_claim_projection(self.claims)
+        if self.registry is not None:
+            self.claims = self.registry.endpoint_claim_projection(self.claims)
+        self._state_batch = self.registry.state_operation() if self.registry is not None else nullcontext()
+        self._state_batch.__enter__()
         return self
 
     def __exit__(self, error_type, error, traceback):
-        if error_type is None:
-            return False
+        try:
+            if error_type is not None:
+                self._restore()
+            for session in self.sessions:
+                session.state_changed()
+        finally:
+            self._state_batch.__exit__(error_type, error, traceback)
+        return False
+
+    def _restore(self):
+        for leg, state, phase, role, endpoint, wire in self.leg_states:
+            leg.state, leg.phase, leg.role = state, phase, role
+            leg.endpoint_id, leg.sip_call_id = endpoint, wire
         for owner, name, value in reversed(self.attributes):
             setattr(owner, name, value)
         for session, legs, resources, metadata, claims, tasks, named, answered, owner, state, phase in self.saved:
             session.ensure_live()
             for key in set(session.legs) - set(legs):
-                if self.registry.leg_index.get(key) == session.call_id:
+                if self.registry is not None and self.registry.leg_index.get(key) == session.call_id:
                     self.registry.leg_index.pop(key, None)
             for task in session.tasks - tasks:
                 task.cancel()
@@ -765,5 +818,6 @@ class SessionHandoff:
                 self.registry.leg_index.pop(key, None)
             else:
                 self.registry.leg_index[key] = owner
-        self.registry.restore_endpoint_claim_projection(self.claims)
+        if self.registry is not None:
+            self.registry.restore_endpoint_claim_projection(self.claims)
         return False

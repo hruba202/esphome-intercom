@@ -106,6 +106,57 @@ core owns its participants, media resources and termination.
   provisional event cannot regress an established dialog back to `calling` or
   `ringing`.
 
+### Committed state and read-only consumers
+
+The runtime commits nested synchronous mutations as one operation and produces
+an immutable `CallStateSnapshot`. The snapshot includes participant states and
+the relevant media attributes read from their existing SIP owners. It is a
+read model, not another session registry or signaling state machine.
+
+The selected browser participant is updated by the same registry operation as
+its call. Its state is not copied indiscriminately from the aggregate session:
+an already answered caller can remain connected while a replacement destination
+is still ringing. A SIP destination must not acquire a synthetic browser leg.
+An existing, claimed browser participant also survives a change of application
+owner, such as entering voicemail. Application ownership must not freeze that
+participant in `calling`, reopen a released participant, or return an answered
+caller to ringing while another route is being prepared.
+Observing a phone's activity does not grant browser media ownership. The card's
+view of the phone and the participant that actually sends or receives audio
+remain distinct. Associating several registered devices with one extension is
+not introduced by this consolidation and must preserve that distinction.
+
+`PhoneStateObserver` consumes committed changes directly. BLF, phone-state
+actions, conditions and phone-state triggers therefore do not need a card event
+to discover an accepted transition. `CallStatePublisher` uses the existing HA
+projection adapters for browser state delivery, with at most one pending loop
+callback per generation. Explicit operation events retain their existing commit
+points; automatic presentation updates are `state_changed` observations, not
+new claims that an answer or transfer succeeded. Delivery bookkeeping is cleared
+on termination and component shutdown.
+
+Reading or publishing event fields does not mutate a materialised call. Internal
+operations use a `CallPrecondition` containing the call identity, generation,
+owner and committed sequence. Public `expected_state` and `expected_sequence`
+arguments retain their names and are validated centrally; an explicitly selected
+phone is checked against its own participant. Incoming `ringing` and outgoing
+`remote_ringing` describe the two perspectives of the unanswered phase, not two
+independent call states.
+
+ESPHome sensor updates cannot release a PBX-owned endpoint or replace its control
+context. For an HA-anchored call, an ESP observation retains the native value as
+`reported_state`, while its public state follows the canonical participant and
+its event type is `state_changed`. Answered and ended operations come from the
+PBX owner. Direct ESP calls that bypass HA remain passive observations in the
+same registry; observing them does not give HA ownership of their SIP dialogs.
+
+`AnswerTransaction` defers state notifications until its commit or compensation
+finishes. A rejected or exceptional state claim uses `SessionHandoff` to restore
+the previous participants, routing artifacts and call identity before prepared
+resources are released. The original resource objects keep their existing owners.
+The architecture tests reject direct lifecycle writes outside those owners and
+call mutations inside the event-publication functions.
+
 Termination is generation-guarded, idempotent and cancellation-safe. The
 session enters `terminating` synchronously, then waits for a shielded cleanup
 barrier so late dial winners, media callbacks or duplicate BYE/CANCEL observers

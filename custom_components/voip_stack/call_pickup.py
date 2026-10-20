@@ -8,6 +8,7 @@ from homeassistant.exceptions import ServiceValidationError
 
 from .endpoint_session import CleanupStage
 from .call_scope import has_ringing_destination
+from .call_state import CallPrecondition
 from .runtime_data import require_runtime_data, sip_endpoint_manager
 from .sip_listener import SipInviteResult
 
@@ -72,8 +73,7 @@ async def pickup_browser(call, endpoint, target):
         call_id=session.call_id,
         destination=endpoint.name,
         on_failure="resume",
-        expected_state=session.event_context.state,
-        expected_sequence=session.event_context.sequence,
+        precondition=CallPrecondition.capture(session),
     )
     task = runtime.sip.task_for(session.call_id, "forward")
     if task is not None:
@@ -606,8 +606,7 @@ async def async_pickup_call(call):
                 call_id=session.call_id,
                 destination=endpoint.name,
                 on_failure="resume",
-                expected_state=session.event_context.state,
-                expected_sequence=session.event_context.sequence,
+                precondition=CallPrecondition.capture(session),
             )
             task = runtime.sip.task_for(session.call_id, "forward")
             if task is not None:
@@ -650,7 +649,6 @@ async def _pickup_group_phone(call, endpoint, session):
     from homeassistant.core import ServiceCall, callback
     from .call_projection import observe_phone_leg_projection, publish_phone_projection
     from .route_decisions import ensure_ring_group_phone_not_declined
-    from .endpoint_session import LegPhase
     from .websocket_api import CALL_EVENT
     from .outbound_attempts import BrowserLeg, async_close_outbound_leg
     from .softphone_answer import async_answer_browser_call
@@ -874,27 +872,32 @@ async def _pickup_group_phone(call, endpoint, session):
                 else:
                     gate.browser_legs[owned_browser] = previous_candidate
                 if current:
-                    if route_member_added and session.artifacts.pending_route is route:
-                        route["ring_group_endpoint_ids"] = tuple(
-                            item for item in route["ring_group_endpoint_ids"] if item != endpoint.endpoint_id
-                        )
-                    if session_member_added:
-                        session.update_metadata(ring_endpoint_ids=tuple(
-                            item for item in session.metadata.get("ring_endpoint_ids", ()) if item != endpoint.endpoint_id
-                        ))
-                    if claim_added:
-                        registry.release_endpoint_claim(session.call_id, endpoint.endpoint_id)
-                    if session.state != "in_call":
-                        for key, expected in (("ha_context", call.context), ("controller_user_id", call.context.user_id)):
-                            if controller_before.get(key) is missing and session.metadata.get(key) == expected:
-                                session.metadata.pop(key, None)
                     leg_id = f"browser:{endpoint.endpoint_id}"
-                    if projected_leg is not None and session.legs.get(leg_id) is projected_leg and projected_leg.state == "ringing":
-                        if previous_leg_state is not None:
-                            (projected_leg.state, projected_leg.phase, projected_leg.role, projected_leg.endpoint_id) = previous_leg_state
-                        else:
-                            projected_leg.state = "idle"
-                            projected_leg.phase = LegPhase.CLOSED
+                    restore_projection = (projected_leg is not None
+                        and session.legs.get(leg_id) is projected_leg
+                        and projected_leg.state == "ringing")
+                    with registry.state_operation():
+                        if route_member_added and session.artifacts.pending_route is route:
+                            route["ring_group_endpoint_ids"] = tuple(
+                                item for item in route["ring_group_endpoint_ids"] if item != endpoint.endpoint_id
+                            )
+                        if session_member_added:
+                            session.update_metadata(ring_endpoint_ids=tuple(
+                                item for item in session.metadata.get("ring_endpoint_ids", ()) if item != endpoint.endpoint_id
+                            ))
+                        if claim_added:
+                            registry.release_endpoint_claim(session.call_id, endpoint.endpoint_id)
+                        if session.state != "in_call":
+                            for key, expected in (("ha_context", call.context), ("controller_user_id", call.context.user_id)):
+                                if controller_before.get(key) is missing and session.metadata.get(key) == expected:
+                                    session.metadata.pop(key, None)
+                        leg_id = f"browser:{endpoint.endpoint_id}"
+                        if restore_projection:
+                            registry.restore_leg_state(
+                                session.call_id, projected_leg, previous_leg_state,
+                                generation=token.generation,
+                            )
+                    if restore_projection:
                         publish_phone_projection(call.hass, session, endpoint.endpoint_id, leg_id=leg_id)
                         if previous_leg_state is None:
                             registry.remove_leg(session.call_id, leg_id)

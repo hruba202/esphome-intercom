@@ -61,6 +61,7 @@ class BridgeMediaUpdateBinder:
                 if (registry.is_generation_current(source_call_id, generation)
                         and client.on_media_update is prepare and client.dialog is actual
                         and registry.resource_for(source_call_id, "relay") is relay):
+                    session.state_changed()
                     from .call_projection import publish_bridge_projection
                     publish_bridge_projection(self.hass, session, event_type="state_changed")
             return PreparedDialogMediaUpdate(commit, on_committed=published)
@@ -457,6 +458,7 @@ class BridgeMediaUpdateBinder:
                 if (registry.is_generation_current(source_call_id, call_generation)
                         and client.on_media_update is prepare and client.dialog is actual
                         and registry.resource_for(source_call_id, "relay") is relay):
+                    session.state_changed()
                     from .call_projection import publish_bridge_projection
                     publish_bridge_projection(self.hass, session, event_type="state_changed")
 

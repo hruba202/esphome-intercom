@@ -226,12 +226,13 @@ async def test_native_sip_noanswer_reaches_own_mailbox(
                 "device_id": "esp-caller", "name": "Waveshare",
                 "entities": {"voip_state": "sensor.esp_voip_state"},
             }]))
+            before_event = (source.event_context.state, source.event_context.sequence)
             await esphome_state_bridge.async_emit_state_event(
                 runtime.hass, "sensor.esp_voip_state", "remote_ringing", "calling",
                 expected_endpoint_id="transfer_a", expected_call_id=source.call_id,
             )
             assert source.state == "ringing"
-            assert runtime.calls.event_context(source.call_id).state == "remote_ringing"
+            assert (source.event_context.state, source.event_context.sequence) == before_event
         await asyncio.wait_for(recording.wait(), 3)
         assert not runtime.runtime.endpoints.get(destination_id).active_call_id
         await asyncio.wait_for(saved.wait(), 4)

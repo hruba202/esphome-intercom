@@ -16,6 +16,7 @@ from .config import (
     trunk_identity_uri as _trunk_identity_uri,
 )
 from .call_projection import publish_bridge_projection
+from .call_state import CallPrecondition, validate_call_snapshot
 from .const import (
     CONF_SIP_VIDEO,
     CONF_VIDEO_TRANSCODING,
@@ -128,6 +129,8 @@ async def async_forward_existing_call(
     expected_sequence: int = 0,
     initial_selection: bool = False,
     trunk_id: str = "",
+    precondition: CallPrecondition | None = None,
+    control_endpoint_id: str = "",
 ) -> None:
     """Route or move one HA-owned pending/ringing call to a target.
 
@@ -160,28 +163,11 @@ async def async_forward_existing_call(
     expected_state = str(expected_state or "").strip().lower()
 
     def _validate_snapshot():
-        current = registry.event_context(call_id)
-        if expected_state and (current is None or current.state != expected_state):
-            actual = current.state if current is not None else "ended"
-            raise _service_error(
-                f"call_id {call_id} is {actual}, expected {expected_state}",
-                "call_state_mismatch",
-                call_id=call_id,
-                actual=actual,
-                expected=expected_state,
-            )
-        if expected_sequence and (
-            current is None or current.sequence != int(expected_sequence)
-        ):
-            actual = current.sequence if current is not None else 0
-            raise _service_error(
-                f"call_id {call_id} sequence is {actual}, expected {expected_sequence}",
-                "call_sequence_mismatch",
-                call_id=call_id,
-                actual=actual,
-                expected=expected_sequence,
-            )
-        return current
+        return validate_call_snapshot(
+            registry, call_id, expected_state=expected_state,
+            expected_sequence=expected_sequence, precondition=precondition,
+            endpoint_id=control_endpoint_id,
+        )
 
     context = _validate_snapshot()
     pending = registry.artifact_for(call_id, "pending_route")
@@ -328,6 +314,14 @@ async def async_forward_existing_call(
                 "call_forwarding",
                 call_id=call_id,
             )
+    # Reject concurrent owners before discovery, then finish preparation before
+    # retiring the previous leg and changing our own committed topology.
+    peers = await _async_build_peer_snapshot(hass)
+    context = _validate_snapshot()
+    if artifacts.task_for(call_id, "forward") is not current_forward:
+        raise _service_error("The forward owner changed during preparation",
+                             "call_changed_during_operation", call_id=call_id)
+    if current_forward is not None and not current_forward.done():
         current_forward.cancel()
         await asyncio.gather(current_forward, return_exceptions=True)
     if current_forward is not None and current_forward.done():
@@ -343,14 +337,12 @@ async def async_forward_existing_call(
     call_artifacts.forward_claim = True
     target_browser_endpoint = None
     try:
-        peers = await _async_build_peer_snapshot(hass)
         if registry.artifact_for(call_id, "pending_invite") is not invite:
             raise _service_error(
                 f"call_id {call_id} changed while the route was being resolved",
                 "call_changed_during_operation",
                 call_id=call_id,
             )
-        context = _validate_snapshot()
         roster_entries = _roster_from_peers(
             hass,
             peers,

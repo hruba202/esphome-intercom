@@ -5,17 +5,20 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 import inspect
 import logging
 from typing import Any
 
-from .call_registry import CallRuntimeApi
+from .call_registry import CallRuntimeApi, committed_operation
+from .call_state import CallStateSnapshot
 from .endpoint_session import (
     CallArtifacts,
     CallEventContext,
     CallLeg,
+    CallToken,
     CleanupStage,
     EndpointCallSession,
     LegKind,
@@ -105,6 +108,13 @@ _PUBLIC_LEG_PHASES: dict[str, LegPhase] = {
     "answered": LegPhase.ANSWERED,
     "in_call": LegPhase.ANSWERED,
     "held": LegPhase.HELD,
+    "idle": LegPhase.CLOSED,
+    "cancelled": LegPhase.CLOSED,
+    "declined": LegPhase.CLOSED,
+    "busy": LegPhase.CLOSED,
+    "error": LegPhase.CLOSED,
+    "media_incompatible": LegPhase.CLOSED,
+    "transport_unreachable": LegPhase.CLOSED,
 }
 
 _LEG_KINDS: dict[str, LegKind] = {
@@ -156,6 +166,9 @@ class SipEndpointRuntime(CallRuntimeApi):
         self.media_controller_lock = asyncio.Lock()
         self._generation = 0
         self._allow_dark_sessions = allow_dark_sessions
+        self._state_depth = 0
+        self._changed_sessions: dict[CallToken, EndpointCallSession] = {}
+        self._state_listeners: set[Callable[[CallStateSnapshot], None]] = set()
         self._components: dict[str, _OwnedComponent] = {}
         self._endpoint_registry: Any | None = None
         self._termination_signaler: TerminationSignaler | None = None
@@ -171,6 +184,83 @@ class SipEndpointRuntime(CallRuntimeApi):
     @property
     def active(self) -> bool:
         return self.phase is RuntimePhase.ACTIVE
+
+    @contextmanager
+    def state_operation(self):
+        """Batch nested synchronous changes before exposing a complete result."""
+        self._state_depth += 1
+        try:
+            yield
+        finally:
+            self._state_depth -= 1
+            if not self._state_depth:
+                pending, self._changed_sessions = self._changed_sessions, {}
+                committed = [self._commit_state(session, notify=False)
+                             for session in pending.values()]
+                for snapshot in committed:
+                    if snapshot is not None:
+                        self._publish_state(snapshot)
+
+    def subscribe_state(self, listener: Callable[[CallStateSnapshot], None]) -> Callable[[], None]:
+        self._state_listeners.add(listener)
+        return lambda: self._state_listeners.discard(listener)
+
+    def _state_changed(self, session: EndpointCallSession) -> None:
+        if self._state_depth:
+            self._changed_sessions[session.token] = session
+        else:
+            self._commit_state(session)
+
+    def _state_snapshot(self, session: EndpointCallSession) -> CallStateSnapshot:
+        """Read media attributes from their SIP owners, without a BLF state copy."""
+        manager = self.component("udp_listener")
+        media = []
+        for leg in session.legs.values():
+            contract = getattr(leg.dialog, "dialog", None)
+            if contract is None and manager is not None:
+                reader = getattr(manager, "invite_for_call", None)
+                if reader is not None:
+                    contract = reader(leg.sip_call_id)
+            if contract is not None:
+                video = getattr(contract, "video_format", None)
+                media.append((leg.leg_id, tuple(str(value) for value in (
+                    getattr(contract, "local_audio_direction", "sendrecv"),
+                    getattr(contract, "remote_audio_direction", "sendrecv"),
+                    getattr(contract, "remote_audio_connection_held", False),
+                    getattr(contract, "local_video_direction", ""),
+                    getattr(video, "direction", ""),
+                    video is not None,
+                    getattr(contract, "remote_video_connection_held", False),
+                ))))
+        return CallStateSnapshot.capture(session, media)
+
+    def _commit_state(self, session: EndpointCallSession, *, notify: bool = True) -> CallStateSnapshot | None:
+        if session._state_notification_depth:
+            session._state_notification_pending = True
+            return
+        if self.sessions.get(session.call_id) is not session:
+            return
+        if session.phase is SessionPhase.TERMINATING:
+            return
+        snapshot = self._state_snapshot(session)
+        if snapshot == session.committed_state:
+            return
+        context = session.event_context
+        if context.state != session.state:
+            self._advance_event_context(context, session.state)
+        elif session.committed_state is not None:
+            context.sequence += 1
+        session.committed_state = self._state_snapshot(session)
+        if notify:
+            self._publish_state(session.committed_state)
+        return session.committed_state
+
+    def _publish_state(self, snapshot: CallStateSnapshot) -> None:
+        for listener in tuple(self._state_listeners):
+            try:
+                listener(snapshot)
+            except Exception:
+                _LOGGER.exception("Committed call observer failed")
 
     def attach_component(
         self,
@@ -396,6 +486,7 @@ class SipEndpointRuntime(CallRuntimeApi):
         ):
             raise RuntimeError(f"call session {call_id!r} is unavailable")
 
+    @committed_operation
     def claim_endpoint(
         self,
         call_id: str,
@@ -463,6 +554,7 @@ class SipEndpointRuntime(CallRuntimeApi):
                 session.endpoint_claims[clean_endpoint_id] = previous
             session.revision = revision
             raise
+        session.state_changed()
         return True
 
     def _own_endpoint_claim(self, session: EndpointCallSession, clean_endpoint_id: str, role: str) -> None:
@@ -521,6 +613,7 @@ class SipEndpointRuntime(CallRuntimeApi):
             if endpoint is not None and endpoint.active_call_id != owner:
                 self._endpoint_registry.release_call(endpoint_id, endpoint.active_call_id, remaining_call_id=owner)
 
+    @committed_operation
     def transfer_endpoint_claim(self, source_id: str, destination_id: str, endpoint_id: str) -> None:
         """Move a live claim without briefly publishing the phone as idle."""
         source, destination = self.get_session(source_id), self.get_session(destination_id)
@@ -538,7 +631,10 @@ class SipEndpointRuntime(CallRuntimeApi):
         self._own_endpoint_claim(destination, endpoint_id, role)
         self._endpoint_registry.release_call(endpoint_id, source_id, remaining_call_id=destination_id)
         source.revision += 1
+        source.state_changed()
+        destination.state_changed()
 
+    @committed_operation
     def release_endpoint_claim(
         self,
         call_id: str,
@@ -561,6 +657,11 @@ class SipEndpointRuntime(CallRuntimeApi):
             f"endpoint_claim:{clean_endpoint_id}",
             value=registry,
         )
+        browser_leg = session.legs.get(f"browser:{clean_endpoint_id}")
+        if browser_leg is not None and browser_leg.phase not in {LegPhase.CLOSING, LegPhase.CLOSED}:
+            self.observe_leg(session.call_id, browser_leg.leg_id, role=browser_leg.role,
+                             endpoint_id=clean_endpoint_id, state="cancelled",
+                             generation=session.generation)
         released = False
         if registry is not None and (
             not hasattr(registry, "get") or registry.get(clean_endpoint_id) is not None
@@ -568,6 +669,7 @@ class SipEndpointRuntime(CallRuntimeApi):
             released = self._release_endpoint_projection(clean_endpoint_id, session.call_id)
         if released:
             session.revision += 1
+        session.state_changed()
         return released
 
     def release_endpoint_claims(self, call_id: str) -> None:
@@ -596,6 +698,11 @@ class SipEndpointRuntime(CallRuntimeApi):
             return
         self._retire_observation(session)
         self.calls.pop(session.call_id, None)
+        self._publish_terminal_state(session)
+
+    def _publish_terminal_state(self, session):
+        session.committed_state = CallStateSnapshot.capture(session)
+        self._publish_state(session.committed_state)
 
     def create_session(
         self,
@@ -624,9 +731,11 @@ class SipEndpointRuntime(CallRuntimeApi):
             termination_signaler=self._termination_signaler,
             termination_observer=self._termination_observer,
             on_terminated=self._on_terminated,
+            state_runtime=self,
         )
         session.metadata.update(metadata)
         self.calls[clean_call_id] = session
+        session._state_observer = self._state_changed
         return session
 
     def ensure_session(
@@ -726,6 +835,7 @@ class SipEndpointRuntime(CallRuntimeApi):
         if closer is not None:
             leg.closer = closer
         session.revision += 1
+        session.state_changed()
         return True
 
     def release_leg(
@@ -741,7 +851,34 @@ class SipEndpointRuntime(CallRuntimeApi):
         session = self.get_session(call_id, generation=generation)
         if session is None or session.phase is SessionPhase.TERMINATED:
             return False
-        return session.release_leg(leg_id, dialog=dialog) is not None
+        released = session.release_leg(leg_id, dialog=dialog) is not None
+        if released:
+            session.state_changed()
+        return released
+
+    def restore_leg_state(self, call_id, leg, previous, *, generation):
+        """Restore only a failed attempt's current leg, through its state owner."""
+        session = self.get_session(call_id, generation=generation)
+        if session is None or not session.live or session.legs.get(leg.leg_id) is not leg:
+            return False
+        if previous is None:
+            leg.state, leg.phase = "idle", LegPhase.CLOSED
+        else:
+            leg.state, leg.phase, leg.role, leg.endpoint_id = previous
+        session.revision += 1
+        session.state_changed()
+        return True
+
+    def retire_leg(self, call_id, leg, *, endpoint_id, generation):
+        """Mark the owned old transfer participant as closing without duplication."""
+        session = self.get_session(call_id, generation=generation)
+        if session is None or not session.live or session.legs.get(leg.leg_id) is not leg:
+            return False
+        leg.phase = LegPhase.CLOSING
+        leg.endpoint_id = endpoint_id
+        session.revision += 1
+        session.state_changed()
+        return True
 
     def own_resource(
         self,

@@ -12,6 +12,7 @@ from .call_projection import (
     publish_phone_projection,
 )
 from .endpoint_lifecycle import call_registry
+from .call_state import validate_call_snapshot
 from .fsm import CallState, TerminalReason
 from .runtime_data import endpoint_directory, preferred_browser_phone
 from .service_errors import service_error as _service_error
@@ -48,29 +49,11 @@ def set_pending_route_decision(hass: HomeAssistant, data: dict) -> None:
             "pending_route_missing",
             call_id=call_id,
         )
-    context = registry.event_context(call_id)
-    expected_state = str(data.get("expected_state") or "").strip().lower()
-    expected_sequence = int(data.get("expected_sequence") or 0)
-    if expected_state and (context is None or context.state != expected_state):
-        actual = context.state if context is not None else "ended"
-        raise _service_error(
-            f"call_id {call_id} is {actual}, expected {expected_state}",
-            "call_state_mismatch",
-            call_id=call_id,
-            actual=actual,
-            expected=expected_state,
-        )
-    if expected_sequence and (
-        context is None or context.sequence != expected_sequence
-    ):
-        actual = context.sequence if context is not None else 0
-        raise _service_error(
-            f"call_id {call_id} sequence is {actual}, expected {expected_sequence}",
-            "call_sequence_mismatch",
-            call_id=call_id,
-            actual=actual,
-            expected=expected_sequence,
-        )
+    context = validate_call_snapshot(
+        registry, call_id, expected_state=data.get("expected_state", ""),
+        expected_sequence=data.get("expected_sequence", 0),
+        endpoint_id=str(data.get("endpoint_id") or ""),
+    )
     if action in {"forward", "bridge"} and context is not None and len(context.route_history) >= 8:
         raise _service_error(
             f"call_id {call_id} exceeded 8 routing hops",

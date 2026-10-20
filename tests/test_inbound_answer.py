@@ -213,3 +213,34 @@ class AnswerTransactionTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnswerStateRollbackTest(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_claim_preserves_original_state_and_publishes_no_answer(self):
+        runtime_type = _load_module('pbx_runtime').SipEndpointRuntime
+        for raises in (False, True):
+            with self.subTest(raises=raises):
+                runtime = runtime_type(allow_dark_sessions=True)
+                session = runtime.upsert('claim-failure', state='ringing', owner='router', callee='Original')
+                invite = object()
+                runtime.set_pending_invite(session.call_id, invite)
+                seen = []
+                runtime.subscribe_state(seen.append)
+                transaction = inbound_answer.AnswerTransaction(session, lambda *_args: self.fail('No SIP answer'))
+                closed = []
+                transaction.add_resource('prepared', object(), lambda reason: closed.append(reason))
+                def claim():
+                    runtime.transition(session.call_id, state='in_call', owner='bridge', callee='Candidate')
+                    runtime.take_pending_invite(session.call_id)
+                    if raises:
+                        raise RuntimeError('injected claim failure')
+                    return False
+                result = await transaction.commit('answer', claim=claim)
+                self.assertFalse(result.committed)
+                self.assertTrue(session.live)
+                self.assertEqual((session.state, session.owner, session.callee), ('ringing', 'router', 'Original'))
+                self.assertFalse(session.answer_committed)
+                self.assertEqual(seen, [])
+                self.assertIs(runtime.artifact_for(session.call_id, 'pending_invite'), invite)
+                self.assertEqual(len(closed), 1)
+                await session.terminate(endpoint_session.TerminationIntent('test_done'))

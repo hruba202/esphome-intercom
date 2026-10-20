@@ -8,7 +8,7 @@ import importlib.util
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from pathlib import Path
 
 from tests.support.voip_matrix import (
@@ -161,6 +161,7 @@ class _FakeBus:
 
 class _FakeHass:
     def __init__(self) -> None:
+        self.loop = Mock()  # Delivery scheduling is exercised by the HA runtime suite.
         self.config = _FakeConfig()
         self.bus = _FakeBus()
         self.config_entries = types.SimpleNamespace(async_entries=lambda _domain: [])
@@ -403,7 +404,11 @@ class GroupCallMatrixTest(unittest.TestCase):
             },
             "session",
         )
-        registry.transition("group-call", state="terminating", owner="bridge")
+        registry.transition("group-call", owner="bridge")
+        from custom_components.voip_stack.endpoint_session import TerminationIntent
+        async def finish():
+            await registry.request_termination("group-call", TerminationIntent("remote_hangup"))
+        asyncio.run(finish())
         websocket_api._fire_call_event(
             hass,
             {

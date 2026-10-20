@@ -59,7 +59,7 @@ The current audio stack uses these Espressif components:
 | Component | Used by | License family | Notes |
 |---|---|---|---|
 | `espressif/esp-sr` | `esp_aec`, `esp_afe`, pulled directly or through GMF | Espressif MIT-style license, restricted to Espressif products | Provides AEC, AFE, SE/BSS, VAD, NS and AGC libraries. Some DSP implementation is shipped by Espressif as precompiled target libraries. |
-| `espressif/gmf_ai_audio` | `esp_afe` | Espressif Modified MIT, restricted to Espressif products | Provides the official `esp_gmf_afe` element plus `esp_gmf_afe_manager`; `esp_afe` runs that element in a GMF pipeline while ESPHome keeps the microphone consumer facade. |
+| `espressif/gmf_ai_audio` | `esp_afe` | Espressif Modified MIT, restricted to Espressif products | Provides the official `esp_gmf_afe_manager`; `esp_afe` uses its input/result callbacks directly, without the `esp_gmf_afe` element or a GMF pipeline. ESPHome keeps the microphone consumer facade. |
 | `espressif/gmf_core` | Transitive dependency of GMF components | Espressif Modified MIT, restricted to Espressif products | Base GMF object and support layer required by GMF audio/AI/IO components. |
 | `espressif/esp_audio_effects` | `esp_audio_stack` | Espressif MIT-style license, restricted to Espressif products | Provides `esp_ae_rate_cvt`, `esp_ae_bit_cvt` and data weaver APIs used for RX/TX conversion and layout. |
 | `espressif/esp_codec_dev` | `esp_audio_stack` codec-backed builds | Apache-2.0 | Provides codec control plus I2S read/write. P4 and WS3 use ES7210/ES8311 through it; Spotpear single-mic uses ES8311 input/output through it. The generic codec wrapper also exposes ES8388, ES8374 and ES8389 where the board wiring matches those drivers. Generic no-codec builds use direct `esp_driver_i2s` read/write instead. |
@@ -74,8 +74,12 @@ profiles do not resolve either H.264 dependency. `esp_h264` is Apache-2.0;
 products. The corresponding notices are retained under `licenses/`.
 
 Each wrapper declares its supported version range or exact dependency pin.
-The current development processors explicitly select ESP-SR 2.6.0; the AFE
-wrapper selects the pinned GMF AI Audio 1.1.1 fork. The firmware's generated
+The current development processors explicitly select ESP-SR 2.6.0. The AFE
+integration retains the pinned GMF AI Audio 1.1.1 fork because its manifest
+accepts 2.6.0, while the official 1.1.1 manifest still requires `2.5.*`.
+The direct Manager path uses official runtime APIs and no longer calls the
+fork's custom element-output callback. Removing that API dependency does not
+remove the remaining dependency-version constraint. The firmware's generated
 `dependencies.lock` records the complete resolved versions and source hashes.
 Do not infer automatic use of the latest registry release from the component
 name, or substitute a new major API without checking its wrapper and lifecycle.
@@ -83,6 +87,14 @@ name, or substitute a new major API without checking its wrapper and lifecycle.
 There is no P4 downgrade pin for `esp-sr`. The P4 full AFE target uses the same
 GMF/ESP-SR generation as the S3 dual-mic target, including the `esp32p4` and
 `esp32p4_less_v3` headers and prebuilt libraries shipped by Espressif.
+
+WakeNet stays disabled through the official AFE configuration
+(`wakenet_init=false`, no WakeNet models). The element's wake-up state machine
+and MultiNet command handling are not instantiated. ESPHome Micro Wake Word
+(MWW) remains the wake-word consumer of processed microphone audio. ESP-SR's
+precompiled archives can still retain unused WakeNet code in the linked image;
+that does not mean its detector runs. No WakeNet linker stubs or vendor-library
+patches are used to remove those inactive symbols.
 
 ## Component boundaries
 
@@ -94,7 +106,7 @@ The public composition stays modular:
 |---|---|---|---|
 | `esp_audio_stack` | IDF `esp_driver_i2s` for I2S ownership, `esp_codec_dev` for codec/data devices, direct codec/I2S RX/TX transfer, `esp_audio_effects` for rate/layout conversion | internal audio core shared primitives and ESPHome `microphone`/`speaker` surfaces | `esp_aec` or `esp_afe` through `processor_id`; `voip_stack`, MWW and VA as consumers |
 | `esp_aec` | `esp-sr` low-level `afe_aec` API | internal audio core | `esp_audio_stack` or standalone `voip_stack` as the caller |
-| `esp_afe` | `gmf_ai_audio` `esp_gmf_afe` element + `esp_gmf_afe_manager` plus `esp-sr` | internal audio core | `esp_audio_stack` as the required steady-frame caller |
+| `esp_afe` | `gmf_ai_audio` `esp_gmf_afe_manager` input/result callbacks plus `esp-sr` | internal audio core | `esp_audio_stack` as the required steady-frame caller |
 | `voip_stack` | none of the new Espressif audio libraries directly | ESPHome network/audio surfaces | native ESPHome audio, or `esp_audio_stack` as the recommended mic/speaker owner for AEC/AFE/full voice builds |
 
 `esp_audio_stack` does not depend on `voip_stack`. A user can install only
@@ -202,9 +214,10 @@ resolved in the generated builds:
   its feature enum, so keeping NS/AGC changes as AFE recreate operations is
   deliberate while staying on the stock manager.
 - `esp_gmf_afe_manager_get_chunk_size()` exposes the feed chunk size only. The
-  wrapper learns a differing fetch size from the first result callback and bumps
-  the ESPHome frame-spec revision if needed. This is a known integration edge to
-  watch during runtime tests, not a reason to bypass the manager.
+  adapter stages input to that native size and accepts processed output using
+  the result's byte count. Its existing bounded FIFO separates native AFE
+  output blocks from the stable ESPHome consumer frame size; receiving a
+  larger result does not require changing the consumer's frame contract.
 
 ## PSRAM policy
 
@@ -214,11 +227,12 @@ Do not treat all Espressif components the same:
   choose `more_internal`, `internal_psram_balance` or `more_psram`; the current
   default stays aligned with Espressif's PSRAM-friendly AFE profile unless a
   board-specific test proves otherwise.
-- `esp_gmf_afe_manager` has no public allocation toggle. Its manager object and
-  feed buffer use `heap_caps_calloc_prefer(..., MALLOC_CAP_SPIRAM,
-  MALLOC_CAP_INTERNAL)`, and its feed/fetch task stacks are created in PSRAM
-  when `CONFIG_SPIRAM_BOOT_INIT` is available. This is an Espressif baseline,
-  not a fork point unless runtime evidence points at it.
+- GMF AI Audio 1.1.1 exposes the official `stack_in_internal` setting separately
+  for the Manager's feed and fetch tasks. The integration selects internal
+  stacks on P4 and preserves the default placement on S3. This setting does
+  not relocate AFE models or audio buffers. The Manager object and feed buffer
+  still use `heap_caps_calloc_prefer(..., MALLOC_CAP_SPIRAM,
+  MALLOC_CAP_INTERNAL)`; default task stacks use PSRAM when available.
 - `gmf_core` OAL helpers generally allocate from PSRAM when
   `CONFIG_SPIRAM_BOOT_INIT` is enabled. We currently use only the GMF AFE
   manager path, not a full GMF pipeline.
@@ -248,8 +262,8 @@ entities or device-specific data routing.
 
 | Candidate | Upstream role | Decision | Reason |
 |---|---|---|---|
-| `esp_gmf_afe` from `gmf_ai_audio` | Full GMF AFE element over the AFE manager | Integrated now | `esp_afe` now instantiates the official element inside a GMF pipeline. Voice-command assets stay disabled (`models=nullptr`, `vcmd_detect_en=false`) because ESPHome owns MWW/VA state. |
-| `esp_gmf_afe_manager` from `gmf_ai_audio` | Owns esp-sr AFE feed/fetch tasks, suspend/resume and runtime feature toggles | Integrated now | Used underneath the GMF AFE element. ESPHome supplies bounded input/output bridge ports so the I2S owner still follows ESPHome microphone/speaker semantics. |
+| `esp_gmf_afe` from `gmf_ai_audio` | Full GMF AFE element over the AFE manager | Not used | Its wake-up/command state machine and pipeline ports are unnecessary when ESPHome owns MWW/VA state. The direct Manager callbacks also avoid needing the element's custom immediate-output API. |
+| `esp_gmf_afe_manager` from `gmf_ai_audio` | Owns esp-sr AFE feed/fetch tasks, suspend/resume and runtime feature toggles | Integrated now | ESPHome supplies input and result callbacks directly, retaining the existing bounded input/output FIFOs. No element, pipeline or additional GMF processing task is created. The I2S owner retains ESPHome microphone/speaker semantics. |
 | `esp_gmf_aec` from `gmf_ai_audio` | GMF pipeline element for standalone AEC | Defer | It is relevant to future standalone AEC cleanup, but the current `esp_aec` path already uses the same low-level esp-sr `afe_aec` engine without importing GMF port ownership into ESPHome's microphone and speaker facade. |
 | `afe_aec` from `esp-sr` | Low-level standalone AEC API | Integrated now | No-codec and Spotpear single-mic AEC devices keep a direct ESPHome-friendly processor while still using Espressif's current AEC implementation and official `MR` input format. |
 | `gmf_audio` / `aud_rate_cvt`, `aud_bit_cvt`, `aud_deintlv`, `aud_intlv` | GMF audio pipeline elements for conversion and layout | Deferred | Official examples run codec at 48 kHz and insert GMF conversion elements before AEC. `esp_audio_stack` currently uses the lower `esp_audio_effects` primitives in-place; full GMF task/port ownership remains a future step. |

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from functools import wraps
 from typing import Any, Iterable, Iterator, Literal
 
 from .endpoint_session import (
@@ -57,6 +58,15 @@ _EVENT_IDENTITY_KEYS = (
 )
 
 
+def committed_operation(method):
+    """Expose nested synchronous registry updates as one completed operation."""
+    @wraps(method)
+    def apply(self, *args, **kwargs):
+        with self.state_operation():
+            return method(self, *args, **kwargs)
+    return apply
+
+
 class CallRuntimeApi:
     """Call operations implemented directly by the authoritative runtime."""
 
@@ -64,7 +74,10 @@ class CallRuntimeApi:
         """Atomically update the public state and its authoritative phase."""
 
         accepted, phase = self._resolve_observation(session, state)
-        return accepted and session.apply_observation(state, phase)
+        if not accepted:
+            return False
+        changed = session.apply_observation(state, phase)
+        return changed
 
     @staticmethod
     def _advance_event_context(context: CallEventContext, state: str) -> None:
@@ -360,8 +373,37 @@ class CallRuntimeApi:
             if session.endpoint_claims:
                 self.release_endpoint_claims(session.call_id)
 
+    @committed_operation
+    def observe_external_state(self, call_id: str, state: str, *, endpoint_id="",
+                               direction="", caller="", callee="") -> bool:
+        """Own passive transport observations without overwriting a PBX call."""
+        call_id = self.resolve_session_id(str(call_id or "").strip())
+        if not call_id:
+            return False
+        session = self.sessions.get(call_id)
+        if session is not None and not session.metadata.get("event_only"):
+            return False
+        if session is None and state in TERMINAL_STATES and self.is_terminated(call_id):
+            return False
+        session = session or self.ensure_session(call_id, event_only=True)
+        session.caller, session.callee = caller or session.caller, callee or session.callee
+        if endpoint_id:
+            session.metadata["source_endpoint_id" if direction == "outgoing" else "dest_endpoint_id"] = endpoint_id
+            self.observe_leg(call_id, f"physical:{endpoint_id}", role="esp",
+                             endpoint_id=endpoint_id, state=state,
+                             generation=session.generation)
+        if state in TERMINAL_STATES:
+            session.apply_observation(state, SessionPhase.TERMINATED)
+            self._retire_observation(session)
+            self.sessions.pop(call_id, None)
+            self._publish_terminal_state(session)
+        else:
+            self._set_state(session, state)
+            session.state_changed()
+        return True
+
     def event_fields(self, call_id: str, state: str) -> dict[str, Any]:
-        """Return stable automation fields, advancing only on a state change."""
+        """Read committed automation fields without changing the call."""
         call_id = str(call_id or "").strip()
         state = str(state or "").strip()
         if not call_id:
@@ -379,23 +421,20 @@ class CallRuntimeApi:
         session = self.sessions.get(call_id)
         terminal = self.terminated_call_ids.get(call_id)
         summary = terminal[1] if terminal is not None else None
-        if session is None and state in TERMINAL_STATES and summary is not None:
-            context = summary
+        if session is None:
+            context = summary if summary is not None else CallEventContext()
             revision = 0
             generation = terminal[0] if terminal is not None else 0
             phase = SessionPhase.TERMINATED.value
             owner = "terminal"
             metadata = {}
         else:
-            if session is None:
-                session = self.ensure_session(call_id, event_only=True)
             context = session.event_context
             revision = session.revision
             generation = session.generation
             phase = session.phase.value
             owner = session.owner
             metadata = session.metadata
-        self._advance_event_context(context, state)
         fields = {
             "schema_version": CALL_EVENT_SCHEMA_VERSION,
             "sequence": context.sequence,
@@ -418,11 +457,6 @@ class CallRuntimeApi:
                 session.endpoint_claims if session is not None else (),
             )
         )
-        if session is not None and state in TERMINAL_STATES and session.metadata.get(
-            "event_only"
-        ) is True:
-            self._retire_observation(session)
-            self.sessions.pop(call_id, None)
         return fields
 
     def claim_terminal_summary(self, call_id: str) -> bool:
@@ -469,6 +503,7 @@ class CallRuntimeApi:
         session.revision += 1
         return [dict(item) for item in context.route_history]
 
+    @committed_operation
     def upsert(
         self,
         call_id: str,
@@ -526,8 +561,47 @@ class CallRuntimeApi:
             changed = True
         if changed:
             session.revision += 1
+        self._commit_browser_state(session, state)
+        session.state_changed()
         return session
 
+    def _commit_browser_state(self, session: EndpointCallSession, state: str) -> None:
+        """Commit the selected browser leg, retaining an already answered caller."""
+        if not session.live or not state:
+            return
+        directory = self._endpoint_registry
+        endpoint_id = ""
+        for key in ("endpoint_id", "dest_endpoint_id"):
+            candidate = str(session.metadata.get(key) or "")
+            if not candidate:
+                continue
+            if directory is not None and hasattr(directory, "get"):
+                endpoint = directory.get(candidate)
+                if endpoint is None or not endpoint.kind.is_softphone:
+                    continue
+            endpoint_id = candidate
+            break
+        if not endpoint_id:
+            return
+        leg_id = f"browser:{endpoint_id}"
+        leg = session.legs.get(leg_id)
+        if session.owner != "ha_softphone":
+            # An application may take over the same browser conversation.
+            # Its existing participant survives that owner change, while a
+            # released or closed destination must never be recreated here.
+            if (leg is None or endpoint_id not in session.endpoint_claims
+                    or leg.phase in {LegPhase.CLOSING, LegPhase.CLOSED}):
+                return
+            if (leg.phase in {LegPhase.ANSWERED, LegPhase.HELD}
+                    and state in {"new", "calling", "connecting", "ringing", "remote_ringing"}):
+                return
+        if leg is not None and leg.state == state:
+            return
+        self.observe_leg(session.call_id, leg_id, role="ha_softphone",
+                         endpoint_id=endpoint_id, state=state,
+                         generation=session.generation)
+
+    @committed_operation
     def transition(
         self,
         call_id: str,
@@ -576,6 +650,8 @@ class CallRuntimeApi:
             {key: value for key, value in metadata.items() if value not in (None, "")}
         )
         session.revision += 1
+        self._commit_browser_state(session, state)
+        session.state_changed()
         return session
 
     def is_current(
@@ -615,6 +691,7 @@ class CallRuntimeApi:
             and not self.is_terminated(call_id, generation=generation)
         )
 
+    @committed_operation
     def add_leg(
         self,
         call_id: str,
@@ -695,6 +772,7 @@ class CallRuntimeApi:
         await leg.close(reason)
         return True
 
+    @committed_operation
     def attach_sip_client(
         self,
         source_call_id: str,
@@ -765,6 +843,7 @@ class CallRuntimeApi:
             generation=session.generation,
         )
 
+    @committed_operation
     def attach_inbound_dialog(
         self, source_call_id: str, dialog_call_id: str, server: Any, *,
         endpoint_id: str, expected_generation: int,
@@ -879,8 +958,8 @@ class CallRuntimeApi:
             or session is None
         ):
             return False
-        if observation.event_context.sequence > session.event_context.sequence:
-            session.event_context = observation.event_context
+        # The SIP session owns control state and sequence. A previously
+        # observed physical call contributes only its identity alias.
         self.sessions.pop(provisional_id, None)
         self.leg_index[provisional_id] = session_id
         return True
@@ -1048,6 +1127,7 @@ class CallRuntimeApi:
             await async_wait_for_cleanup(barrier)
         return removed
 
+    @committed_operation
     def register_bridge(
         self,
         *,
