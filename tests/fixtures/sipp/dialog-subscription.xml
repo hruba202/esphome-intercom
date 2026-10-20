@@ -47,13 +47,26 @@ Content-Length: 0
 ]]></send>
   <recv response="200"/>
   <label id="receive"/>
-  <recv request="NOTIFY" timeout="5000">
+  <recv request="NOTIFY" timeout="5000" next="terminal" test="1">
     <action>
       <ereg regexp="application/dialog-info\+xml" search_in="hdr" header="Content-Type:" check_it="true" assign_to="2"/>
       <ereg regexp="terminated" search_in="hdr" header="Subscription-State:" assign_to="1"/>
       <log message="[$2]"/>
     </action>
   </recv>
+  <!-- Return directly to reception after acknowledging a nonterminal NOTIFY.
+       A queued notification may arrive before separate nop branches execute. -->
+  <send next="receive"><![CDATA[
+SIP/2.0 200 OK
+[last_Via:]
+[last_From:]
+[last_To:]
+[last_Call-ID:]
+[last_CSeq:]
+Content-Length: 0
+
+]]></send>
+  <label id="terminal"/>
   <send><![CDATA[
 SIP/2.0 200 OK
 [last_Via:]
@@ -64,7 +77,4 @@ SIP/2.0 200 OK
 Content-Length: 0
 
 ]]></send>
-  <nop next="done" test="1"/>
-  <nop next="receive"/>
-  <label id="done"/>
 </scenario>

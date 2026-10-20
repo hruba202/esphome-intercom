@@ -836,7 +836,7 @@ class VideoTranscoderTests(unittest.IsolatedAsyncioTestCase):
                 "-an",
                 "-c:v", encoder,
                 *encoder_args,
-                "-pix_fmt", "yuv420p",
+                "-pix_fmt", "yuvj420p" if encoder == "mjpeg" else "yuv420p",
                 "-g", str(gop),
                 "-f", "rtp",
                 "-payload_type", str(video_format.payload_type),
