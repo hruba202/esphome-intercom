@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from tests.native_profile import profile as native_profile, action_id
+from tests.runtime_observer_fixture import source_event_body
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +52,8 @@ def regression_binary(tmp_path_factory):
     projection = _scripts(_load("packages/features/presentation/phase.yaml"))
     projection |= _scripts(_load("packages/features/voip/presentation/lifecycle.yaml"))
     connectivity = _load("packages/runtime/ha_connectivity.yaml")
-    presence = _scripts(connectivity)
+    assert connectivity["runtime_controller"]["observe"]["api"] is True
+    assert "script" not in connectivity and connectivity["api"] == {}
     voip_callbacks = _load("packages/voip/full_runtime_callbacks.yaml")["voip_stack"]
     substitutions = _load("packages/runtime/presentation_globals.yaml")["substitutions"]
     substitutions |= _load("yamls/" + PROFILES[0])["substitutions"]
@@ -63,22 +65,6 @@ def regression_binary(tmp_path_factory):
     begin = projection["runtime_ui_call_begin"]["then"]
     assert begin[0] == {"script.stop": "ui_call_ended"}
     end = projection["runtime_ui_call_end"]["then"][0]["lambda"]
-    update_ha = presence["runtime_update_ha_presence"]["then"][0]["lambda"]
-    reconcile = presence["runtime_reconcile_ha_presence"]["then"]
-    assert reconcile[0] == {"delay": "250ms"}
-    disconnected = reconcile[1]["if"]
-    assert (
-        disconnected["then"][0]["runtime_controller.event"]["event"]
-        == "ha_disconnected"
-    )
-    ha_empty = disconnected["condition"]["lambda"]
-    for name, value in (
-        ("on_client_connected", True),
-        ("on_client_disconnected", False),
-    ):
-        action = connectivity["api"][name][0]["script.execute"]
-        assert action["id"] == "runtime_update_ha_presence"
-        assert action["connected"] is value
     terminal_guards = {}
     for callback in ("on_hangup", "on_call_failed"):
         guarded = voip_callbacks[callback][0]["if"]
@@ -94,11 +80,15 @@ def regression_binary(tmp_path_factory):
     )
     source = r"""
 #include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
+#define USE_RUNTIME_CONTROLLER_API
 #define id(name) name
 int ui_state=0, voice_assistant_phase=0, current_mode=0, previous_mode=0;
-int runtime_visual_source=0, g_ha_api_clients=0;
+int runtime_visual_source=0;
 bool runtime_response_text_ready=false, runtime_ui_call_session_active=false;
 bool call_ended_active=false;
 struct Switch { bool state=false; } mute;
@@ -113,11 +103,24 @@ Script apply_media_artwork, ui_call_ended, runtime_reconcile_ha_presence;
 struct Runtime {
   std::vector<std::string> events;
   void event(const char *name) { events.emplace_back(name); }
+  void observe_event(const char *name) { event(name); }
 } runtime;
+std::function<void()> ha_timeout;
+struct RuntimeNetworkObservers {
+ Runtime *runtime_=&runtime; uint16_t api_clients_=0;
+ void source_event(const char *, const std::string &);
+ void publish_api_presence_();
+ void cancel_timeout(const char *) { runtime_reconcile_ha_presence.stop(); }
+ void set_timeout(const char *, unsigned ms, std::function<void()> fn) {
+   assert(ms==250);ha_timeout=fn;runtime_reconcile_ha_presence.execute();
+ }
+} observer;
+auto &g_ha_api_clients=observer.api_clients_;
 int background=0, neutral=1; int *mood_bg=&background, *mood_neutral=&neutral;
 void lv_img_set_src(int *target, int *source) { *target=*source; }
 void lv_obj_invalidate(int *) {}
 """
+    source += source_event_body()
     source += constants
     source += "\nvoid project() {\n" + phase + "\n}\n"
     source += (
@@ -125,18 +128,16 @@ void lv_obj_invalidate(int *) {}
     )
     source += "void call_end() {\n" + end + "\n}\n"
     source += (
-        "void update_ha(std::string client_info, bool connected) {\n"
-        + update_ha
-        + "\n}\n"
+        'void update_ha(std::string client_info, bool connected) { '
+        'observer.source_event(connected ? "api_connected" : "api_disconnected", client_info); }\n'
     )
-    source += "bool ha_empty() {\n" + ha_empty + "\n}\n"
     for callback, guard in terminal_guards.items():
         source += f"bool accept_{callback}() {{\n{guard}\n}}\n"
     source += r"""
 void expire_ha_grace() {
   if (!runtime_reconcile_ha_presence.running) return;
   runtime_reconcile_ha_presence.running=false;
-  if (ha_empty()) runtime.event("ha_disconnected");
+  ha_timeout();
 }
 int main(int argc, char **argv) {
   assert(argc==2);

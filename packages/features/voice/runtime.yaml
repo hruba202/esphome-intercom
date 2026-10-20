@@ -1,5 +1,7 @@
 # Voice Assistant policy bindings. Requires VA and voice UI hooks.
 runtime_controller:
+  observe:
+    voice_assistant: va
   features:
   - voice_assistant
   actions:

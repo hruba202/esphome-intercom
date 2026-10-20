@@ -126,9 +126,10 @@ def test_ws3_native_feature_composition(tmp_path: Path, features: list[str]) -> 
 
     # Each input event is forwarded only once, even with combined features.
     if has_voice:
-        starts = document['voice_assistant']['on_start']
-        assert sum(action.get('runtime_controller.event', {}).get('event') == 'va_start'
-                   for action in starts) == 1
+        assert document['runtime_controller']['observe']['voice_assistant'] == 'va'
+        starts = document['voice_assistant'].get('on_start', [])
+        assert not any(action.get('runtime_controller.event', {}).get('event') == 'va_start'
+                       for action in starts)
 
     stops = maintenance_begin_actions(document)
     actions = [next(iter(action)) for action in stops]
