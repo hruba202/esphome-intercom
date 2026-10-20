@@ -879,23 +879,7 @@ tomorrow and close it as incomplete.
 
 ## Support the project
 
-This project is developed and maintained by **one person, as a private individual**, with no company, commercial sponsor, or organization funding its development.
-
-Until now, development tools, subscriptions, testing hardware and services have been paid entirely from my personal income.
-
-With the rising cost of living and everyday expenses in Italy, continuing to personally absorb all of these costs has become financially unsustainable.
-
-The project will remain **free and open source**. No features are being placed behind a paywall.
-
-However, without more community support, development, testing, hardware support and bug fixing will inevitably have to slow down.
-
-If this project is useful to you, please consider supporting its continued development:
-
-**[❤️ Sponsor the project on GitHub](https://github.com/sponsors/n-IA-hane)**
-
-Even a small contribution helps cover the real costs of keeping the project active.
-
-> **You are not paying to unlock features. You are helping make continued development possible.**
+If VoIP Stack is useful to you, [consider sponsoring development](https://github.com/sponsors/n-IA-hane). Community support helps cover development tools and test hardware. The project remains free and open source.
 
 For bug reports and hardware feedback, follow the
 [issue-reporting instructions](#before-opening-an-issue) above.
