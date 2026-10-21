@@ -15,9 +15,11 @@ STOP is dispatched immediately on the same main-loop owner, even if a queued
 play request cannot progress. Superseded commands and URI allocations are removed
 only for that pipeline; other pipeline commands retain their order. This also
 releases the existing HTTP decoder workers before a blocking OTA transfer begins.
-When the source confirms cancellation, its speaker is stopped rather than asked
-to drain frames that maintenance may already have discarded. Natural EOF still
-finishes the speaker normally; other playback pipelines are not cancelled.
+Source completion uses upstream `finish()` semantics. Firmware maintenance
+cancels its resampler and mixer inputs through ordinary `speaker.stop` actions
+before closing shared hardware, so a later decoder completion cannot strand
+audio in an input whose output has disappeared. Ordinary playback can drain
+normally; maintenance owns the decision to discard its buffered audio.
 
 Worker shutdown also guards ESP-IDF's `pthread_join` against unrelated task
 notifications. ESPHome uses task notifications to wake its main loop, including
@@ -29,7 +31,10 @@ Upstream proposals for the remaining compatibility changes:
 
 - [Playback accounting](https://github.com/esphome/esphome/pull/19499).
 - [Pending-source cancellation](https://github.com/esphome/esphome/pull/19501).
-- [ESP-IDF join completion](https://github.com/espressif/esp-idf/pull/19123).
+- [ESP-IDF join completion](https://github.com/espressif/esp-idf/pull/19123),
+  included in upstream master as
+  [602fdf5e](https://github.com/espressif/esp-idf/commit/602fdf5e5a66ada1fd50d7bf0f9975f74ca65713).
+  The checked 5.5.5 and 5.5.6 releases still need the compatibility guard.
 
 Recheck these differences against the pinned upstream baseline. An open
 proposal is not a replacement for a released upstream fix.

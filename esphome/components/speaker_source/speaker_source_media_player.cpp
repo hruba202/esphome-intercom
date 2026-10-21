@@ -194,14 +194,8 @@ void SpeakerSourceMediaPlayer::handle_media_state_changed_(uint8_t pipeline, med
       ps.last_source = ps.active_source;
       ps.active_source = nullptr;
 
-      // Explicit cancellation discards this pipeline's outstanding output.
-      // Only natural EOF drains it; during maintenance those frames may already
-      // have been discarded by the hardware and can never complete.
-      if (was_stopping) {
-        ps.speaker->stop();
-      } else {
-        ps.speaker->finish();
-      }
+      // Finish the speaker to ensure it's ready for the next playback
+      ps.speaker->finish();
 
       // Only advance the playlist if the track finished naturally (not stopped by the orchestrator)
       if (!was_stopping) {

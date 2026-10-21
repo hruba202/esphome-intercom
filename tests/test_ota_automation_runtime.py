@@ -33,7 +33,9 @@ def ota_host_binary(tmp_path_factory):
             if key == 'lvgl.resume':
                 return {'lambda': Lambda('id(display_paused)=false; ++id(resume_count);')}
             if key == 'speaker.stop':
-                return {'lambda': Lambda('id(speaker_owned)=false;')}
+                speaker_id = body.get('id') if isinstance(body, dict) else body
+                return {'lambda': Lambda('id(speaker_owned)=false;' if speaker_id == 'hw_speaker'
+                                         else '++id(input_stops);')}
             if key == 'esp_audio_stack.stop':
                 return {'lambda': Lambda('id(invalid_stop) |= id(speaker_owned); id(audio_idle)=false;')}
             if key == 'esp_audio_stack.start':
@@ -76,7 +78,8 @@ if (scenario && std::strcmp(scenario,"before_begin")==0) {
 }
 std::printf("paused=%d active=%d starts=%d pauses=%d resumes=%d\n",
  int(id(display_paused)),int(id(g_ota_in_progress)),id(audio_starts),id(pause_count),id(resume_count));
-std::exit(ok && !id(invalid_stop) ? 0 : 42);
+std::exit(ok && !id(invalid_stop) &&
+          ((scenario && std::strcmp(scenario,"before_begin")==0) || id(input_stops)>0) ? 0 : 42);
 '''
     document = {
         'esphome': {'name': 'ota-host-regression', 'includes': ['<cstdio>', '<cstdlib>', '<cstring>', '<thread>', '<chrono>'],
@@ -86,7 +89,8 @@ std::exit(ok && !id(invalid_stop) ? 0 : 42);
             ('g_ota_in_progress', 'bool', 'false'), ('audio_idle', 'bool', 'false'),
             ('display_paused', 'bool', 'false'), ('audio_starts', 'int', '0'),
             ('pause_count', 'int', '0'), ('resume_count', 'int', '0'),
-            ('speaker_owned', 'bool', 'true'), ('invalid_stop', 'bool', 'false'))],
+            ('speaker_owned', 'bool', 'true'), ('invalid_stop', 'bool', 'false'),
+            ('input_stops', 'int', '0'))],
         'script': scripts,
     }
     config = work / 'device.yaml'

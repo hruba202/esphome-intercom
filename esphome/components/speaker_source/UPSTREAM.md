@@ -10,6 +10,13 @@ Current upstream frame reservation and volume/mute behavior are retained.
 Pending-source cancellation, immediate pipeline-scoped STOP, worker-exit
 verification and explicit queue diagnostics remain local adaptations.
 
+Pending-source cancellation is the correctness fix proposed in #19501.
+Immediate STOP is a stronger local maintenance policy: the native OTA data
+handler occupies the main loop, so queued commands cannot run before hardware
+shutdown in its start callback. It is not classified as another demonstrated
+upstream correctness defect. Source completion retains upstream `finish()`;
+the maintenance composition stops its input buffers before shared hardware.
+
 speaker_compat.h detects the native speaker silence API. Older ESPHome cores
 receive equivalent zero-volume silence without changing the player's explicit
 mute state; current cores keep their native implementation. The threshold is

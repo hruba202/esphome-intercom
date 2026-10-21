@@ -6,6 +6,11 @@ Development preview with changes since stable 2026.10.1.
 
 ### Maintenance and native component cleanup
 
+- Stop playback resampler and mixer inputs before closing shared audio hardware
+  during maintenance. Source completion now retains upstream drain semantics
+  instead of forcing another hard stop from the player. Keep synchronous
+  cancellation for the blocking native OTA phase.
+
 - Returning from Options through Contacts/Keypad now reveals the selected view
   on browser phones, ESP mirror cards and the transfer view. The call controls
   and layout remain the same.

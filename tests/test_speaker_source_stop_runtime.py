@@ -1,11 +1,11 @@
-"""A cancelled source must release its sink even after hardware discarded PCM."""
+"""Source completion drains normally; maintenance owns hard cancellation."""
 from pathlib import Path
 import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
-def test_explicit_stop_does_not_wait_for_discarded_output(tmp_path):
+def test_source_completion_preserves_the_pipeline_owners_stop_request(tmp_path):
     text=(ROOT/'esphome/components/speaker_source/speaker_source_media_player.cpp').read_text()
     begin=text.index('void SpeakerSourceMediaPlayer::handle_media_state_changed_(')
     end=text.index('// THREAD CONTEXT:',begin)
@@ -20,7 +20,7 @@ enum class MediaSourceState {IDLE,PLAYING,PAUSED,ERROR};struct MediaSource {};
 struct Sink {
  bool stopped=false;unsigned stops=0,finishes=0;
  void stop(){++stops;stopped=true;}
- // No completion can arrive after the hardware discarded outstanding frames.
+ // FINISH does not undo the owner's earlier STOP request.
  void finish(){++finishes;}
 };
 struct PipelineContext {
@@ -38,15 +38,18 @@ struct SpeakerSourceMediaPlayer {
 int main(){
  SpeakerSourceMediaPlayer player;media_source::MediaSource cancelled,natural,unrelated;
  Sink stopped,finished;auto &p=player.pipelines_[0];auto &q=player.pipelines_[1];
+ // The composed maintenance sequence stops the pipeline before shared I2S.
+ // Late decoder IDLE is a completion notification, not another cancellation owner.
+ stopped.stop();
  p.active_source=&cancelled;p.stopping_source=&cancelled;p.speaker=&stopped;
  q.active_source=&natural;q.speaker=&finished;
  player.handle_media_state_changed_(0,&cancelled,media_source::MediaSourceState::IDLE);
- assert(stopped.stopped && stopped.stops==1 && stopped.finishes==0);
+ assert(stopped.stopped && stopped.stops==1 && stopped.finishes==1);
  assert(p.active_source==nullptr && p.stopping_source==nullptr && player.advances==0);
  // A duplicate or an unrelated source cannot stop another generation/pipeline.
  player.handle_media_state_changed_(0,&cancelled,media_source::MediaSourceState::IDLE);
  player.handle_media_state_changed_(1,&unrelated,media_source::MediaSourceState::IDLE);
- assert(stopped.stops==1 && finished.stops==0 && finished.finishes==0);
+ assert(stopped.stops==1 && stopped.finishes==1 && finished.stops==0 && finished.finishes==0);
  player.handle_media_state_changed_(1,&natural,media_source::MediaSourceState::IDLE);
  assert(finished.finishes==1 && finished.stops==0 && player.advances==1);
  // The same pipeline can start a new source immediately after cancellation.

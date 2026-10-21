@@ -21,6 +21,9 @@ packages:
     }
   maintenance: !include '../features/shared/standalone_phone_maintenance.yaml'
 substitutions:
+  firmware_maintenance_stop_inputs:
+  - speaker.stop: ringtone_speaker
+  - speaker.stop: ringtone_speaker_mix
   firmware_phone_has_ringtone: true
   firmware_phone_has_display: true
   firmware_phone_redraw:

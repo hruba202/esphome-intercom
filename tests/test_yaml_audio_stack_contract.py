@@ -28,7 +28,7 @@ def test_ota_waits_for_audio_stack_idle_without_blocking_main_loop() -> None:
         'full-experience/single-bus/spotpear-ball-v2-full-afe.yaml',
     ):
         steps = maintenance_begin_actions(profile(relative))
-        sink_index = next(i for i, step in enumerate(steps) if 'speaker.stop' in step)
+        sink_index = next(i for i, step in enumerate(steps) if step.get('speaker.stop') == 'hw_speaker')
         stop_index = next(i for i, step in enumerate(steps) if 'esp_audio_stack.stop' in step)
         wait_index = next(i for i, step in enumerate(steps)
                           if 'esp_audio_stack.is_idle' in step.get('wait_until', {}).get('condition', {}))

@@ -49,9 +49,17 @@ defaults:
       format: Display resumed after firmware update
   _fw_redraw_display_default:
   - script.execute: draw_display
-  _fw_stop_audio:
-  # Stop the adapter that owns playback before suspending its hardware. Leaving
-  # it RUNNING strands buffered PCM because finish() can no longer drain it.
+  _fw_audio_uses_mixer: ${ _fw_mixed | default(((_fw_announcements | int) + (_fw_music | int) + (_fw_voip | int)) >= 2) }
+  _fw_default_stop_audio_inputs: >-
+    ${ ([{'speaker.stop': 'tts_speaker_input'}] if _fw_announcements else [])
+       + ([{'speaker.stop': 'media_speaker_input'}] if _fw_music else [])
+       + ([{'speaker.stop': 'tts_mixer_input'}] if _fw_announcements and _fw_audio_uses_mixer else [])
+       + ([{'speaker.stop': 'media_mixer_input'}] if _fw_music and _fw_audio_uses_mixer else []) }
+  # Cancel each playback buffer before its output disappears. These are ordinary
+  # speaker commands; STOP remains pending across a later source FINISH callback.
+  # VoIP Stack stops its own speaker chain through the preceding voip_stack.stop.
+  _fw_stop_audio: ${ ((firmware_maintenance_stop_inputs | default(_fw_default_stop_audio_inputs)) if _fw_announcements or _fw_music else []) + _fw_stop_audio_hardware }
+  _fw_stop_audio_hardware:
   - speaker.stop: hw_speaker
   - esp_audio_stack.stop: {}
   _fw_resume_audio:
