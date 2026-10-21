@@ -59,7 +59,8 @@ with a 512,000-byte one-shot snapshot allocation. They do not qualify acoustic
 echo rejection, wake-word recognition, production rev3 silicon or H.264.
 The profile's video limit was 10 FPS, not a guaranteed delivered rate. Measured
 camera TX was approximately 3.8-5.0 FPS with simultaneous incoming video,
-FULL audio and diagnostic captures. Incoming synthetic video was 320x240.
+FULL audio and diagnostic captures. Incoming synthetic video used a 320x180
+source (320x184 dimensions in its RTP/JPEG headers).
 This is functional verification, not a claim of 10 FPS bidirectional video.
 
 The capture tool invalidates CPU cache before reading the DMA-written panel

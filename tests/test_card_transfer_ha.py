@@ -25,6 +25,7 @@ async def wait_for(predicate):
 
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
+@pytest.mark.parametrize("registered_phones", [{"manual": "transfer_a"}], indirect=True)
 @pytest.mark.parametrize("reject", [False, True])
 @pytest.mark.parametrize("incoming", [False, True])
 async def test_browser_transfer_service_moves_peer_to_registered_phone(
@@ -73,7 +74,6 @@ async def test_browser_transfer_service_moves_peer_to_registered_phone(
             },
             blocking=True,
         )
-        await wait_for(lambda: runtime.calls.get_session(call_id).state == "in_call")
     else:
         await runtime.hass.services.async_call(
             "voip_stack",
@@ -86,6 +86,20 @@ async def test_browser_transfer_service_moves_peer_to_registered_phone(
             blocking=True,
         )
         call_id = runtime.runtime.endpoints.get(endpoint.endpoint_id).active_call_id
+        # The call action may return on 180. A real manual-answer peer makes
+        # that contract deterministic instead of relying on auto-answer timing.
+        with pytest.raises(ServiceValidationError, match="established call"):
+            await runtime.hass.services.async_call(
+                "voip_stack", "transfer",
+                {"device_id": endpoint.device_id, "call_id": call_id,
+                 "destination": "transfer_b"},
+                blocking=True, return_response=True,
+            )
+        await asyncio.to_thread(registered_phones[0].command, "/accept")
+    await wait_for(
+        lambda: (session := runtime.calls.get_session(call_id)) is not None
+        and session.live and session.state == "in_call"
+    )
     runtime.runtime.endpoints.update("transfer_c", device_id="other-phone")
     with pytest.raises(ServiceValidationError, match="does not own"):
         await runtime.hass.services.async_call(
