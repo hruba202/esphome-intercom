@@ -132,7 +132,7 @@ recordings and other phones' mailboxes are preserved.
 
 ## PBX development branch: separate SIP trunk entries
 
-The updated `v2026.10.3-dev` preview changes where trunks are configured.
+The updated `v2026.10.0-dev` preview changes where trunks are configured.
 Older builds with the same version label used the former single-trunk flow.
 
 Previously, a single trunk was configured in the main VoIP Stack setup or

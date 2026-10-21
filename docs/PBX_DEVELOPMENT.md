@@ -103,8 +103,8 @@ public hardware claims require separate device tests.
 
 ## Documentation comparison, 2026-10-11
 
-The published `v2026.10.3-dev` tag resolves to `16714a9b`; `origin/main` resolves
-to `6581cfea`. They are different comparison points. The PBX workflow guide
+For this historical comparison, the preview snapshot is `16714a9b` and the
+`main` snapshot is `6581cfea`. They are different comparison points. The PBX workflow guide
 covers branch additions after the published preview, including named trunks,
 phone routing, voicemail/MWI, parking/pickup, consultation transfer/dialog-state
 support and conversation recording. Existing Automation origination, TTS/media

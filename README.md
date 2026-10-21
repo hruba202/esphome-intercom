@@ -70,7 +70,7 @@ when installing the Home Assistant integration alone.
 
 ## PBX additions in the development preview
 
-The [2026.10.3-dev preview](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.3-dev)
+The [2026.10.0-dev preview](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.0-dev)
 adds **multiple named SIP trunks, phone forwarding rules, call transfers,
 voicemail, call parking, directed pickup and conversation recording**. These additions are available in
 the development preview; stable 2026.10.1 does not include them.
