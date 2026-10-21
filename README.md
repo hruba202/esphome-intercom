@@ -33,7 +33,7 @@ off. [Learn the phone controls](docs/USER_GUIDE.md#read-the-phone-card) and
 
 Stable release: [2026.10.1](https://github.com/n-IA-hane/esphome-intercom/releases/tag/v2026.10.1).
 Requires Home Assistant **2026.7.0 or newer**. Firmware builds require ESPHome
-**2026.9.0 or newer**.
+**2026.10.0 or newer**.
 
 The stable 2026.10.1 firmware profiles use ESP VoIP Stack **2026.10.1**, Runtime Controller
 **2026.10.1**, and Audio Stack **2026.10.2** from their `main` branches. HA and ESP
@@ -46,7 +46,7 @@ See the [2026.10.1 changes](CHANGELOG.md) and
 
 [![Platform](https://img.shields.io/badge/Platform-ESP32--S3%20%7C%20ESP32--P4-blue.svg)](#supported-hardware)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-native-blue.svg)](https://www.home-assistant.io)
-[![ESPHome](https://img.shields.io/badge/ESPHome-2026.9.0%2B-18bcf2.svg)](https://esphome.io)
+[![ESPHome](https://img.shields.io/badge/ESPHome-2026.10.0%2B-18bcf2.svg)](https://esphome.io)
 
 ![Dashboard demo](docs/images/dashboard.gif)
 
@@ -63,7 +63,7 @@ phonebook. Each room phone still has its own identity and call state._
   </tr>
 </table>
 
-Maintained ESP firmware profiles require **ESPHome 2026.9.0 or newer**.
+Maintained ESP firmware profiles require **ESPHome 2026.10.0 or newer**.
 See the [firmware migration notes](docs/BREAKING_CHANGES.md#2026100-esphome-202690-for-maintained-firmware-profiles)
 when updating copied YAMLs. This does not force an immediate firmware update
 when installing the Home Assistant integration alone.

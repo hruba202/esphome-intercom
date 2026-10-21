@@ -4,6 +4,26 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## Development firmware: ESPHome 2026.10 and music pairing
+
+Upgrade the builder to **ESPHome 2026.10.0 or newer** before compiling the current
+device packages or Audio Stack. Support for the 2026.9 core is retired; do not
+combine old and new copies of audio, mixer or speaker-source providers.
+
+Sendspin now uses the protocol library selected by ESPHome 2026.10 (0.9.3).
+Update Music Assistant to **2.10.7 or newer** first. After the firmware upgrade,
+complete **Setup** for each speaker in Music Assistant and use its native PIN
+pairing flow. The device exposes **Sendspin Confirm Pairing**, **Sendspin Cancel
+Pairing** and **Sendspin Pairing Code** through HA. The default native unpaired
+access policy is unchanged; pairing does not require disabling encryption or
+using a shared hardcoded PIN. For paired-server-only access add
+`sendspin: {unpaired_access: false}` to your configuration.
+
+See [the pairing steps](../packages/README.md#pair-sendspin-with-music-assistant).
+A normal reboot retains the native device identity and pairing. Flash erasure
+or a factory reset can require a new pairing; updating HACS alone does not
+replace ESP firmware.
+
 ## Development firmware: retired speaker fork
 
 The local `speaker` provider, including its legacy media player, has been

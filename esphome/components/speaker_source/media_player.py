@@ -1,9 +1,6 @@
-from pathlib import Path
-
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components import audio, media_player, media_source, speaker
-from esphome.components.esp32 import add_idf_component
 from esphome.components.const import (
     CONF_VOLUME_INCREMENT,
     CONF_VOLUME_INITIAL,
@@ -19,8 +16,6 @@ from esphome.const import (
     CONF_SAMPLE_RATE,
     CONF_SPEAKER,
 )
-from esphome.core import ID
-from esphome.cpp_generator import MockObj, TemplateArgsType
 from esphome.types import ConfigType
 
 AUTO_LOAD = ["audio"]
@@ -61,10 +56,6 @@ _PIPELINE_INFO = {
         media_player.MEDIA_PLAYER_FORMAT_PURPOSE_ENUM["announcement"],
     ),
 }
-
-SetPlaylistDelayAction = speaker_source_ns.class_(
-    "SetPlaylistDelayAction", automation.Action
-)
 
 
 _validate_pipeline = media_player.validate_preferred_format(
@@ -175,10 +166,6 @@ FINAL_VALIDATE_SCHEMA = cv.All(
 
 
 async def to_code(config: ConfigType) -> None:
-    add_idf_component(
-        name="pthread_join_guard",
-        path=str(Path(__file__).parent / "idf_components" / "pthread_join_guard"),
-    )
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await media_player.register_media_player(var, config)
@@ -239,25 +226,11 @@ SET_PLAYLIST_DELAY_ACTION_SCHEMA = cv.Schema(
 )
 
 
-@automation.register_action(
+automation.register_apply_action(
     "speaker_source.set_playlist_delay",
-    SetPlaylistDelayAction,
     SET_PLAYLIST_DELAY_ACTION_SCHEMA,
-    synchronous=True,
+    automation.ApplyCall(
+        "set_playlist_delay_ms({}, {})",
+        ((CONF_PIPELINE, cg.uint8), (CONF_DELAY, cg.uint32)),
+    ),
 )
-async def set_playlist_delay_action_to_code(
-    config: ConfigType,
-    action_id: ID,
-    template_arg: cg.TemplateArguments,
-    args: TemplateArgsType,
-) -> MockObj:
-    parent = await cg.get_variable(config[CONF_ID])
-    var = cg.new_Pvariable(action_id, template_arg, parent)
-
-    template_ = await cg.templatable(config[CONF_PIPELINE], args, cg.uint8)
-    cg.add(var.set_pipeline(template_))
-
-    template_ = await cg.templatable(config[CONF_DELAY], args, cg.uint32)
-    cg.add(var.set_delay(template_))
-
-    return var

@@ -52,7 +52,7 @@ def test_integrated_spi_and_http_components_are_not_shadowed() -> None:
     assert not (COMPONENTS / "audio_http").exists()
     package = (ROOT / "packages/audio/http_media_codecs.yaml").read_text()
     assert "components: [audio_http_compat]" in package
-    assert "min_version: 2026.9.0" in package
+    assert "min_version: 2026.10.0" in package
 
 
 def test_retired_speaker_provider_is_not_shipped() -> None:

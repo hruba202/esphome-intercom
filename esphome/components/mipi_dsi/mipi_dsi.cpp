@@ -230,7 +230,7 @@ void MipiDsi::flush_dirty_() {
 }
 
 // The legacy entry point also receives modern Display bulk calls through its compatibility bridge.
-// Keep one blitter while supporting ESPHome 2026.9.1 and the current display API.
+// Keep one blitter while using the ESPHome 2026.10 display API.
 void MipiDsi::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
                            display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
                            int x_offset, int y_offset, int x_pad) {

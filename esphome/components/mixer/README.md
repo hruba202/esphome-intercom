@@ -1,28 +1,24 @@
-# ESPHome playback adapter
+# ESPHome mixer compatibility adapter
 
-Synchronized with the upstream revision and remaining adaptations recorded in
-[UPSTREAM.md](UPSTREAM.md). Runtime sources retain GPLv3 and Python configuration
-retains MIT licensing; see the included LICENSE.
+The mixer audio runtime follows upstream, including its per-source playback
+counters and the existing task stop/start lifecycle. Remaining differences are
+listed in [UPSTREAM.md](UPSTREAM.md). Runtime sources retain GPLv3 and Python
+configuration retains MIT licensing; see the included LICENSE.
 
-This adapter keeps the native configuration and speaker interfaces. It is
-selected by the shared playback compatibility package for full media profiles.
-The playback accounting changes and dependency compatibility are described in
-[Sendspin compatibility](../sendspin_compat/README.md).
+This adapter keeps the native configuration and speaker interfaces while
+using native automation bindings from ESPHome 2026.10.0. It is selected by the
+shared playback package for full media profiles.
 
-The adapter also includes ESPHome's [pending mixer restart fix](https://github.com/esphome/esphome/pull/19368).
-When a new playback starts while the previous mixer task is shutting down,
-cleanup preserves its start request for the next loop instead of discarding it.
+The upstream [pending restart fix](https://github.com/esphome/esphome/pull/19368)
+preserves a new start request while the previous mixer task is shutting down.
+The closed PR #21053 contribution queue and forced-output restart are no longer
+used. No additional mutex is taken in the output callback.
 
-## Shared-output stop and restart
+Normal source pauses are handled inside the mixer without pausing the shared
+output. Forced output stop on pause or after the stopping timeout remains the
+upstream recovery behavior; it is not presented as an ordinary playback path.
 
-A forced stop can discard frames from more than one mixer input. The mixer now
-stops its writer first, releases the transfer buffer and reconciles every source
-timeline through its existing worker cleanup. Only then does it stop the hardware
-output and permit restart. Source input buffers remain available for subsequent
-playback. Discarded frames are not reported as played.
-
-For ESP Audio Stack output, also use the development fix that rejects new writes
-while its asynchronous ring reset is pending. Otherwise a new write can be
-accepted and then discarded by the previous stop's reset. This combination has
-passed targeted Spotpear mixed-media tests; it does not establish multi-day
-stability for every configuration. See issue #129.
+ESP Audio Stack separately rejects new writes while its asynchronous ring reset
+is pending. That ownership rule remains in Audio Stack and is not replaced by
+another mixer shutdown mechanism. See [Sendspin compatibility](../sendspin_compat/README.md)
+for the separate source/dependency adapters.

@@ -5,7 +5,7 @@ This guide covers installation, firmware selection and network settings.
 and video use UDP in both cases.
 
 Use Home Assistant 2026.7.0 or newer. Firmware builds require
-ESPHome 2026.9.0 or newer. HA and ESP firmware do not need matching version
+ESPHome 2026.10.0 or newer. HA and ESP firmware do not need matching version
 numbers: a HACS update and a device firmware update are separate operations.
 We recommend rebuilding from an updated maintained YAML to receive device
 fixes, particularly on Generic S3.

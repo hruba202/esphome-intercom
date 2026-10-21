@@ -7,16 +7,8 @@ from esphome.components.esp32 import (
     add_idf_component,
     add_idf_sdkconfig_option,
     require_certificate_bundle,
+    request_http_client,
 )
-# Keep the stable ESPHome API while using the upstream HTTP owner when present.
-try:
-    from esphome.components.esp32 import request_http_client
-except ImportError:
-    from esphome.components.esp32 import include_builtin_idf_component
-
-    def request_http_client():
-        include_builtin_idf_component("esp_http_client")
-
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_BITS_PER_SAMPLE,

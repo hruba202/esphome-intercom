@@ -13,7 +13,6 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/static_task.h"
 #include "inference_task.h"
-#include <type_traits>
 
 #ifdef USE_OTA_STATE_LISTENER
 #include "esphome/components/ota/ota_backend.h"
@@ -25,12 +24,6 @@
 #include <frontend_util.h>
 
 namespace esphome::micro_wake_word {
-
-// Select one task owner. Older ESPHome lacks StaticTask's core-affinity parameter.
-template<typename T> inline constexpr bool HAS_TASK_CORE = requires(T &task) {
-  task.create(nullptr, nullptr, 0, nullptr, 0, false, tskNO_AFFINITY);
-};
-using InferenceTaskOwner = std::conditional_t<HAS_TASK_CORE<StaticTask>, StaticTask, InferenceTask>;
 
 static constexpr uint16_t DEFAULT_RING_BUFFER_DURATION_MS = 120;
 
@@ -150,7 +143,7 @@ class MicroWakeWord final : public Component
   // Used to send messages about the models' states to the main loop
   QueueHandle_t detection_queue_;
 
-  InferenceTaskOwner inference_task_;
+  InferenceTask inference_task_;
 
   static void inference_task(void *params);
 

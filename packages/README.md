@@ -5,8 +5,8 @@ change its `firmware_features` list to choose what is compiled. You do not need 
 find and remove a microphone callback, mixer input, button and timer in separate
 files to remove a feature.
 
-The package syntax requires ESPHome 2026.9.0 or newer. The current composition and
-firmware checks use ESPHome 2026.9.1 with ESP-IDF 5.5.5. Validation, compilation and
+The package syntax requires ESPHome 2026.10.0 or newer. The current composition and
+firmware checks use ESPHome 2026.10.0 with ESP-IDF 5.5.6. Validation, compilation and
 physical testing are different checks; experimental boards remain experimental.
 
 This guide describes the reorganized development packages. Start with the
@@ -315,3 +315,35 @@ real packages, removes features and generates C++ for representative combination
 It also resolves compatibility entrypoints in an isolated cache layout. The media
 contract tests inspect the composed result, not just the shortened device file.
 Builds and physical audio tests remain separate requirements.
+
+## Pair Sendspin with Music Assistant
+
+Use ESPHome **2026.10.0 or newer** and Music Assistant **2.10.7 or newer**. Select
+both `music` and `sendspin` in `firmware_features`, compile, and upload. The native
+ESPHome client handles discovery, encryption and pairing; no separate custom
+player or Sendspin clock is installed.
+
+1. Open Music Assistant's player settings and select **Setup** for the speaker.
+2. Choose dynamic PIN pairing. If the flow requests confirmation, open the ESP
+   device in Home Assistant and press **Sendspin Confirm Pairing**.
+3. Read **Sendspin Pairing Code** on the same device and enter that temporary
+   code in Music Assistant. It clears after the attempt. **Sendspin Cancel
+   Pairing** cancels the pending request.
+4. Play a track, stop it, then try a second track. A normal restart preserves
+   pairing; it is not repeated for every playback.
+
+The firmware preserves ESPHome's default unpaired-access policy. Music
+Assistant also offers an explicit unpaired setup option; use PIN pairing when
+associating your own server. To permit only paired servers, add this override:
+
+```yaml
+sendspin:
+  unpaired_access: false
+```
+
+Keep TCP port 8928 and mDNS discovery reachable between the server and speaker.
+If the speaker is absent, check network reachability before changing audio
+settings. If Setup is missing after an upgrade, refresh Music Assistant and
+check its server version. These controls are included only when Sendspin is
+selected, including on boards without a display. Keep pairing codes and
+credentials out of screenshots and issue logs.

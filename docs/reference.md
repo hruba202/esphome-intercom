@@ -107,7 +107,7 @@ JPEG or H.264 package instead of mixing parts from both profiles.
   `voip_stack.set_mic_gain_db` (`gain_db`), and
   `voip_stack.publish_entity_states`.
 
-With ESPHome 2026.9.0 or newer and `api: custom_services: true`, `voip_stack`
+With ESPHome 2026.10.0 or newer and `api: custom_services: true`, `voip_stack`
 automatically supplies its HA discovery and native call-control interface.
 No VoIP HA package is required. Use `ha_integration: false` for standalone SIP
 with unrelated API features. Full profiles retain separate runtime connectivity

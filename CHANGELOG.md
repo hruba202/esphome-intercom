@@ -1,10 +1,26 @@
 # Changelog
 
-## 2026.10.3-dev
+## 2026.10.0-dev
+
+> **Attention: ESPHome 2026.10.0 or newer is required.**
+>
+> ESPHome 2026.10 brings substantial audio changes, including several of our
+> accepted contributions. Thank you to the ESPHome team for your work, reviews
+> and accepted PRs! <3
+>
+> We have aligned Audio Stack, ESP VoIP Stack, Runtime Controller and the
+> maintained device packages with this release. Older ESPHome versions are no
+> longer supported and their operation is not guaranteed. Upgrade the builder
+> before compiling the new firmware.
+
 
 Development preview with changes since stable 2026.10.1.
 
 ### Maintenance and native component cleanup
+
+- Return the mixer runtime to upstream playback counters and stop/start handling,
+  removing the extra contribution queue, output-callback mutex and metadata
+  backpressure. Use the native ESPHome 2026.10 automation bindings.
 
 - Stop playback resampler and mixer inputs before closing shared audio hardware
   during maintenance. Source completion now retains upstream drain semantics
@@ -25,6 +41,15 @@ Development preview with changes since stable 2026.10.1.
   mandatory checks cannot silently produce a successful validation gate.
 
 ### Firmware configuration migration
+
+The maintained firmware now requires **ESPHome 2026.10.0 or newer**. Upgrade the
+builder before rebuilding. The 2026.9 core compatibility branches are removed.
+Sendspin moves to the native 0.9.3 protocol client; upgrade Music Assistant to
+**2.10.7 or newer**, then open the speaker's **Setup** in Music Assistant.
+Choose PIN pairing, press **Sendspin Confirm Pairing** in the device's HA
+controls, and enter its temporary **Sendspin Pairing Code**. Existing server
+pairings survive a normal reboot. See the [pairing guide](packages/README.md#pair-sendspin-with-music-assistant).
+
 
 **When adopting the reorganized firmware packages, start from the updated YAML
 for your exact board and bring over your settings.** Each profile now includes
@@ -51,7 +76,8 @@ and AFE/AEC/native profile separately from its application features.
   selected by Audio Stack. Retain immediate processed-PCM delivery and use the
   upstream feed/fetch stack placement and suspend/abort shutdown ordering.
 - Update the shared audio/mixer adapters to esp-audio-libs 4.1.0 and micro-FLAC
-  0.3.0. Keep Sendspin at 0.7.2. Include the certificate bundle for HTTPS playback.
+  0.3.0. Use ESPHome 2026.10's Sendspin 0.9.3 and its native pairing controls.
+  Include the certificate bundle for HTTPS playback.
 - Cancel only the selected player pipeline and its superseded commands on STOP;
   keep normal EOF draining. Rejected output writes honor their caller's wait
   budget while cleanup completes, preventing producer busy retry.

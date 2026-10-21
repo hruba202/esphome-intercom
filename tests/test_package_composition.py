@@ -97,6 +97,13 @@ def test_ws3_native_feature_composition(tmp_path: Path, features: list[str]) -> 
     assert ('voice_assistant' in document) is has_voice
     assert ('micro_wake_word' in document) is (has_voice and 'wake_word' in features)
     assert ('sendspin' in document) is (has_music and 'sendspin' in features)
+    pairing_sensor = any(item.get('id') == 'sendspin_pairing_code'
+                         for item in document.get('text_sensor', []))
+    pairing_buttons = {str(item.get('id')) for item in document.get('button', [])
+                       if str(item.get('id', '')).startswith('sendspin_')}
+    assert pairing_sensor is (has_music and 'sendspin' in features)
+    assert pairing_buttons == ({'sendspin_confirm_pairing', 'sendspin_cancel_pairing'}
+                               if has_music and 'sendspin' in features else set())
     assert ('light' in document) is ('status_led' in features)
 
     scripts = {str(script['id']) for script in document.get('script', [])}

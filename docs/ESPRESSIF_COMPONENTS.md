@@ -11,7 +11,7 @@ ship prebuilt firmware binaries for these Espressif audio components.
 
 ## ESPHome integration and compatibility
 
-Maintained firmware profiles require ESPHome 2026.9.0 or newer. They use
+Maintained firmware profiles require ESPHome 2026.10.0 or newer. They use
 upstream `spi` and `audio_http`: PSRAM DMA and persistent HTTP ring buffers
 are included in ESPHome through PRs
 [#18699](https://github.com/esphome/esphome/pull/18699) and
@@ -29,7 +29,7 @@ released changes and remaining local behavior, including the P4 panel fix.
 | `audio_http_compat` | Adds the missing `audio/vnd.wave` MIME alias to micro-decoder. | No task or audio buffer; inactive when WAV is disabled or upstream already supports the alias. |
 | `voice_assistant` | Response completion, Stop and intent preparation from the existing draft PR. | Stable automation APIs remain supported; playback state is not first-PCM detection. |
 | `mipi_dsi` | Serializes LVGL and direct video submissions and exposes the immutable framebuffer to the narrow P4 renderer adapter. | Panel models and normal ESPHome display behavior remain aligned with the recorded upstream baseline. |
-| `audio` | Supplies host simulation adapters and selects newer audio-library dependencies. | The dependency versions differ from stable 2026.9.1; compare the complete provider before removing it. |
+| `audio` | Supplies host simulation adapters and selects newer audio-library dependencies. | The dependency versions differ from stable 2026.10.0; compare the complete provider before removing it. |
 
 `p4_framebuffer_capture` and `runtime_diag` are diagnostic components, not
 production media owners. They are included only by explicit diagnostic YAML.
@@ -39,12 +39,14 @@ removed. Maintained profiles use ESPHome's native speaker base. Custom YAMLs
 that selected the removed provider must follow the
 [speaker migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
 
-Full profiles retain the playback-completion corrections in the local mixer
-and speaker-source adapters. The optional Sendspin compatibility adapter keeps
-its worker-stack and late-chunk fixes until the dependency includes them;
-ESPHome 2026.9.0 still selects sendspin-cpp 0.7.2. These adapters do not add a
-second player or audio clock. See
-[Sendspin compatibility](../esphome/components/sendspin_compat/README.md).
+Full profiles use upstream mixer runtime behavior with the native 2026.10
+bindings. Speaker Source retains the pending-source STOP and worker-exit fixes.
+Sendspin uses the native ESPHome 2026.10 client and its selected sendspin-cpp
+0.9.3 dependency, including stream-generation handling. Its small dependency
+adapter retains only scoped worker configuration and partially late decoded
+prefix handling. No legacy 0.7 source path is retained and no second player or
+clock is added. See [Sendspin compatibility](../esphome/components/sendspin_compat/README.md)
+and [Music Assistant pairing](../packages/README.md#pair-sendspin-with-music-assistant).
 
 ![ESP audio-stack architecture](images/audio-stack.png)
 

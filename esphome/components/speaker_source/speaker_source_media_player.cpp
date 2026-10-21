@@ -1,5 +1,4 @@
 #include "speaker_source_media_player.h"
-#include "speaker_compat.h"
 
 #ifdef USE_ESP32
 
@@ -867,11 +866,7 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state, bool publish) {
 
   for (auto &ps : this->pipelines_) {
     if (ps.is_configured()) {
-      if constexpr (SpeakerCompatibility<speaker::Speaker>::NATIVE_SILENCE) {
-        ps.speaker->set_mute_state(mute_state);
-      } else {
-        ps.speaker->set_mute_state(mute_state || this->volume < SILENT_VOLUME_THRESHOLD);
-      }
+      ps.speaker->set_mute_state(mute_state);
     }
   }
 
@@ -898,16 +893,13 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state, bool publish) {
 void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
   // Remap the volume to fit within the configured limits. An effectively zero volume is passed through as zero so
   // the speaker silences it, otherwise volume_min would make it audible.
-  float bounded_volume = (volume < SILENT_VOLUME_THRESHOLD)
+  float bounded_volume = (volume < speaker::SILENT_VOLUME_THRESHOLD)
                              ? 0.0f
                              : remap<float, float>(volume, 0.0f, 1.0f, this->volume_min_, this->volume_max_);
 
   for (auto &ps : this->pipelines_) {
     if (ps.is_configured()) {
       ps.speaker->set_volume(bounded_volume);
-      if constexpr (!SpeakerCompatibility<speaker::Speaker>::NATIVE_SILENCE) {
-        ps.speaker->set_mute_state(this->is_muted_ || volume < SILENT_VOLUME_THRESHOLD);
-      }
     }
   }
 

@@ -20,3 +20,26 @@ media_player:
     media_pipeline:
       sources:
         - sendspin_media_source
+
+# Music Assistant requests pairing; confirm it from this device's HA controls,
+# then enter the temporary code shown by the native Sendspin text sensor.
+text_sensor:
+  - platform: sendspin
+    id: sendspin_pairing_code
+    sendspin_id: sendspin_hub
+    type: pairing_code
+    name: Sendspin Pairing Code
+    entity_category: diagnostic
+button:
+  - platform: template
+    id: sendspin_confirm_pairing
+    name: Sendspin Confirm Pairing
+    entity_category: config
+    on_press:
+      - sendspin.confirm_pairing_window: sendspin_hub
+  - platform: template
+    id: sendspin_cancel_pairing
+    name: Sendspin Cancel Pairing
+    entity_category: config
+    on_press:
+      - sendspin.cancel_pairing_window: sendspin_hub

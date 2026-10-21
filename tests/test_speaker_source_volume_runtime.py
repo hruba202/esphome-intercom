@@ -1,8 +1,7 @@
-"""Upstream mute/zero-volume behavior with legacy and modern speaker contracts."""
+"""Native ESPHome 2026.10 mute/zero-volume behavior."""
 from pathlib import Path
 import subprocess
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,21 +16,25 @@ def method(source, signature):
     return source[start:end]
 
 
-@pytest.mark.parametrize('native', [False, True])
-def test_volume_preserves_mute_and_zero_silence(tmp_path, native):
+def test_volume_preserves_mute_and_zero_silence(tmp_path):
     component = ROOT / 'esphome/components/speaker_source'
     stub = tmp_path / 'esphome/components/speaker'
     stub.mkdir(parents=True)
     (stub / 'speaker.h').write_text('''#pragma once
 namespace esphome::speaker {
+constexpr float SILENT_VOLUME_THRESHOLD=0.001f;
 struct Speaker {
  float volume=1;bool muted=false;
  void set_volume(float v){volume=v;}void set_mute_state(bool v){muted=v;}
-''' + ('protected:\n bool is_silent_()const{return muted || volume<0.001f;}\n' if native else '') + '};\n}\n')
+protected:
+ bool is_silent_()const{return muted || volume<SILENT_VOLUME_THRESHOLD;}
+};
+}
+''')
     source = (component / 'speaker_source_media_player.cpp').read_text()
     cpp = tmp_path / 'volume.cpp'
     cpp.write_text(r'''
-#include "speaker_compat.h"
+#include "esphome/components/speaker/speaker.h"
 #include <cassert>
 #include <vector>
 namespace esphome::speaker_source {
@@ -51,18 +54,15 @@ struct SpeakerSourceMediaPlayer {
 }
 int main(){
  using namespace esphome::speaker_source;
- static_assert(SpeakerCompatibility<esphome::speaker::Speaker>::NATIVE_SILENCE == NATIVE);
  SpeakerSourceMediaPlayer player;
  player.set_volume_(0);assert(player.sink.volume==0 && !player.is_muted_);
- if(!NATIVE)assert(player.sink.muted);
  player.set_mute_state_(true);player.set_volume_(0.5f);
  assert(player.is_muted_ && player.sink.muted);
  player.set_mute_state_(false);assert(!player.sink.muted);
  player.set_volume_(0.00001f);assert(player.sink.volume==0);
- if(!NATIVE)assert(player.sink.muted);
  player.set_volume_(0.5f);assert(!player.sink.muted && player.sink.volume>0.3f);
 }
 ''')
     executable = tmp_path / 'volume'
-    subprocess.run(['g++', '-std=c++20', '-DNATIVE='+str(int(native)), '-I', str(tmp_path), '-I', str(component), str(cpp), '-o', str(executable)], check=True, capture_output=True, text=True)
+    subprocess.run(['g++', '-std=c++20', '-I', str(tmp_path), '-I', str(component), str(cpp), '-o', str(executable)], check=True, capture_output=True, text=True)
     subprocess.run([str(executable)], check=True, capture_output=True, text=True)

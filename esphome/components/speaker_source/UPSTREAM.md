@@ -17,10 +17,9 @@ shutdown in its start callback. It is not classified as another demonstrated
 upstream correctness defect. Source completion retains upstream `finish()`;
 the maintenance composition stops its input buffers before shared hardware.
 
-speaker_compat.h detects the native speaker silence API. Older ESPHome cores
-receive equivalent zero-volume silence without changing the player's explicit
-mute state; current cores keep their native implementation. The threshold is
-the recorded upstream value, 0.001. Legacy automation bindings are retained.
+ESPHome 2026.10 owns the speaker silence threshold and mute behavior directly.
+The legacy speaker_compat.h detector is removed. Playlist actions use native
+register_apply_action bindings.
 The abandoned first-PCM and HTTP/TLS experiments are not included.
 
 ## Export the source difference

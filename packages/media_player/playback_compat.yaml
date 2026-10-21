@@ -1,7 +1,7 @@
 # Shared playback-completion and Sendspin compatibility adapters.
 # Keeps playback accounting and pending-source cancellation consistent.
 esphome:
-  min_version: 2026.9.0
+  min_version: 2026.10.0
 
 external_components:
   - source: ${ext_components_source}

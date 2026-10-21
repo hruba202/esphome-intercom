@@ -11,7 +11,7 @@ signature/downgrade checks remain intact.
 
 On older ESPHome, ESP32 and host builds explicitly select the atomic update
 lock path because the newer core's thread-model defines are absent. Log tag
-spelling remains compatible with ESPHome 2026.9.1.
+spelling remains compatible with ESPHome 2026.10.0.
 
 Local validation covers the ESP-IDF firmware builds and host contract tests.
 It does not claim new physical OTA, signed-update or non-ESP32 qualification.

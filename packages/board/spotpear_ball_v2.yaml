@@ -1,6 +1,6 @@
 # Spotpear Ball v2 audio-board wiring, power measurement and connectivity.
 esphome:
-  min_version: 2026.9.0
+  min_version: 2026.10.0
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: false

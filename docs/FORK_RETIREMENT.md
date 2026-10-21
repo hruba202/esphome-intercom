@@ -1,8 +1,8 @@
 # Retiring the compatibility forks
 
 Sources synchronized on 2026-10-19 against ESPHome dev
-`2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`, with compatibility retained for
-ESPHome 2026.9.1. This is a local source baseline, not a published release or
+`2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`, with the maintained build baseline now set to
+ESPHome 2026.10.0. This is a local source baseline, not a published release or
 physical-device qualification.
 
 The goal is to use native components whenever they cover the behavior the
@@ -108,3 +108,14 @@ inventory; a source diff or successful S3 build does not qualify its screen.
 
 Moving copied code into a differently named adapter is not retirement. Keep
 one active implementation for each operation throughout the transition.
+
+## ESPHome 2026.10 baseline
+
+The maintained minimum is 2026.10.0. Old/new API selectors for ring-buffer
+handles, speaker mute/silence and worker owner selection are removed. Mixer and
+playlist actions use native `register_apply_action`; HTTP uses its native IDF
+owner. The existing core-affinity creation adapter remains because the released
+2026.10 `StaticTask::create` still has no core parameter. This is one concrete
+adapter for the supported core, not a second task or compatibility matrix.
+Sendspin's 0.7 source matcher is retired. Functional STOP, DSP and P4 panel
+changes are evaluated independently of this minimum-version change.

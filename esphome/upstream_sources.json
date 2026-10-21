@@ -6,15 +6,15 @@
       "local_repository": "esphome-intercom",
       "adaptations": [
         "Host test support",
-        "Stable HTTP and code-generation APIs"
+        "Coordinated audio-library dependencies"
       ],
       "public_proposal": false
     },
     "micro_wake_word": {
       "local_repository": "esphome-intercom",
       "adaptations": [
-        "Stable automation bindings",
-        "Legacy task-affinity fallback, selected only without the native API"
+        "Task affinity creation for the released 2026.10 StaticTask API",
+        "Configurable ring buffer and model checks"
       ],
       "public_proposal": "https://github.com/esphome/esphome/pull/20126"
     },
@@ -30,19 +30,16 @@
     "mixer": {
       "local_repository": "esphome-intercom",
       "adaptations": [
-        "Shared playback queue and output restart",
-        "Stable automation and status APIs"
+        "Audio transfer buffer API of the coordinated audio provider"
       ],
-      "patch_revision": "b7ffb962548887d5a3652d287a96e2c69ca5b3de",
-      "public_proposal": "https://github.com/esphome/esphome/pull/21053"
+      "public_proposal": false
     },
     "speaker_source": {
       "local_repository": "esphome-intercom",
       "adaptations": [
         "Pending-source stop and pipeline command ownership",
         "Worker-exit guard",
-        "On-demand queue diagnostics",
-        "Stable speaker silence and automation APIs"
+        "On-demand queue diagnostics"
       ],
       "public_proposal": "https://github.com/esphome/esphome/pull/19501"
     },
@@ -87,7 +84,6 @@
     },
     "sendspin_compat": {
       "reviewed_revisions": [
-        "30514d5102c269a0c7fa6a13932d6bf7f2ae1abc",
         "91038b72892596b9ec0cccfec1b9e6ebc58ba148",
         "b95cf854a784ed308b1f8fe9697f414b02768ddd"
       ],
@@ -95,7 +91,12 @@
         "Decoded-prefix handling for partially late chunks",
         "Scoped worker configuration and rejected-configuration handling"
       ],
-      "protocol_migration": false
+      "protocol_migration": true
     }
+  },
+  "build_baseline": {
+    "esphome": "2026.10.0",
+    "esp_idf": "5.5.6",
+    "sendspin": "0.9.3"
   }
 }

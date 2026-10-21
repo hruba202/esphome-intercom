@@ -2,15 +2,8 @@ idf_component_register(REQUIRES sendspin__sendspin-cpp)
 idf_component_get_property(sendspin_library sendspin__sendspin-cpp COMPONENT_LIB)
 idf_component_get_property(sendspin_dir sendspin__sendspin-cpp COMPONENT_DIR)
 file(READ "${sendspin_dir}/src/sync_task.cpp" sync_source)
-set(early_discard [=[        if (client_timestamp < sync_context.new_audio_client_playtime - HARD_SYNC_THRESHOLD_US) {
-            // This chunk will arrive too late to be played, skip it!
-            this->encoded_ring_buffer_->return_chunk(sync_context.encoded_entry);
-            sync_context.encoded_entry = nullptr;
-            return DecodeResult::SKIPPED;
-        }
-]=])
-# Sendspin 0.9 uses the shared inbound ring instead of the legacy encoded ring.
-# Preserve decoded-prefix trimming in both versions; never guess for an unknown source.
+# ESPHome 2026.10 selects the Sendspin 0.9 shared-inbound-ring path.
+# Never apply the superseded 0.7 encoded-ring patch to another source generation.
 set(shared_early_discard [=[        if (client_timestamp < sync_context.new_audio_client_playtime - HARD_SYNC_THRESHOLD_US) {
             // This chunk will arrive too late to be played, skip it!
             this->inbound_.return_item(sync_context.encoded_item);
@@ -18,11 +11,8 @@ set(shared_early_discard [=[        if (client_timestamp < sync_context.new_audi
             return DecodeResult::SKIPPED;
         }
 ]=])
-string(FIND "${sync_source}" "${early_discard}" early_discard_position)
 string(FIND "${sync_source}" "${shared_early_discard}" shared_discard_position)
-if(NOT early_discard_position EQUAL -1)
-  string(REPLACE "${early_discard}" "" sync_source "${sync_source}")
-elseif(NOT shared_discard_position EQUAL -1)
+if(NOT shared_discard_position EQUAL -1)
   string(REPLACE "${shared_early_discard}" "" sync_source "${sync_source}")
 else()
   message(FATAL_ERROR "Sendspin compatibility adapter requires review for this SDK source")

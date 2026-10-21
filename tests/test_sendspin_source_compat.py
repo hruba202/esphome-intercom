@@ -8,7 +8,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISIONS = (
-    '30514d5102c269a0c7fa6a13932d6bf7f2ae1abc',  # 0.7.2
     '91038b72892596b9ec0cccfec1b9e6ebc58ba148',  # 0.9.3
     'b95cf854a784ed308b1f8fe9697f414b02768ddd',  # 0.9.5
 )

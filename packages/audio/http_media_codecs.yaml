@@ -9,7 +9,7 @@ external_components:
     components: [audio_http_compat]
 
 esphome:
-  min_version: 2026.9.0
+  min_version: 2026.10.0
 
 audio_http_compat:
 

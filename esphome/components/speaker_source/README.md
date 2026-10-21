@@ -27,9 +27,10 @@ while an HTTP reader is stopping. The adapter checks the worker's actual exit
 state before releasing its resources. It adds no task, media buffer or polling
 loop and preserves the upstream source outside that completion check.
 
-Upstream proposals for the remaining compatibility changes:
+Playback accounting is included in ESPHome 2026.10 through
+[#19499](https://github.com/esphome/esphome/pull/19499). It is no longer a local
+compatibility difference. The remaining proposals are:
 
-- [Playback accounting](https://github.com/esphome/esphome/pull/19499).
 - [Pending-source cancellation](https://github.com/esphome/esphome/pull/19501).
 - [ESP-IDF join completion](https://github.com/espressif/esp-idf/pull/19123),
   included in upstream master as

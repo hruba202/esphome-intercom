@@ -1,6 +1,6 @@
 # Waveshare 1.85C V2 audio-board wiring, expander and power measurement.
 esphome:
-  min_version: 2026.9.0
+  min_version: 2026.10.0
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: false

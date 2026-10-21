@@ -6,12 +6,12 @@ The machine-readable reference is `esphome/upstream_sources.json`.
 
 ## Remaining adaptations
 
-Upstream model loading, optional internal-memory preference and configurable
-ring-buffer duration are retained. Their defaults are unchanged. Task affinity
-uses native StaticTask where its API is available; ESPHome 2026.9.1 selects the
-existing local InferenceTask fallback at compile time. There is one task owner.
-Legacy automation bindings and log/status spellings support the stable core.
-The task-affinity change itself is already upstream in PR #20126.
+Upstream model loading, internal-memory preference and configurable ring-buffer
+duration are retained. Defaults are unchanged. ESPHome 2026.10.0's StaticTask
+still lacks the core-affinity create argument, so the existing InferenceTask
+is the sole inference-task owner. The old/new owner selector is removed.
+The task-affinity change is merged in upstream dev in PR #20126; it is not
+available from the released 2026.10 core API yet.
 
 ## Export the source difference
 
