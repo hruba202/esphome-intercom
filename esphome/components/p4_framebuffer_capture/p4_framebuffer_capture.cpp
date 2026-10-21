@@ -3,6 +3,7 @@
 #include "esphome/core/log.h"
 
 #include "esp_heap_caps.h"
+#include "esp_cache.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -75,6 +76,15 @@ void P4FramebufferCapture::capture() {
   if (this->snapshot_ == nullptr || this->snapshot_size_ > this->snapshot_capacity_) {
     this->capture_active_.store(false);
     ESP_LOGE(TAG, "Preallocated framebuffer snapshot is unavailable or too small");
+    return;
+  }
+  // The panel's DMA2D writer bypasses the CPU cache. Read its completed pixels,
+  // never cached pixels from a previous snapshot or a stale cache writeback.
+  if (esp_cache_msync(this->display_->get_frame_buffer(),
+                      this->display_->get_frame_buffer_size(),
+                      ESP_CACHE_MSYNC_FLAG_DIR_M2C) != ESP_OK) {
+    this->capture_active_.store(false);
+    ESP_LOGE(TAG, "Unable to synchronize the display framebuffer for capture");
     return;
   }
   // Button automations run on the ESPHome loop task. Copy here, before the

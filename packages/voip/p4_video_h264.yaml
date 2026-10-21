@@ -5,6 +5,7 @@
 
 packages:
   video_entities: !include video_entities.yaml
+  csi_contract: !include p4_video_csi.yaml
 
 substitutions:
   # Keep the sensor/ISP in its native 800x800 mode and let PPA scale the full

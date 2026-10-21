@@ -34,6 +34,7 @@ def device_config(directory: Path, features: list[str], profile_path: str = 'yam
     substitutions = dict(profile['substitutions'])
     substitutions['firmware_features'] = features
     substitutions['assets_base'] = str(ROOT) + '/'
+    substitutions['intercom_idf_root'] = str(ROOT / 'idf_components')
     for key, repository in (
         ('ext_components_source', ROOT),
         ('audio_stack_components_source', Path(os.environ.get('AUDIO_STACK_REPO', ROOT.parent / 'esphome-audio-stack'))),
@@ -487,8 +488,9 @@ def test_local_audio_provider_requests_https_certificate_bundle(tmp_path):
     assert 'CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y' not in generated
 
 
-def test_p4_local_idf_dependency_has_one_owner(tmp_path):
-    config = device_config(tmp_path, ['voip'],
+@pytest.mark.parametrize('features', [['voip'], ['voip', 'display', 'video']])
+def test_p4_local_idf_dependency_has_one_owner(tmp_path, features):
+    config = device_config(tmp_path, features,
                            'yamls/voip-only/single-bus/waveshare-p4-touch-videophone-jpeg.yaml')
     document = yaml_util.load_yaml(config)
     document['substitutions']['intercom_idf_root'] = str(ROOT / 'idf_components')
@@ -502,6 +504,9 @@ def test_p4_local_idf_dependency_has_one_owner(tmp_path):
     document = yaml_util.load_yaml(expanded)
     ppa = [item for item in document['esp32']['framework']['components'] if item['name'] == 'esp_driver_ppa']
     assert ppa == [{'name': 'esp_driver_ppa', 'path': str(ROOT / 'idf_components/esp_driver_ppa')}]
+    csi = [item for item in document['esp32']['framework']['components'] if item['name'] == 'esp_video_csi_compat']
+    assert csi == ([{'name': 'esp_video_csi_compat', 'path': str(ROOT / 'idf_components/esp_video_csi_compat')}]
+                   if 'video' in features else [])
 
 
 def test_local_gmf_override_only_binds_the_selected_afe(tmp_path):

@@ -5,6 +5,7 @@
 
 packages:
   video_entities: !include video_entities.yaml
+  csi_contract: !include p4_video_csi.yaml
 
 substitutions:
   p4_video_width: "800"

@@ -32,6 +32,40 @@ image. The default `1` preserves native capture. A full 800x1280 snapshot takes
 2,048,000 bytes; factor 2 takes 512,000 bytes. Record this diagnostic allocation
 when comparing memory and performance. It does not change the displayed image.
 
+## ESPHome 2026.10 physical check
+
+The 2026-10-21 check used the FULL landscape JPEG profile on physical P4
+rev1.3, official ESPHome 2026.10.0 and its default IDF 5.5.6, esp_video 2.4.1,
+and the upstream camera source at `0814536988d946e0e697cccef5063b208f6df901`.
+The updated firmware was retained on the device. No old firmware was restored.
+
+Pre-v3 P4 needs the [CSI format adaptation](../idf_components/esp_video_csi_compat/README.md)
+for this SDK/library combination. ISP performs the RAW-to-RGB conversion;
+CSI must receive the resulting format as a passthrough. This adaptation
+replaces one compilation unit in the build directory, preserving the managed
+library and external camera sources. It adds no media task or second pipeline.
+
+Physical checks covered audio-first video added, removed and re-added by
+re-INVITE, initial sendrecv JPEG, local and remote hangup, consecutive calls,
+UDP/TCP audio with music and announcements, native Sendspin through Music
+Assistant 2.10.7, pairing persistence after reboot, and an interrupted OTA
+with real PCM queued followed by playback and panel recovery. PCAP analysis
+found no audio sequence/timestamp gaps or clipped samples in the JPEG calls.
+Returned 800x800 JPEG streams decoded independently without errors. Repeated
+framebuffer captures retained the call controls and returned to the dashboard.
+
+These checks used master/media volume at 1 percent and a diagnostic firmware
+with a 512,000-byte one-shot snapshot allocation. They do not qualify acoustic
+echo rejection, wake-word recognition, production rev3 silicon or H.264.
+The profile's video limit was 10 FPS, not a guaranteed delivered rate. Measured
+camera TX was approximately 3.8-5.0 FPS with simultaneous incoming video,
+FULL audio and diagnostic captures. Incoming synthetic video was 320x240.
+This is functional verification, not a claim of 10 FPS bidirectional video.
+
+The capture tool invalidates CPU cache before reading the DMA-written panel
+buffer. Earlier snapshots without that synchronization could show stale or
+missing controls even though the current DMA framebuffer was correct.
+
 ## Audio and controls
 
 P4 remains PCM. Its speaker bus runs at 48 kHz and AFE microphone output at

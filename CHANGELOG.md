@@ -18,6 +18,12 @@ Development preview with changes since stable 2026.10.1.
 
 ### Maintenance and native component cleanup
 
+- Restore camera startup on pre-v3 ESP32-P4 boards with the default ESPHome
+  2026.10 SDK. A video-only build adaptation corrects esp_video's CSI/ISP
+  format boundary for IDF 5.5.6 without changing the external camera source.
+  Synchronize DMA-written pixels before optional framebuffer diagnostics.
+  See [P4 hardware and media](docs/P4_HARDWARE_AND_MEDIA.md#esphome-202610-physical-check).
+
 - Return the mixer runtime to upstream playback counters and stop/start handling,
   removing the extra contribution queue, output-callback mutex and metadata
   backpressure. Use the native ESPHome 2026.10 automation bindings.
