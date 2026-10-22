@@ -756,3 +756,12 @@ response fields and advanced concurrent-call selection.
 - [SIP video](SIP_VIDEO.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](ARCHITECTURE.md)
+
+### Optional firmware audio tuning
+
+Start with your maintained device YAML and its default AEC/AFE profile. For a
+custom two-microphone delivery, analog PGA controls or a recording of individual
+PCM stages, see [Audio Stack's tuning guide](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/docs/AUDIO_TUNING.md).
+These development options are opt-in; removing their YAML excludes the
+corresponding capture/control code. The normal calling and Assist paths continue
+to use the same microphone and speaker owners.
