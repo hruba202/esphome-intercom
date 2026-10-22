@@ -1,5 +1,11 @@
 # Waveshare 1.85C-BOX V2 FULL AEC candidate
 
+For new configurations, use the [unified V2 FULL YAML](../../full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml).
+It selects AEC/AFE, separate/averaged microphones and SIP UDP/TCP through root
+substitutions. This older filename remains a single-microphone AEC compatibility
+entrypoint. See the [current processing and hardware-check notes](../../../docs/WAVESHARE_V2_PROCESSING.md);
+the dated measurements below retain their original scope.
+
 This experimental profile offers standalone echo cancellation on the Waveshare
 ESP32-S3-Touch-LCD-1.85C-BOX V2 (SKU 30684). It keeps Assist, calling, music and
 the circular interface. Use the maintained FULL AFE profile when you need its

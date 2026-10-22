@@ -36,6 +36,9 @@ def _report_selection(config):
 
 
 CONFIG_SCHEMA = cv.All(
-    cv.Schema({cv.Required("requested"): cv.ensure_list(cv.one_of(*FEATURES))}),
+    cv.Schema({
+        cv.Required("requested"): cv.ensure_list(cv.one_of(*FEATURES)),
+        cv.Optional("audio_processor"): cv.one_of("aec", "afe", lower=True),
+    }),
     _report_selection,
 )

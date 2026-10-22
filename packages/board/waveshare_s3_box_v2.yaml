@@ -11,7 +11,7 @@ esp32:
   framework:
     type: esp-idf
     advanced:
-      compiler_optimization: PERF
+      compiler_optimization: ${v2_compiler_optimization}
     sdkconfig_options:
       CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB: y
       CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_1: y

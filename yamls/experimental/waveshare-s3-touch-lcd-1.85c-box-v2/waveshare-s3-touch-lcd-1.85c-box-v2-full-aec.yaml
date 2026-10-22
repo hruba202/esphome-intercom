@@ -1,122 +1,37 @@
-# =============================================================================
-# Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2 / FULL / SKU 30684
-# FULL AEC candidate for V2. See README for measured hardware checks and remaining limits.
-# Eight animation poses match the maintained AFE profile; see this folder's README.
-# Keep AEC capture on Core 1 and MWW inference on Core 0 for this candidate.
-# One processed microphone plus the hardware playback reference; round-screen UI retained.
+# Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2, legacy AEC entrypoint.
+# The unified full.yaml entrypoint exposes the same processor/mix/transport choices.
+# V1 has different audio hardware. This profile requires ESPHome 2026.10.0+.
+#
+# This firmware is composed from shared ESPHome packages. Inspect the merged YAML:
+#   esphome config --no-defaults device.yaml > device-expanded.yaml
+# Replace device.yaml with this file's name. Edit the original, not the generated view.
+# External component sources and media assets remain referenced in that view.
+#
+# Choose independently, then rebuild:
+#   audio_processor: aec | afe
+#   mic_mix: average | passthrough
+#   voip_transport: udp | tcp (SIP only, RTP audio always uses UDP)
+# AEC + average: both microphones averaged into one AEC input.
+# AEC + passthrough: the first microphone, without downmix.
+# AFE + passthrough: two separate microphones, with structural SE/BSS.
+# AFE + average: mono AFE, without dual-microphone SE/BSS.
+# Both backends share this board's calibrated analog playback reference.
+# Direct ESP calls require matching SIP transports; HA can bridge mixed transports.
+#
+# Keep secrets.yaml beside this file, with wifi_ssid and wifi_password.
+# The device package supplies pinout, 360x360 UI, controls and media wiring.
+# See packages/README.md for feature selection and supported hardware-test scope.
 # Support: https://github.com/sponsors/n-IA-hane
-# Hardware: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C/Resources-And-Documents
-#
-# The board has two microphones. This standalone AEC profile processes MIC1 only.
-# The analog ES8311 playback reference is retained on the ES7210.
-# ES7210 serial slots are ordered MIC1, MIC3, MIC2, MIC4 by the codec backend.
-#
-# [Mic 1: slot 0] ───┐
-# [DAC ref: slot 1] ─┴──> [Audio Stack: 48 -> 16 kHz] ──> [Standalone AEC]
-#                                                              │
-#                            ┌─────────────────────────────────┤
-#                            v                                 v
-#                     [MWW / Assist]                   [VoIP microphone]
-#
-# [Sendspin / HTTP] ─┐
-# [TTS / ringtone] ──┼──> [48 kHz mono mixer] ──> [ES8311] ──> [NS4150B / speaker]
-# [VoIP receive] ────┘                               │
-#                                                    └──> [ES7210 reference]
-#
-# ST77916: 360x360 QSPI. CST816 touch and LCD reset use TCA9554 P0/P1.
-# All avatar images are native 360x360 RGB565, without runtime scaling.
-# Eight idle poses use the original forward/backward timing. Source PNGs are
-# unchanged. All 18 RGB565 images occupy 4,665,600 bytes before firmware code.
-# Verify the complete firmware size and hardware behavior before deployment.
-# BOOT: click starts/stops Assist or handles the current call; long press
-# switches between Assist and VoIP. The touch UI also provides contacts,
-# dialing, settings, timers and media controls.
-# =============================================================================
 
 substitutions:
-  gmf_ai_audio_source: ""
-  firmware_features: [voice, wake_word, voip, music, sendspin, timers, display, diagnostics]
-  runtime_controller_debug: "false"
-  http_media_persistent_ring_buffer: "true"
-  http_media_ring_buffer_size: "32768"
-  sendspin_audio_ring_buffer_size: "262144"
-  voip_audio_task_stacks_in_psram: "true"
-  voip_tx_task_stack_size: "12288"
-  voip_rx_task_stack_size: "12288"
-  # Stable identity for this hardware revision across firmware profiles.
   name: waveshare-s3-touch-lcd-185c-v2
   friendly_name: Waveshare S3 Touch LCD 1.85C V2
+  firmware_features: [voice, wake_word, voip, music, sendspin, timers, display, diagnostics]
+  audio_processor: aec
+  mic_mix: passthrough
   mic_id: mic_main
-
-  ext_components_source: "github://n-IA-hane/esphome-intercom@dev"
-  voip_stack_components_source: "github://n-IA-hane/esphome-voip-stack@dev"
-  audio_stack_components_source: "github://n-IA-hane/esphome-audio-stack@dev"
-  runtime_controller_components_source: "github://n-IA-hane/esphome-runtime-controller@dev"
-
-  assets_base: "https://github.com/n-IA-hane/esphome-intercom/raw/dev/"
-
-  # AI avatar folder (${assets_base}assets/images/assistant/<ai_avatar>/)
-  ai_avatar: f_off
-
-  # Call positions use the boot-computed grid below.
-  # Settings page widths for the round 360x360 panel.
-  settings_row_width: "255"
-  settings_wide_width: "285"
-  settings_mid_width: "255"
-  settings_narrow_width: "225"
-  settings_dropdown_width: "255"
-  settings_slider_height: "18"
-  settings_switch_width: "75"
-  settings_switch_height: "39"
-  settings_label_font: font_info
-  settings_pad_row: "9"
-
-  voice_assist_idle_phase_id: "1"
-  voice_assist_listening_phase_id: "2"
-  voice_assist_thinking_phase_id: "3"
-  voice_assist_replying_phase_id: "4"
-  voice_assist_not_ready_phase_id: "10"
-  voice_assist_error_phase_id: "11"
-  voice_assist_muted_phase_id: "12"
-
-  # Font configuration
-  font_glyphsets: "GF_Latin_Core"
-  font_family: Figtree
-
-  # Display constants
-  display_width: "360"
-  display_height: "360"
-
-  # ---------------------------------------------------------------------------
-  # Pinout: ES8311 codec control bus
-  # ---------------------------------------------------------------------------
-  codec_i2c_sda_pin: GPIO11
-  codec_i2c_scl_pin: GPIO10
-
-  # ---------------------------------------------------------------------------
-  # Pinout: CST816 touch controller bus
-  # ---------------------------------------------------------------------------
-
-  # ---------------------------------------------------------------------------
-  # Pinout: ES8311 audio bus
-  # ---------------------------------------------------------------------------
-  i2s_mclk_pin: GPIO2
-  i2s_bclk_pin: GPIO48
-  i2s_lrclk_pin: GPIO38
-  i2s_din_pin: GPIO39
-  i2s_dout_pin: GPIO47
-
-  # ---------------------------------------------------------------------------
-  # Pinout: board controls and display
-  # ---------------------------------------------------------------------------
-  battery_adc_pin: GPIO8
-  main_button_pin: GPIO0
-  speaker_enable_pin: GPIO15
-  display_backlight_pin: GPIO5
-  touch_interrupt_pin: GPIO4
-
-# Shared packages: full VA/VoIP runtime, runtime controller, round-screen LVGL
-# navigation, standalone AEC controls, mixer/media player and assets.
+  voip_transport: udp
+  # Optional overrides: mic_id, ai_avatar, component source refs, pins and buffers.
 
 packages:
   device: github://n-IA-hane/esphome-intercom/packages/devices/waveshare-s3-box-v2-aec.yaml@dev

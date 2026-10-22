@@ -25,6 +25,13 @@ the round Spotpear Ball v2 uses
 The Waveshare touch-screen models have separate profiles. A similar board name
 is not enough to select the correct wiring.
 
+For the **Waveshare 1.85C BOX V2**, the
+[unified FULL YAML](full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml)
+provides `audio_processor`, `mic_mix` and `voip_transport` substitutions. Start
+there to choose AEC/AFE, separate/averaged microphones and SIP UDP/TCP without
+copying hardware or application wiring. Read the [choice table](../packages/README.md#choose-processing-and-sip-on-waveshare-box-v2)
+before changing processing; V1 is a different board.
+
 ## How to use
 
 1. Download the YAML for your device and any companion files explicitly required

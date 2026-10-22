@@ -145,3 +145,45 @@ jobs:
           python-version: "3.14"
       - run: python -m pip install mkdocs==1.6.1
       - run: mkdocs build --strict
+
+  box-v2-firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Check out coordinated ESP component sources
+        env:
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !endsWith(github.ref_name, '-dev'))) && 'main' || 'dev' }}
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+        run: >-
+          python3 scripts/coordinated_sources.py --root .. --ref "$COMPONENT_REF"
+          --output test-results/box-v2-coordinated-sources.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14.2"
+      - name: Install official ESPHome and composition helper dependency
+        run: python -m pip install esphome==2026.10.0 pytest==9.0.3
+      - name: Compile and link FULL dual-microphone AFE with the native UI
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from esphome import yaml_util
+          from tests.test_package_composition import device_config
+          profile = 'yamls/full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml'
+          original = yaml_util.load_yaml(Path(profile))
+          config = device_config(Path(os.environ['RUNNER_TEMP']) / 'box-v2',
+                                 original['substitutions']['firmware_features'], profile)
+          data = yaml_util.load_yaml(config)
+          data['substitutions'].update(audio_processor='afe', mic_mix='passthrough')
+          config.write_text(yaml_util.dump(data))
+          PY
+          set -o pipefail
+          python -m esphome compile "$RUNNER_TEMP/box-v2/device.yaml" 2>&1 | tee test-results/box-v2-firmware.log
+      - name: Preserve full firmware build and source identities
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: box-v2-firmware
+          path: test-results/box-v2-*
+          if-no-files-found: error

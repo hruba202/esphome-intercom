@@ -51,8 +51,60 @@ second list in another package and expect it to subtract from the first one.
 These are compile-time choices, so changing them requires a firmware rebuild.
 The profile's chosen AFE, AEC or native audio backend remains selected;
 `firmware_features` chooses its application consumers. Choose a different
-maintained backend profile when changing the audio-processing architecture.
+maintained backend profile when changing the audio-processing architecture,
+or use the processor selector where the board provides one, as below.
 They do not disable Home Assistant's PBX services or change its feature policy.
+
+## Choose processing and SIP on Waveshare Box V2
+
+The [unified V2 YAML](../yamls/full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml)
+keeps the choices at the top. The package supplies the board's GPIOs, calibrated
+codec/reference, 360x360 interface and application bindings:
+
+```yaml
+substitutions:
+  audio_processor: aec
+  mic_mix: average
+  voip_transport: udp
+```
+
+Edit these existing values and rebuild. Only the chosen processor is compiled;
+there is no runtime switch between AEC and AFE. SIP can use UDP or TCP while
+RTP audio remains UDP. Direct ESP calls require matching SIP transports;
+Home Assistant can bridge separately negotiated UDP and TCP legs.
+
+| Processing choice | Microphone delivery | Result |
+| --- | --- | --- |
+| `aec` + `average` | Both physical microphones averaged | One input to standalone AEC, the unified YAML's default |
+| `aec` + `passthrough` | First microphone | Existing single-microphone standalone AEC |
+| `afe` + `passthrough` | Two separate channels | Dual-microphone AFE with SE/BSS |
+| `afe` + `average` | Both microphones averaged | Mono AFE, with `mic_num: 1` and SE/BSS disabled |
+
+Audio Stack owns extraction and optional downmix. AFE receives one or two
+microphone channels using its normal contract; it does not need to know whether
+a mono signal came from one microphone or a two-microphone average. The playback
+reference stays separate. The package configures the matching AFE channel count;
+inconsistent manual overrides fail ESPHome's normal configuration validation.
+Other application features still come from `firmware_features`.
+
+The older V2 `full-aec.yaml` and `full-afe.yaml` filenames remain compatibility
+entrypoints with their previous single-mic AEC and separate dual-mic AFE choices.
+Both delegate to the same device implementation. Custom microphone IDs, GPIOs,
+source refs and buffer settings can still be overridden in root substitutions.
+These selectors currently belong to the V2 device package, not every board.
+See the [V2 processing and hardware-check notes](../docs/WAVESHARE_V2_PROCESSING.md) for calibration, build optimization and measured limits.
+
+To inspect all merged packages and substitutions without changing the source:
+
+```sh
+esphome config --no-defaults waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml > device-expanded.yaml
+```
+
+This is ESPHome's native configuration view. External components and assets
+remain referenced; it is not a self-contained firmware distribution. Keep
+editing the original YAML, and do not add `--show-secrets` to share a config.
+For codec-free stereo microphones and the available acquisition layouts, see
+[Audio Stack microphone delivery](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/docs/AUDIO_TUNING.md#1-choose-how-microphones-reach-the-processor).
 
 ## Work through a FULL profile
 
