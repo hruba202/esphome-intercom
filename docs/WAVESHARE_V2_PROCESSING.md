@@ -1,5 +1,8 @@
 # Waveshare 1.85C BOX V2 processing choices
 
+For other boards and microphone wiring, see Audio Stack's
+[illustrated microphone guide](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/README.md#microphone-wiring-and-delivery-illustrated).
+
 Use the [unified FULL YAML](../yamls/full-experience/single-bus/waveshare-s3-touch-lcd-1.85c-box-v2-full.yaml)
 for the V2 board (SKU 30684). V1 and the headless Waveshare S3 Audio are different
 hardware profiles. ESPHome 2026.10.0 or newer is required.

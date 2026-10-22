@@ -266,7 +266,10 @@ def test_device_parameter_overrides_are_not_shadowed_or_concatenated(tmp_path: P
     'yamls/experimental/waveshare-s3-touch-lcd-1.85c-box-v2/waveshare-s3-touch-lcd-1.85c-box-v2-full-aec.yaml',
 ])
 @pytest.mark.parametrize('removed', [None, 'voip', 'voice', 'timers', 'display'])
+@pytest.mark.timeout(240)
 def test_waveshare_v2_round_composition(tmp_path: Path, profile_path: str, removed: str | None) -> None:
+    # Native code generation may populate an empty font/component cache. Keep
+    # the outer test budget above the subprocess's existing 180-second limit.
     profile = yaml_util.load_yaml(ROOT / profile_path)
     features = [name for name in profile['substitutions']['firmware_features'] if name != removed]
     config = device_config(tmp_path, features, profile_path)

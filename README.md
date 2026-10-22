@@ -336,6 +336,10 @@ The underlying audio stack is also reusable without VoIP. Custom ESPHome voice
 devices can use it to share codec or I2S ownership, speaker reference, AEC/AFE
 processing and a cleaned microphone stream between their own consumers.
 
+The [illustrated microphone wiring guide](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/README.md#microphone-wiring-and-delivery-illustrated)
+shows single-mic, stereo L/R, TDM and codec layouts, with YAML for independent
+AFE/BSS inputs or the new optional mono downmix before AEC/AFE.
+
 <table>
   <tr>
     <td align="center"><img src="docs/images/assistant-animated.gif" width="220"/><br/><b>Animated assistant</b></td>
