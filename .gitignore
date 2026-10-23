@@ -56,6 +56,9 @@ Thumbs.db
 
 # Internal audit reports must not be published
 /docs/audits/
+/docs/ESP_AUDIT_*.md
+/docs/ESP_COMPONENT_CONSOLIDATION_*.md
+/docs/FORK_RETIREMENT.md
 
 # Generated documentation, built from README.md and docs/*.md.
 /site/

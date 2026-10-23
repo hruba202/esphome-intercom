@@ -391,6 +391,9 @@ def test_internal_reports_are_not_in_public_checkout() -> None:
     forbidden = [
         path for path in tracked
         if path and (ROOT / path).is_file()
-        and (path.startswith("docs/audits/") or path == "docs/COMMUNITY_REGRESSIONS.md")
+        and (
+            path.startswith(("docs/audits/", "docs/ESP_AUDIT_", "docs/ESP_COMPONENT_CONSOLIDATION_"))
+            or path in ("docs/COMMUNITY_REGRESSIONS.md", "docs/FORK_RETIREMENT.md")
+        )
     ]
     assert not forbidden, f"Internal reports must remain private: {forbidden}"

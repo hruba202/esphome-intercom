@@ -21,8 +21,6 @@ behavior for every device.
 
 The following compatibility components remain project-owned. ESPHome-derived
 components record their upstream baseline in their directories.
-The [retirement inventory](FORK_RETIREMENT.md) distinguishes merged PRs,
-released changes and remaining local behavior, including the P4 panel fix.
 
 | Component | Local reason | Public compatibility |
 |---|---|---|

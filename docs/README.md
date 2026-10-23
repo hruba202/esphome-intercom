@@ -81,8 +81,6 @@ preview, not stable 2026.10.1.
 from real ESP timing, browser media and hardware-in-the-loop evidence.
 [Espressif components](ESPRESSIF_COMPONENTS.md) records component versions,
 local modifications and licensing boundaries.
-[Retiring compatibility forks](FORK_RETIREMENT.md) tracks which upstream
-changes have shipped and which local behavior still needs a replacement.
 
 ## Per-component docs
 
