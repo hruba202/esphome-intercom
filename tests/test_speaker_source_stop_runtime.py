@@ -9,6 +9,8 @@ def test_source_completion_preserves_the_pipeline_owners_stop_request(tmp_path):
     text=(ROOT/'esphome/components/speaker_source/speaker_source_media_player.cpp').read_text()
     begin=text.index('void SpeakerSourceMediaPlayer::handle_media_state_changed_(')
     end=text.index('// THREAD CONTEXT:',begin)
+    header=(ROOT/'esphome/components/speaker_source/speaker_source_media_player.h').read_text()
+    accounting='// Credit is bytes'+header.split('// Credit is bytes',1)[1].split('/// @brief Check',1)[0]
     code=r'''
 #include <array>
 #include <atomic>
@@ -25,6 +27,7 @@ struct Sink {
 };
 struct PipelineContext {
  std::atomic<media_source::MediaSource*> active_source{nullptr};
+ ACCOUNTING
  media_source::MediaSource *stopping_source=nullptr,*pending_source=nullptr,*last_source=nullptr;
  Sink *speaker=nullptr;
 };
@@ -34,7 +37,7 @@ struct SpeakerSourceMediaPlayer {
  void queue_command_(int,uint8_t){++advances;}
  void handle_media_state_changed_(uint8_t,media_source::MediaSource*,media_source::MediaSourceState);
 };
-''' + text[begin:end] + r'''
+'''.replace('ACCOUNTING',accounting) + text[begin:end] + r'''
 int main(){
  SpeakerSourceMediaPlayer player;media_source::MediaSource cancelled,natural,unrelated;
  Sink stopped,finished;auto &p=player.pipelines_[0];auto &q=player.pipelines_[1];

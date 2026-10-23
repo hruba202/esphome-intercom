@@ -13,6 +13,32 @@ static constexpr uint32_t MEDIA_CONTROLS_QUEUE_LENGTH = 20;
 
 static const char *const TAG = "speaker_source_media_player";
 
+namespace {
+
+class PlaybackOperationGuard {
+ public:
+  PlaybackOperationGuard(PipelineContext &pipeline, Component &owner) : pipeline_(pipeline), owner_(owner) {
+    this->pipeline_.playback_operations.fetch_add(1, std::memory_order_seq_cst);
+  }
+  ~PlaybackOperationGuard() { this->release(); }
+
+  void release() {
+    if (!this->registered_) return;
+    this->registered_ = false;
+    if (this->pipeline_.playback_operations.fetch_sub(1, std::memory_order_seq_cst) == 1 &&
+        (this->pipeline_.playback_epoch.load(std::memory_order_seq_cst) & 1U) != 0) {
+      this->owner_.enable_loop_soon_any_context();
+    }
+  }
+
+ protected:
+  PipelineContext &pipeline_;
+  Component &owner_;
+  bool registered_{true};
+};
+
+}  // namespace
+
 // SourceBinding method implementations (defined here because SpeakerSourceMediaPlayer is forward-declared in the
 // header)
 
@@ -83,11 +109,11 @@ void SpeakerSourceMediaPlayer::dump_diagnostics() {
     media_source::MediaSource *target = nullptr;
     if (ps.playlist_index < ps.playlist.size())
       target = this->find_source_for_uri_(ps.playlist[this->get_playlist_position_(index)], index);
-    ESP_LOGI(TAG, "Pipeline %u: playlist=%u/%u active=%s target=%s pending=%s stopping=%s pending_frames=%u",
+    ESP_LOGI(TAG, "Pipeline %u: playlist=%u/%u active=%s target=%s pending=%s stopping=%s pending_bytes=%u",
              index, (unsigned) ps.playlist_index, (unsigned) ps.playlist.size(),
              state_name(ps.active_source.load(std::memory_order_relaxed)), state_name(target),
              state_name(ps.pending_source), state_name(ps.stopping_source),
-             (unsigned) ps.pending_frames.load(std::memory_order_relaxed));
+             (unsigned) ps.pending_bytes.load(std::memory_order_relaxed));
     ESP_LOGI(TAG, "Pipeline %u speaker: stopped=%s running=%s paused=%s buffered=%s",
              index, YESNO(ps.speaker->is_stopped()), YESNO(ps.speaker->is_running()),
              YESNO(ps.speaker->get_pause_state()), YESNO(ps.speaker->has_buffered_data()));
@@ -123,24 +149,22 @@ void SpeakerSourceMediaPlayer::setup() {
 // THREAD CONTEXT: Called from the speaker's playback callback task (not main loop)
 void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, uint8_t pipeline) {
   PipelineContext &ps = this->pipelines_[pipeline];
+  const uint32_t epoch = ps.playback_epoch.load(std::memory_order_seq_cst);
+  media_source::MediaSource *active_source = ps.active_source.load(std::memory_order_acquire);
+  if ((epoch & 1U) != 0 || active_source == nullptr) return;
+  PlaybackOperationGuard operation(ps, *this);
+  const uint32_t frame_bytes = ps.frame_bytes.load(std::memory_order_acquire);
+  if (ps.playback_epoch.load(std::memory_order_seq_cst) != epoch || frame_bytes == 0) return;
 
-  // Load once so the null check and use below are consistent
-  media_source::MediaSource *active_source = ps.active_source.load(std::memory_order_relaxed);
-  if (active_source == nullptr) {
-    return;
-  }
-
-  // CAS loop to safely subtract frames without underflow. If pending_frames is reset to 0 (new source
-  // starting) between the load and the subtract, compare_exchange_weak will fail and reload the current value.
-  uint32_t current = ps.pending_frames.load(std::memory_order_relaxed);
-  uint32_t source_frames;
+  uint32_t current = ps.pending_bytes.load(std::memory_order_relaxed);
+  uint32_t source_frames = 0;
   do {
-    source_frames = std::min(frames, current);
+    source_frames = std::min(frames, current / frame_bytes);
   } while (source_frames > 0 &&
-           !ps.pending_frames.compare_exchange_weak(current, current - source_frames, std::memory_order_relaxed));
+           !ps.pending_bytes.compare_exchange_weak(current, current - source_frames * frame_bytes,
+                                                    std::memory_order_relaxed));
 
-  if (source_frames > 0) {
-    // Notify the source about the played audio
+  if (source_frames > 0 && ps.playback_epoch.load(std::memory_order_seq_cst) == epoch) {
     active_source->notify_audio_played(source_frames, timestamp);
   }
 }
@@ -190,6 +214,7 @@ void SpeakerSourceMediaPlayer::handle_media_state_changed_(uint8_t pipeline, med
 
     // Source went idle - clear it if it's the active source
     if (ps.active_source == source) {
+      ps.invalidate_playback();
       ps.last_source = ps.active_source;
       ps.active_source = nullptr;
 
@@ -204,7 +229,13 @@ void SpeakerSourceMediaPlayer::handle_media_state_changed_(uint8_t pipeline, med
   } else if (state == media_source::MediaSourceState::PLAYING) {
     // Source started playing - make it the active source if no one else is active
     if (ps.active_source == nullptr) {
-      ps.active_source = source;
+      // PLAY_CURRENT already waits for this barrier. A source that reports
+      // PLAYING independently is retained as pending until the final operation
+      // of its predecessor wakes the existing main-loop owner.
+      if (!ps.activate_playback(source)) {
+        ps.pending_source = source;
+        return;
+      }
       ps.last_source = nullptr;
 
       // Clear pending flag now that the source is active
@@ -216,42 +247,66 @@ void SpeakerSourceMediaPlayer::handle_media_state_changed_(uint8_t pipeline, med
 }
 
 // THREAD CONTEXT: Called from media source decode task thread (not main loop).
-// Reads ps.active_source (atomic), writes ps.pending_frames (atomic), and calls
+// Reads the admitted source/session and reserves byte credit before play().
 // ps.speaker methods (speaker pointer is immutable after setup).
 size_t SpeakerSourceMediaPlayer::handle_media_output_(uint8_t pipeline, media_source::MediaSource *source,
                                                       const uint8_t *data, size_t length, uint32_t timeout_ms,
                                                       const audio::AudioStreamInfo &stream_info) {
   PipelineContext &ps = this->pipelines_[pipeline];
+  const uint32_t epoch = ps.playback_epoch.load(std::memory_order_seq_cst);
+  if ((epoch & 1U) != 0 || ps.active_source.load(std::memory_order_acquire) != source) {
+    vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+    return 0;
+  }
+  PlaybackOperationGuard operation(ps, *this);
+  const auto retry = [&]() -> size_t {
+    // Unadmitted retries do not own old-session PCM or a callback. In
+    // particular HTTP may still be awaiting PLAYING delivery on the main loop.
+    operation.release();
+    vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+    return 0;
+  };
+  if (ps.playback_epoch.load(std::memory_order_seq_cst) != epoch ||
+      ps.active_source.load(std::memory_order_acquire) != source) return retry();
 
-  // Single read; the if-body only uses ps.speaker (immutable after setup) and the source parameter.
-  if (ps.active_source == source) {
-    // This source is active - play the audio
-    if (ps.speaker->get_audio_stream_info() != stream_info) {
-      // Setup the speaker to play this stream
-      ps.speaker->set_audio_stream_info(stream_info);
-      vTaskDelay(pdMS_TO_TICKS(timeout_ms));
-      return 0;
+  const uint32_t frame_bytes = stream_info.frames_to_bytes(1);
+  if (frame_bytes == 0) return 0;
+  const bool configure = ps.speaker->get_audio_stream_info() != stream_info;
+  if (configure || ps.frame_bytes.load(std::memory_order_acquire) != frame_bytes) {
+    // Format changes belong to the same admission barrier as source changes.
+    // Never reinterpret old credit, or reset it while another callback owns it.
+    uint32_t expected = epoch;
+    if (ps.pending_bytes.load(std::memory_order_relaxed) != 0 ||
+        !ps.playback_epoch.compare_exchange_strong(expected, epoch + 1U, std::memory_order_seq_cst)) {
+      return retry();
     }
-    // Reserve frames before the speaker can play them and report their progress,
-    // then release the portion it did not accept.
-    const uint32_t reserved_frames = stream_info.bytes_to_frames(length);
-    ps.pending_frames.fetch_add(reserved_frames, std::memory_order_relaxed);
-    size_t bytes_written = ps.speaker->play(data, length, pdMS_TO_TICKS(timeout_ms));
-    const uint32_t unused_frames = reserved_frames - stream_info.bytes_to_frames(bytes_written);
-    if (unused_frames > 0) {
-      // The main loop may reset pending_frames while play() is blocked.
-      // Clamp the release so that a concurrent reset cannot cause underflow.
-      uint32_t pending = ps.pending_frames.load(std::memory_order_relaxed);
-      while (!ps.pending_frames.compare_exchange_weak(pending, pending - std::min(pending, unused_frames),
-                                                      std::memory_order_relaxed)) {
-      }
+    const bool exclusive = ps.playback_operations.load(std::memory_order_seq_cst) == 1;
+    if (exclusive) {
+      if (configure) ps.speaker->set_audio_stream_info(stream_info);
+      ps.frame_bytes.store(frame_bytes, std::memory_order_release);
     }
-    return bytes_written;
+    expected = epoch + 1U;
+    const bool current = ps.playback_epoch.compare_exchange_strong(expected, epoch, std::memory_order_seq_cst);
+    if (!exclusive || !current || configure) {
+      return retry();
+    }
   }
 
-  // Not the active source - wait for state callback to set us as active when we transition to PLAYING
-  vTaskDelay(pdMS_TO_TICKS(timeout_ms));
-  return 0;
+  uint32_t pending = ps.pending_bytes.load(std::memory_order_relaxed);
+  uint32_t reserved;
+  do {
+    reserved = static_cast<uint32_t>(std::min<size_t>(length, UINT32_MAX - pending));
+  } while (!ps.pending_bytes.compare_exchange_weak(pending, pending + reserved, std::memory_order_relaxed));
+  const size_t bytes_written = ps.playback_epoch.load(std::memory_order_seq_cst) == epoch
+                                   ? ps.speaker->play(data, reserved, pdMS_TO_TICKS(timeout_ms))
+                                   : 0;
+  const uint32_t unused = reserved - std::min<size_t>(reserved, bytes_written);
+  pending = ps.pending_bytes.load(std::memory_order_relaxed);
+  while (unused > 0 &&
+         !ps.pending_bytes.compare_exchange_weak(pending, pending - std::min(pending, unused),
+                                                  std::memory_order_relaxed)) {
+  }
+  return bytes_written;
 }
 
 // THREAD CONTEXT: Called from main loop (loop)
@@ -280,6 +335,14 @@ media_player::MediaPlayerState SpeakerSourceMediaPlayer::get_source_state_(
 }
 
 void SpeakerSourceMediaPlayer::loop() {
+  for (uint8_t pipeline = 0; pipeline < this->pipelines_.size(); ++pipeline) {
+    auto &ps = this->pipelines_[pipeline];
+    ps.finish_cancelled_playback();
+    if (ps.active_source == nullptr && ps.pending_source != nullptr &&
+        ps.pending_source->get_state() == media_source::MediaSourceState::PLAYING) {
+      this->handle_media_state_changed_(pipeline, ps.pending_source, media_source::MediaSourceState::PLAYING);
+    }
+  }
   // Process queued control commands
   this->process_control_queue_();
 
@@ -393,9 +456,14 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uin
   ps.stopping_source = nullptr;
 
   // Check if speaker is ready
+  if (!ps.finish_cancelled_playback()) return false;
   if (!ps.speaker->is_stopped()) {
     return false;  // Speaker not ready yet, retry later
   }
+  if (ps.playback_operations.load(std::memory_order_seq_cst) != 0) return false;
+  ps.invalidate_playback();
+  ps.pending_bytes.store(0, std::memory_order_relaxed);
+  ps.frame_bytes.store(0, std::memory_order_relaxed);
 
   // Set pending source so handle_media_state_changed_ can recognize it when the source transitions to PLAYING
   ps.pending_source = target_source;
@@ -406,9 +474,6 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uin
     ps.pending_source = nullptr;
     this->queue_command_(MediaPlayerControlCommand::PLAYLIST_ADVANCE, pipeline);
   }
-
-  // Reset pending frame counter for this pipeline since we're starting a new source
-  ps.pending_frames.store(0, std::memory_order_relaxed);
 
   return true;  // Remove from queue
 }
@@ -610,6 +675,8 @@ void SpeakerSourceMediaPlayer::handle_player_command_(media_player::MediaPlayerC
     }
 
     case media_player::MEDIA_PLAYER_COMMAND_STOP: {
+      ps.invalidate_playback();
+      ps.stop_after_operations |= ps.playback_operations.load(std::memory_order_seq_cst) != 0;
       if (!has_internal_playlist) {
         this->cancel_timeout(PIPELINE_TIMEOUT_IDS[pipeline]);
         ps.playlist.clear();

@@ -34,12 +34,12 @@ namespace esphome::speaker_source {
 //
 // - Media source task(s): handle_media_output_() via SourceBinding::write_audio().
 //   Called from each source's decode task thread when streaming audio data.
-//   Reads ps.active_source (atomic), writes ps.pending_frames (atomic), and calls
+//   Reads ps.active_source (atomic), reserves ps.pending_bytes (atomic), and calls
 //   ps.speaker methods (speaker pointer is immutable after setup).
 //
 // - Speaker callback task: handle_speaker_playback_callback_() via speaker's
 //   add_audio_output_callback(). Called when the speaker finishes writing frames to the DAC.
-//   Reads ps.active_source (atomic), writes ps.pending_frames (atomic), and calls
+//   Reads ps.active_source (atomic), consumes complete frames from pending_bytes, and calls
 //   active_source->notify_audio_played().
 //
 // control() is only called from the main loop (HA/automation commands).
@@ -48,7 +48,7 @@ namespace esphome::speaker_source {
 // Thread-safe communication:
 // - FreeRTOS queue: play/ordinary commands; STOP cancels its pipeline immediately on the main loop.
 // - defer(): SourceBinding::request_volume/request_mute/request_play_uri -> main loop
-// - Atomic fields (active_source, pending_frames): shared between all three thread contexts
+// - Atomic fields: active source, byte credit, format and session admission are shared across tasks.
 //
 // Non-atomic pipeline fields (last_source, stopping_source, pending_source, playlist,
 // playlist_index, repeat_mode) are only accessed from the main loop thread.
@@ -115,10 +115,42 @@ struct PipelineContext {
   // which contain the actual playlist indices in shuffled order
   std::vector<size_t> shuffle_indices;
 
-  // Track frames sent to speaker to correlate with playback callbacks.
-  // Atomic because it is written from the main loop/source tasks and read/decremented from the speaker playback
-  // callback.
-  std::atomic<uint32_t> pending_frames{0};
+  // Credit is bytes because a byte-stream speaker can accept less than one PCM
+  // frame. The callback consumes only whole frames and preserves the remainder.
+  std::atomic<uint32_t> pending_bytes{0};
+  std::atomic<uint32_t> frame_bytes{0};
+  // Even epoch = admitted; odd = cancelled/reconfiguring. A replacement cannot
+  // reset its predecessor's credit until all writes and callbacks have returned.
+  std::atomic<uint32_t> playback_epoch{0};
+  std::atomic<uint32_t> playback_operations{0};
+  // Main-loop intent: an admitted write may enter speaker.play() after STOP.
+  // Reapply that stop once its final operation has returned, before replacement.
+  bool stop_after_operations{false};
+
+  bool finish_cancelled_playback() {
+    if (!this->stop_after_operations) return true;
+    if (this->playback_operations.load(std::memory_order_seq_cst) != 0) return false;
+    this->stop_after_operations = false;
+    this->speaker->stop();
+    return true;
+  }
+
+  void invalidate_playback() {
+    uint32_t epoch = this->playback_epoch.load(std::memory_order_seq_cst);
+    while (!this->playback_epoch.compare_exchange_weak(
+        epoch, (epoch + 1U) | 1U, std::memory_order_seq_cst)) {
+    }
+  }
+
+  bool activate_playback(media_source::MediaSource *source) {
+    if (this->stop_after_operations || this->playback_operations.load(std::memory_order_seq_cst) != 0) return false;
+    this->pending_bytes.store(0, std::memory_order_relaxed);
+    this->frame_bytes.store(0, std::memory_order_relaxed);
+    this->active_source.store(source, std::memory_order_release);
+    const uint32_t epoch = this->playback_epoch.load(std::memory_order_seq_cst);
+    this->playback_epoch.store((epoch + 2U) & ~1U, std::memory_order_seq_cst);
+    return true;
+  }
 
   /// @brief Check if this pipeline is configured (has a speaker assigned)
   bool is_configured() const { return this->speaker != nullptr; }

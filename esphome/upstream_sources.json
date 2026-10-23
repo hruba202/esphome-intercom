@@ -38,6 +38,7 @@
       "local_repository": "esphome-intercom",
       "adaptations": [
         "Pending-source stop and pipeline command ownership",
+        "Byte-stream playback credit and admitted-operation cancellation barrier",
         "Worker-exit guard",
         "On-demand queue diagnostics"
       ],

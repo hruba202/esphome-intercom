@@ -17,6 +17,8 @@ def method(text, signature):
 
 def test_stop_preempts_only_its_pipeline_and_releases_pending_reader(tmp_path):
     text = (ROOT / 'esphome/components/speaker_source/speaker_source_media_player.cpp').read_text()
+    header = (ROOT / 'esphome/components/speaker_source/speaker_source_media_player.h').read_text()
+    accounting = '// Credit is bytes' + header.split('// Credit is bytes', 1)[1].split('/// @brief Check', 1)[0]
     code = r'''
 #include <algorithm>
 #include <array>
@@ -69,8 +71,11 @@ using Queue=std::deque<MediaPlayerControlCommand>;
 int xQueueSend(Queue* q,const MediaPlayerControlCommand* c,int){if(q->size()==20)return 0;q->push_back(*c);return 1;}
 int xQueueReceive(Queue* q,MediaPlayerControlCommand* c,int){if(q->empty())return 0;*c=q->front();q->pop_front();return 1;}
 unsigned uxQueueMessagesWaiting(Queue* q){return q->size();}
+struct Speaker {void stop(){}};
 struct PipelineContext {
+ Speaker *speaker=nullptr;
  std::atomic<media_source::MediaSource*> active_source{nullptr};
+ ACCOUNTING
  media_source::MediaSource *pending_source=nullptr,*last_source=nullptr,*stopping_source=nullptr;
  std::vector<std::string> playlist;std::vector<unsigned> shuffle_indices;
  unsigned playlist_index=0,repeat_mode=0;bool is_configured(){return true;}
@@ -87,7 +92,7 @@ struct SpeakerSourceMediaPlayer {
  void handle_player_command_(media_player::MediaPlayerCommand,uint8_t);
  void control(const media_player::MediaPlayerCall&);
 };
-'''
+'''.replace('ACCOUNTING', accounting)
     code += method(text, 'void SpeakerSourceMediaPlayer::control(')
     code += method(text, 'void SpeakerSourceMediaPlayer::handle_player_command_(')
     signature = 'void SpeakerSourceMediaPlayer::discard_pipeline_commands_('

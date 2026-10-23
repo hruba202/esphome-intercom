@@ -6,7 +6,14 @@ The machine-readable reference is `esphome/upstream_sources.json`.
 
 ## Remaining adaptations
 
-Current upstream frame reservation and volume/mute behavior are retained.
+Current upstream volume/mute behavior is retained. Playback credit is tracked
+in bytes locally because the coordinated resampler can accept sub-frame writes.
+Complete hardware frames consume that credit without losing the remainder.
+Source/format changes fence already-admitted operations; rejected startup
+retries release admission before waiting, so HTTP PLAYING can be delivered.
+STOP completes its discard after an already-admitted writer returns.
+The speaker callback API still lacks a session identity for callbacks that
+have not entered the player; this change does not extend Mixer or that API.
 Pending-source cancellation, immediate pipeline-scoped STOP, worker-exit
 verification and explicit queue diagnostics remain local adaptations.
 

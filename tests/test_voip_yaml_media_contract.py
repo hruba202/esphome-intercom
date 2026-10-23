@@ -803,7 +803,13 @@ def test_p4_video_workers_are_event_driven_and_use_bounded_direct_display() -> N
         source_cpp.index("void EspH264VideoSource::stop_video()") :
         source_cpp.index("void EspH264VideoSource::request_key_frame()")
     ]
-    assert "this->tx_active_.exchange(false" in source_stop
+    source_stop_request = source_cpp[
+        source_cpp.index("bool EspH264VideoSource::request_video_stop_()") :
+        source_cpp.index("void EspH264VideoSource::stop_video()")
+    ]
+    assert "this->tx_active_.exchange(false" in source_stop_request
+    assert "this->tx_generation_.fetch_add(1" in source_stop_request
+    assert "this->camera_->stop_raw_frame_consumer(this)" in source_stop_request
     assert "this->close_encoder_();" not in source_stop
     assert "ppa_unregister_client(this->ppa_)" not in source_stop
     assert "this->callback_(this->callback_ctx_, access_unit);" in encode_frame
@@ -813,24 +819,33 @@ def test_p4_video_workers_are_event_driven_and_use_bounded_direct_display() -> N
     ]
     assert "xSemaphoreTake(this->control_mutex_" not in tx_task
     assert "this->encode_frame_(" in tx_task
-    assert source_stop.index("this->tx_active_.exchange(false") < (
+    assert source_stop.index("this->request_video_stop_()") < (
         source_stop.index("this->wait_for_tx_idle_()")
     )
     callback_revoke = source_stop.index("this->callback_ = nullptr;")
     assert source_stop.index("this->wait_for_tx_idle_()") < callback_revoke
     assert "this->stop_tx_task_()" not in source_stop
-    assert "xSemaphoreTake(this->tx_idle_, 0)" in source_stop
+    assert "xSemaphoreTake(this->tx_idle_, 0)" in source_stop_request
     assert "this->callback_ctx_ = nullptr;" in source_stop
     shutdown = source_cpp[
         source_cpp.index("void EspH264VideoSource::on_shutdown()") :
         source_cpp.index("void EspH264VideoSource::dump_config()")
     ]
-    assert shutdown.index("this->stop_video();") < shutdown.index(
-        "this->close_encoder_();"
-    )
-    assert shutdown.index("this->stop_video();") < shutdown.index(
-        "this->stop_tx_task_();"
-    ) < shutdown.index("this->close_encoder_();")
+    assert shutdown.index("this->request_video_stop_();") < shutdown.index(
+        "if (!this->stop_tx_task_()) return;"
+    ) < shutdown.index("this->finish_shutdown_();")
+    finish_shutdown = source_cpp[
+        source_cpp.index("void EspH264VideoSource::finish_shutdown_()") :
+        source_cpp.index("void EspH264VideoSource::dump_config()")
+    ]
+    # The completed worker and every outstanding camera/encoded owner gate all
+    # resource destruction. A timeout must not fall through into cleanup.
+    owner_guard = finish_shutdown.index("!this->tx_slots_idle_()")
+    assert finish_shutdown.index("!this->reap_tx_task_(0)") < owner_guard
+    guarded_return = finish_shutdown.index("return;", owner_guard)
+    for cleanup in ("this->close_encoder_();", "this->free_resources_();",
+                    "ppa_unregister_client(this->ppa_)"):
+        assert guarded_return < finish_shutdown.index(cleanup)
 
 
 def test_p4_video_boundaries_fail_closed() -> None:

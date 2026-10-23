@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_completion_during_partial_write(tmp_path):
     source = (ROOT / "esphome/components/speaker_source/speaker_source_media_player.cpp").read_text()
+    header = (ROOT / "esphome/components/speaker_source/speaker_source_media_player.h").read_text()
+    accounting = "// Credit is bytes" + header.split("// Credit is bytes", 1)[1].split("/// @brief Check", 1)[0]
 
     def method(signature):
         start = source.index(signature)
@@ -30,6 +32,7 @@ void vTaskDelay(unsigned) {}
 unsigned pdMS_TO_TICKS(unsigned x) {return x;}
 namespace audio {struct AudioStreamInfo {
   uint32_t bytes_to_frames(size_t n) const {return n/2;}
+  uint32_t frames_to_bytes(size_t n) const {return n*2;}
   bool operator!=(const AudioStreamInfo&)const{return false;}
 };}
 namespace media_source {struct MediaSource {
@@ -37,6 +40,7 @@ namespace media_source {struct MediaSource {
   void notify_audio_played(uint32_t n,int64_t){completed+=n;}
 };}
 struct Sink {
+  void stop(){}
   size_t accept=0; std::function<void()> during_write;
   audio::AudioStreamInfo get_audio_stream_info(){return {};}
   void set_audio_stream_info(const audio::AudioStreamInfo&){}
@@ -44,14 +48,16 @@ struct Sink {
 };
 struct PipelineContext {
   std::atomic<media_source::MediaSource*> active_source{nullptr};
-  std::atomic<uint32_t> pending_frames{0}; Sink *speaker;
+  ACCOUNTING
+  Sink *speaker;
 };
-struct SpeakerSourceMediaPlayer {
+struct Component {void enable_loop_soon_any_context(){}};
+struct SpeakerSourceMediaPlayer:Component {
  PipelineContext pipelines_[1];
  void handle_speaker_playback_callback_(uint32_t,int64_t,uint8_t);
  size_t handle_media_output_(uint8_t,media_source::MediaSource*,const uint8_t*,size_t,uint32_t,const audio::AudioStreamInfo&);
 };
-'''
+'''.replace("ACCOUNTING", accounting)
     checks = r'''
 int main() {
  for(unsigned accepted:{0u,60u,100u}) {
@@ -62,14 +68,15 @@ int main() {
   uint8_t data[200]{};
   assert(p.handle_media_output_(0,&src,data,200,20,{})==accepted*2);
   p.handle_speaker_playback_callback_(accepted-early,200,0);
-  std::printf("accepted=%u completed=%u pending=%u\n",accepted,src.completed,p.pipelines_[0].pending_frames.load());
+  std::printf("accepted=%u completed=%u pending=%u\n",accepted,src.completed,p.pipelines_[0].pending_bytes.load());
   assert(src.completed==accepted);
-  assert(p.pipelines_[0].pending_frames==0);
+  assert(p.pipelines_[0].pending_bytes==0);
  }
 }
 '''
 
-    code = stub + method("void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_")
+    code = stub + method("class PlaybackOperationGuard") + ";\n"
+    code += method("void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_")
     code += "\n" + method("size_t SpeakerSourceMediaPlayer::handle_media_output_") + checks
     cpp = tmp_path / "completion.cpp"
     cpp.write_text(code)
@@ -111,7 +118,7 @@ int uxQueueMessagesWaiting(Queue* q){return q->depth;}
 struct Pipeline {
  Speaker* speaker=nullptr;std::atomic<media_source::MediaSource*> active_source{nullptr};
  media_source::MediaSource *pending_source=nullptr,*stopping_source=nullptr;
- std::vector<std::string> playlist;unsigned playlist_index=0;std::atomic<unsigned> pending_frames{0};
+ std::vector<std::string> playlist;unsigned playlist_index=0;std::atomic<unsigned> pending_bytes{0};
  bool is_configured(){return speaker!=nullptr;}
 };
 struct SpeakerSourceMediaPlayer {
@@ -126,10 +133,10 @@ int main(){
  SpeakerSourceMediaPlayer player;player.dump_diagnostics();
  Queue queue;Speaker speaker;player.media_control_command_queue_=&queue;
  auto &p=player.pipelines_[1];p.speaker=&speaker;p.active_source=&player.source;
- p.playlist={"https://private.example/secret-token"};p.pending_frames=13;
+ p.playlist={"https://private.example/secret-token"};p.pending_bytes=13;
  player.dump_diagnostics();
  assert(queue.depth==4 && queue.head.type==3 && queue.head.pipeline==1);
- assert(p.playlist_index==0 && p.playlist.size()==1 && p.pending_frames==13);
+ assert(p.playlist_index==0 && p.playlist.size()==1 && p.pending_bytes==13);
  assert(p.active_source==&player.source && player.source.value==media_source::MediaSourceState::IDLE);
 }
 '''
@@ -140,6 +147,6 @@ int main(){
     result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
     assert "depth=4 head=3 pipeline=1" in result.stdout
     assert "active=idle target=idle" in result.stdout
-    assert "pending_frames=13" in result.stdout
+    assert "pending_bytes=13" in result.stdout
     assert "stopped=NO running=YES" in result.stdout
     assert "secret-token" not in result.stdout

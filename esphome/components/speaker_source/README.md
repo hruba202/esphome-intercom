@@ -28,8 +28,14 @@ state before releasing its resources. It adds no task, media buffer or polling
 loop and preserves the upstream source outside that completion check.
 
 Playback accounting is included in ESPHome 2026.10 through
-[#19499](https://github.com/esphome/esphome/pull/19499). It is no longer a local
-compatibility difference. The remaining proposals are:
+[#19499](https://github.com/esphome/esphome/pull/19499). The local byte-stream
+adapter additionally retains the remainder when a write accepts less than one
+PCM frame. It fences admitted writes and callbacks during source/format changes,
+without holding admission while an HTTP source waits for PLAYING. A STOP that
+overlaps an admitted write completes its discard before a replacement starts.
+This does not add a session identifier to future downstream callbacks. See
+[UPSTREAM.md](UPSTREAM.md) for the exact boundary. No new upstream proposal is
+part of this accounting change. The existing proposals are:
 
 - [Pending-source cancellation](https://github.com/esphome/esphome/pull/19501).
 - [ESP-IDF join completion](https://github.com/espressif/esp-idf/pull/19123),
@@ -44,7 +50,7 @@ proposal is not a replacement for a released upstream fix.
 
 A full control queue now logs its first waiting command and the state of both
 playback pipelines. Keep the complete block: queue depth, active/target/pending/
-stopping source states, speaker state and pending frame count. The head command
+stopping source states, speaker state and pending byte count. The head command
 codes are 0 (replace URI), 1 (enqueue URI), 2 (advance playlist), 3 (play current)
 and 4 (player command).
 
@@ -54,6 +60,6 @@ For example, an optional `interval` automation can request it every 60 seconds.
 Use logger level INFO or more verbose. The snapshot does not clear the queue,
 stop playback, or log media URLs. It adds no periodic work unless you configure it.
 
-A source's pending frame count alone is not proof of a blocked output: after its
+A source's pending byte count alone is not proof of a blocked output: after its
 IDLE notification, final output callbacks may no longer be attributed to that
 source. Compare it with speaker state and the mixer/output buffers.
