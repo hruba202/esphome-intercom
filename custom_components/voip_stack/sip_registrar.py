@@ -236,7 +236,7 @@ def _outbound_contact(
     instance_id = _header_param(raw_contact, "+sip.instance").strip('"<>')
     raw_reg_id = _header_param(raw_contact, "reg-id")
     supports_outbound = "outbound" in sip.option_tags(request, "Supported")
-    if not supports_outbound or (not instance_id and not raw_reg_id):
+    if not supports_outbound or not raw_reg_id:
         # +sip.instance is also used independently by GRUU-aware user agents.
         # Supported: outbound advertises capability, it does not require every
         # registration to use an outbound flow.  The Contact becomes an RFC
@@ -246,7 +246,7 @@ def _outbound_contact(
                 raise ValueError("invalid GRUU instance ID")
             return f"urn:uuid:{uuid.UUID(instance_id[9:])}", 0, False
         return "", 0, False
-    if not instance_id or not raw_reg_id:
+    if not instance_id:
         raise ValueError("incomplete RFC 5626 Contact")
     reg_id = int(raw_reg_id)
     if not 1 <= reg_id <= 2_147_483_647:

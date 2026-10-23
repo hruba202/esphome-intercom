@@ -16,6 +16,14 @@
 
 Development preview with changes since stable 2026.10.1.
 
+### SIP registration compatibility
+
+- Accept ordinary Linphone registrations carrying `+sip.instance` without
+  `reg-id`, including when the client advertises Outbound support. Preserve
+  GRUU identity through the existing registration path. Thanks to
+  [Charlyo](https://github.com/n-IA-hane/esphome-intercom/issues/141) for the
+  report and proposed correction.
+
 ### Maintenance and native component cleanup
 
 - Restore camera startup on pre-v3 ESP32-P4 boards with the default ESPHome
