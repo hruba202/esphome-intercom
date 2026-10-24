@@ -6,6 +6,11 @@ substitutions. This older filename remains a single-microphone AEC compatibility
 entrypoint. See the [current processing and hardware-check notes](../../../docs/WAVESHARE_V2_PROCESSING.md);
 the dated measurements below retain their original scope.
 
+The task placement and local resampler fixes described below belong to those
+recorded builds. Current profiles use the official ESPHome audio providers and
+their scheduling options; see the
+[native-provider migration](../../../docs/BREAKING_CHANGES.md#development-firmware-native-audio-providers).
+
 This experimental profile offers standalone echo cancellation on the Waveshare
 ESP32-S3-Touch-LCD-1.85C-BOX V2 (SKU 30684). It keeps Assist, calling, music and
 the circular interface. Use the maintained FULL AFE profile when you need its
@@ -20,7 +25,7 @@ does not provide the dual-microphone processing, noise suppression or VAD
 provided by AFE. Assist, MWW, VoIP, Sendspin, HTTP playback and the display
 remain configured.
 
-Audio Stack stays on core 1; MWW runs on core 0. The AFE-specific
+In the recorded candidate, Audio Stack stayed on core 1 and MWW ran on core 0. The AFE-specific
 `audio_dsp_iram` linker helper is omitted. Removing the AFE feed/fetch pipeline
 changes the competing workload; it does not by itself prove better wake-word
 recognition or barge-in.
@@ -87,10 +92,10 @@ buffer losses or overflows, and completed the HTTP announcements. The existing
 lwIP allocation policy prefers PSRAM. Copying has a memory and CPU cost; it
 changes buffer ownership rather than increasing driver buffer limits.
 
-Use the updated Audio Stack component too. Its resampler accepts bounded prefixes
-of decoder blocks larger than its input buffer and waits for space when full.
-This fixes a separate busy-retry problem with 16 kHz announcements while music
-uses 48 kHz. Updating only this YAML does not install that component correction.
+The recorded candidate also used a local resampler fix: it accepted bounded
+prefixes of decoder blocks larger than its input buffer and waited for space
+when full. This addressed a separate busy-retry problem with 16 kHz announcements
+while music used 48 kHz. Current profiles use ESPHome's standard resampler instead.
 
 These changes preserve the normal codec rates, AEC processing, Wi-Fi affinity
 and packet queue sizes. No access-point tuning is required for the verified
@@ -119,7 +124,7 @@ measure free heap after startup or peak runtime memory use.
 ESPHome 2026.9.1 configuration validation, C++ generation and full compilation
 passed using local component checkouts. The V2 was subsequently tested on real
 hardware with standalone AEC and the full application set configured. The local
-Audio Stack changes include the bounded resampler input fix described above.
+Audio Stack changes in that build included the bounded resampler input fix described above.
 
 The investigation reproduced two separate failures: a resampler busy retry when
 the decoder's block exceeded its input buffer, and packet loss when concurrent
