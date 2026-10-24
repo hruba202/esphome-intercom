@@ -186,7 +186,8 @@ def test_spotpear_concurrency_memory_policy_is_explicit_and_preallocated() -> No
     assert int(phone['tx_task_stack_size']) == 12288
     assert int(phone['rx_task_stack_size']) == 12288
     providers = {name for provider in config['external_components'] for name in provider['components']}
-    assert 'voice_assistant' in providers
+    assert 'voice_assistant' in config
+    assert 'voice_assistant' not in providers
     assert 'speaker' not in providers
     assert by_id(config['display'], 's3_box_lcd')['psram_dma'] is True
 
@@ -244,7 +245,9 @@ def test_spotpear_layout_and_aec_sync_use_runtime_contracts() -> None:
 def test_p4_full_profile_has_native_camera_and_sip_jpeg() -> None:
     config = profile(P4_LANDSCAPE_FULL_AFE)
     providers = {name for provider in config['external_components'] for name in provider['components']}
-    assert {'voice_assistant', 'mipi_dsi', 'esp_video_camera',
+    assert 'voice_assistant' in config
+    assert 'voice_assistant' not in providers
+    assert {'mipi_dsi', 'esp_video_camera',
             'esp_jpeg_video_source', 'p4_video_renderer'} <= providers
     assert 'speaker' not in providers
     assert 'esp_h264_video_source' not in providers
