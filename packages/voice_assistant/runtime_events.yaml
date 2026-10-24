@@ -6,8 +6,6 @@
 voice_assistant:
   id: va
   media_player: speaker_media_player
-  # Allow the HTTP reader's connection attempts before reporting a start failure.
-  tts_playback_start_timeout: 35s
   on_stt_end:
     - script.execute:
         id: ui_stt_ended

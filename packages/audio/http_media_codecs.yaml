@@ -4,14 +4,9 @@
 substitutions:
   ext_components_source: github://n-IA-hane/esphome-intercom@main
 
-external_components:
-  - source: ${ext_components_source}
-    components: [audio_http_compat]
-
 esphome:
   min_version: 2026.10.0
 
-audio_http_compat:
 
 audio:
   codecs:

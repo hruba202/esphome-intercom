@@ -68,7 +68,7 @@ def test_v2_native_choices_bind_one_processor_and_same_consumer(tmp_path, backen
                                voip_transport=transport, mic_id='custom_processed_mic'))
     assert ('esp_aec' in document) is (backend == 'aec')
     assert ('esp_afe' in document) is (backend == 'afe')
-    assert ('audio_dsp_iram' in document) is (backend == 'afe')
+    assert 'audio_dsp_iram' not in document
     audio = document['esp_audio_stack']
     assert audio['mic_mix'] == mix
     assert audio['tdm_mic_slots'] == ([0, 2] if backend == 'afe' or mix == 'average' else [0])

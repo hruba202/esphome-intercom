@@ -96,7 +96,6 @@ external_components:
   components:
   - esp_audio_stack
   - esp_afe
-  - resampler
 packages:
   mute: !include '../../features/shared/microphone_mute.yaml'
   controls: !include '../../esp_audio_stack/controls.yaml'

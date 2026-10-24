@@ -181,7 +181,11 @@ The reorganized firmware profiles select one device package and one
 `firmware_features` list. Follow the [progressive package examples](packages/README.md#work-through-a-full-profile)
 to remove Sendspin, build a voice-only device, or combine voice, calls and music.
 This layout is included in the development preview; use its coordinated `dev`
-package and component sources. For an older copied configuration, follow the
+package and component sources. The current preview uses the official ESPHome
+audio, mixer, resampler, player, Voice Assistant, wake-word and OTA providers,
+with our Audio Stack/AEC/AFE, VoIP Stack and Runtime Controller. Follow the
+[native provider migration](docs/BREAKING_CHANGES.md#development-firmware-native-audio-providers)
+when carrying over old external-component lists. For an older copied configuration, follow the
 [firmware migration](docs/BREAKING_CHANGES.md#development-firmware-new-device-packages)
 instead of stacking new packages on top of the old preset.
 

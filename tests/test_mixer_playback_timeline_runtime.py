@@ -5,12 +5,11 @@ FreeRTOS events, input buffers and the output sink are host adapters. The tests
 cover contiguous contributions, including zero-valued PCM, rather than claiming
 arbitrary intermittent contributions have exact attribution.
 """
-from pathlib import Path
 import subprocess
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests.esphome_native import NATIVE_COMPONENTS
 
 
 def method(source, signature):
@@ -25,7 +24,7 @@ def method(source, signature):
 
 @pytest.fixture(scope='module')
 def mixer_binary(tmp_path_factory):
-    source = (ROOT / 'esphome/components/mixer/speaker/mixer_speaker.cpp').read_text()
+    source = (NATIVE_COMPONENTS / 'mixer/speaker/mixer_speaker.cpp').read_text()
     start = source.index('          // Set playback delay for newly contributing source\n')
     end = source.index('\n        } else {', start)
     single = source[start:end]

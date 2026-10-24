@@ -11,20 +11,12 @@ substitutions:
       buffer_size: ${http_media_ring_buffer_size}
       task_stack_in_psram: true
       persistent_ring_buffer: ${http_media_persistent_ring_buffer}
-    speaker:
-    - id: !extend 'media_speaker_input'
-      task_core: 1
-      task_priority: 11
   firmware_announcement_binding:
     media_source:
     - id: !extend 'announcement_http_source'
       buffer_size: ${http_media_ring_buffer_size}
       task_stack_in_psram: true
       persistent_ring_buffer: ${http_media_persistent_ring_buffer}
-    speaker:
-    - id: !extend 'tts_speaker_input'
-      task_core: 1
-      task_priority: 11
   firmware_voice_binding:
     voice_assistant:
       id: va
@@ -91,10 +83,6 @@ substitutions:
       speaker: voip_speaker_input
       delete_contact_missing_from:
         updates_number: 1
-    speaker:
-    - id: !extend 'voip_speaker_input'
-      task_core: 1
-      task_priority: 11
   firmware_display_package: ../features/presentation/devices/spotpear.yaml
   _spotpear_full_buttons: !include '../features/controls/spotpear_full.yaml'
   _spotpear_simple_buttons: !include '../features/controls/primary_button.yaml'

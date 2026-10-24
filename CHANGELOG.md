@@ -24,6 +24,22 @@ Development preview with changes since stable 2026.10.1.
   [Charlyo](https://github.com/n-IA-hane/esphome-intercom/issues/141) for the
   report and proposed correction.
 
+### Official ESPHome audio providers
+
+- Maintained profiles use the official ESPHome audio, mixer, resampler,
+  `speaker_source`, Voice Assistant, Micro Wake Word, microphone, speaker and
+  OTA providers. Retire their local copies and the MIME, Sendspin-source and
+  DSP-placement adapters; keep Audio Stack/AEC/AFE, VoIP and Runtime Controller
+  in their existing owners. The P4 display adaptation and GMF vendor pin remain
+  separate.
+- Preserve board wiring, dual-microphone BSS/downmix choices, gain/reference
+  calibration, PCM formats, UI, media sources and cleanup composition. Custom
+  configurations must remove the retired external-provider names and their
+  private scheduling/timeout options. Start from the current board YAML.
+- Tie Audio Stack playback completion to the emitted DMA descriptor and
+  generation. Advance software reference through partial frames and silence,
+  preserve valid explicit DMA geometry, and separate AFE acquisition epochs.
+
 ### Maintenance and native component cleanup
 
 - Restore camera startup on pre-v3 ESP32-P4 boards with the default ESPHome
@@ -37,9 +53,9 @@ Development preview with changes since stable 2026.10.1.
   backpressure. Use the native ESPHome 2026.10 automation bindings.
 
 - Stop playback resampler and mixer inputs before closing shared audio hardware
-  during maintenance. Source completion now retains upstream drain semantics
-  instead of forcing another hard stop from the player. Keep synchronous
-  cancellation for the blocking native OTA phase.
+  during maintenance. Source completion and Stop now follow the official
+  player. The shared maintenance script restores readiness after an interrupted
+  update without a second media owner.
 
 - Returning from Options through Contacts/Keypad now reveals the selected view
   on browser phones, ESP mirror cards and the transfer view. The call controls
@@ -87,12 +103,12 @@ and AFE/AEC/native profile separately from its application features.
 - Integrate the validated GMF AI Audio 1.1.1 source, with ESP-SR 2.6.0 explicitly
   selected by Audio Stack. Retain immediate processed-PCM delivery and use the
   upstream feed/fetch stack placement and suspend/abort shutdown ordering.
-- Update the shared audio/mixer adapters to esp-audio-libs 4.1.0 and micro-FLAC
-  0.3.0. Use ESPHome 2026.10's Sendspin 0.9.3 and its native pairing controls.
+- Use the libraries selected by official ESPHome 2026.10.0: esp-audio-libs
+  4.0.1, micro-FLAC 0.3.0 and Sendspin 0.9.3 with its native pairing controls.
   Include the certificate bundle for HTTPS playback.
-- Cancel only the selected player pipeline and its superseded commands on STOP;
-  keep normal EOF draining. Rejected output writes honor their caller's wait
-  budget while cleanup completes, preventing producer busy retry.
+- Use native player Stop and EOF draining. Audio Stack rejects writes during
+  its pending reset and honors the caller's wait budget while cleanup completes,
+  preserving producer ownership of unaccepted PCM.
 - Use one shared OTA entry/recovery script for the selected sources and display.
   Stop the speaker adapter before its hardware, cancel pending idle waits on
   recovery, and restore readiness after an interrupted update.

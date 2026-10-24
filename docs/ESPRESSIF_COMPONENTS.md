@@ -19,37 +19,32 @@ are included in ESPHome through PRs
 Spotpear enables `psram_dma: true` on its display, rather than changing SPI
 behavior for every device.
 
-The following compatibility components remain project-owned. ESPHome-derived
-components record their upstream baseline in their directories.
+Maintained profiles use the official ESPHome audio, mixer, resampler,
+`speaker_source`, Voice Assistant, Micro Wake Word, microphone, speaker and OTA
+providers. They do not replace those component directories or rewrite the
+HTTP/Sendspin dependency sources. The ESPHome 2026.10.0 baseline resolves
+esp-audio-libs 4.0.1, micro-decoder 0.4.0 and sendspin-cpp 0.9.3.
 
-| Component | Local reason | Public compatibility |
-|---|---|---|
-| `audio_http_compat` | Adds the missing `audio/vnd.wave` MIME alias to micro-decoder. | No task or audio buffer; inactive when WAV is disabled or upstream already supports the alias. |
-| `voice_assistant` | Response completion, Stop and intent preparation from the existing draft PR. | Stable automation APIs remain supported; playback state is not first-PCM detection. |
-| `mipi_dsi` | Serializes LVGL and direct video submissions and exposes the immutable framebuffer to the narrow P4 renderer adapter. | Panel models and normal ESPHome display behavior remain aligned with the recorded upstream baseline. |
-| `audio` | Supplies host simulation adapters and selects newer audio-library dependencies. | The dependency versions differ from stable 2026.10.0; compare the complete provider before removing it. |
+The audio path adds the project-owned `esp_audio_stack`, optional `esp_aec` or
+`esp_afe`, `voip_stack` and `runtime_controller`. The schema-only
+`firmware_feature_check` validates feature names and dependencies; it creates no
+runtime task or audio owner.
 
-`p4_framebuffer_capture` and `runtime_diag` are diagnostic components, not
-production media owners. They are included only by explicit diagnostic YAML.
-The obsolete private `ring_buffer` fork has been removed.
-The local `speaker` fork, including its legacy media player, has also been
-removed. Maintained profiles use ESPHome's native speaker base. Custom YAMLs
-that selected the removed provider must follow the
-[speaker migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
+The P4 `mipi_dsi` adaptation remains separate. It serializes LVGL/direct video
+submissions and exposes the immutable framebuffer to the narrow P4 renderer.
+Its provenance is recorded in its own `UPSTREAM.md`. `p4_framebuffer_capture`
+and `runtime_diag` remain explicit diagnostics, not production media owners.
+The GMF dependency constraint used by AFE also remains separately documented
+below; retiring ESPHome audio providers does not remove that vendor pin.
 
-Full profiles use upstream mixer runtime behavior with the native 2026.10
-bindings. Speaker Source retains the pending-source STOP and worker-exit fixes.
-Sendspin uses the native ESPHome 2026.10 client and its selected sendspin-cpp
-0.9.3 dependency, including stream-generation handling. Its small dependency
-adapter retains only scoped worker configuration and partially late decoded
-prefix handling. No legacy 0.7 source path is retained and no second player or
-clock is added. See [Sendspin compatibility](../esphome/components/sendspin_compat/README.md)
-and [Music Assistant pairing](../packages/README.md#pair-sendspin-with-music-assistant).
+Sendspin uses the native ESPHome client, including its pairing controls and
+stream-generation handling. See [Music Assistant pairing](../packages/README.md#pair-sendspin-with-music-assistant).
+For a copied configuration, follow the [native provider migration](BREAKING_CHANGES.md#development-firmware-native-audio-providers).
 
 ![ESP audio-stack architecture](images/audio-stack.png)
 
 For repository-wide attribution, ESPHome-derived component notes and the
-Apache-2.0 license text used by local ESPHome compatibility forks, see
+license terms used by the remaining ESPHome-derived code, see
 [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 ## Runtime components
@@ -62,7 +57,7 @@ The current audio stack uses these Espressif components:
 | `espressif/gmf_ai_audio` | `esp_afe` | Espressif Modified MIT, restricted to Espressif products | Provides the official `esp_gmf_afe_manager`; `esp_afe` uses its input/result callbacks directly, without the `esp_gmf_afe` element or a GMF pipeline. ESPHome keeps the microphone consumer facade. |
 | `espressif/gmf_core` | Transitive dependency of GMF components | Espressif Modified MIT, restricted to Espressif products | Base GMF object and support layer required by GMF audio/AI/IO components. |
 | `espressif/esp_audio_effects` | `esp_audio_stack` | Espressif MIT-style license, restricted to Espressif products | Provides `esp_ae_rate_cvt`, `esp_ae_bit_cvt` and data weaver APIs used for RX/TX conversion and layout. |
-| `espressif/esp_codec_dev` | `esp_audio_stack` codec-backed builds | Apache-2.0 | Provides codec control plus I2S read/write. P4 and WS3 use ES7210/ES8311 through it; Spotpear single-mic uses ES8311 input/output through it. The generic codec wrapper also exposes ES8388, ES8374 and ES8389 where the board wiring matches those drivers. Generic no-codec builds use direct `esp_driver_i2s` read/write instead. |
+| `espressif/esp_codec_dev` | `esp_audio_stack` codec-backed builds | Apache-2.0 | Provides codec control and shared I2S device configuration; Audio Stack owns TX DMA refill and completion. P4 and WS3 use ES7210/ES8311 through it; Spotpear single-mic uses ES8311 input/output through it. The generic codec wrapper also exposes ES8388, ES8374 and ES8389 where the board wiring matches those drivers. Generic no-codec builds use `esp_driver_i2s` directly. |
 
 The optional P4 H.264 profile additionally resolves
 `espressif/esp_h264` 1.3.6 for hardware encode/software decode and
@@ -104,7 +99,7 @@ The public composition stays modular:
 
 | ESPHome component | Espressif backend it owns | Required project components | Optional peers |
 |---|---|---|---|
-| `esp_audio_stack` | IDF `esp_driver_i2s` for I2S ownership, `esp_codec_dev` for codec/data devices, direct codec/I2S RX/TX transfer, `esp_audio_effects` for rate/layout conversion | internal audio core shared primitives and ESPHome `microphone`/`speaker` surfaces | `esp_aec` or `esp_afe` through `processor_id`; `voip_stack`, MWW and VA as consumers |
+| `esp_audio_stack` | IDF `esp_driver_i2s` for I2S ownership, `esp_codec_dev` for codec/data devices, RX acquisition and descriptor-owned TX refill, `esp_audio_effects` for rate/layout conversion | internal audio core shared primitives and ESPHome `microphone`/`speaker` surfaces | `esp_aec` or `esp_afe` through `processor_id`; `voip_stack`, MWW and VA as consumers |
 | `esp_aec` | `esp-sr` low-level `afe_aec` API | internal audio core | `esp_audio_stack` or standalone `voip_stack` as the caller |
 | `esp_afe` | `gmf_ai_audio` `esp_gmf_afe_manager` input/result callbacks plus `esp-sr` | internal audio core | `esp_audio_stack` as the required steady-frame caller |
 | `voip_stack` | none of the new Espressif audio libraries directly | ESPHome network/audio surfaces | native ESPHome audio, or `esp_audio_stack` as the recommended mic/speaker owner for AEC/AFE/full voice builds |
@@ -268,7 +263,7 @@ entities or device-specific data routing.
 | `afe_aec` from `esp-sr` | Low-level standalone AEC API | Integrated now | No-codec and Spotpear single-mic AEC devices keep a direct ESPHome-friendly processor while still using Espressif's current AEC implementation and official `MR` input format. |
 | `gmf_audio` / `aud_rate_cvt`, `aud_bit_cvt`, `aud_deintlv`, `aud_intlv` | GMF audio pipeline elements for conversion and layout | Deferred | Official examples run codec at 48 kHz and insert GMF conversion elements before AEC. `esp_audio_stack` currently uses the lower `esp_audio_effects` primitives in-place; full GMF task/port ownership remains a future step. |
 | `esp_audio_effects` / `esp_ae_rate_cvt`, `esp_ae_bit_cvt`, data weaver, channel convert | Standalone C API behind GMF conversion elements | Integrated now | RX bit/rate/layout conversion, mono-speaker duplication onto stereo STD TX, TDM TX layout, TX bit conversion and stereo-to-mono software AEC reference conversion use Espressif APIs. True `speaker_channels: 2` STD output is already ESPHome interleaved PCM and is written directly. `audio_effects.rate_cvt_complexity` and `audio_effects.rate_cvt_perf_type` expose the official rate-converter knobs in YAML. |
-| `gmf_io` / `io_codec_dev` | GMF IO wrapper around codec-device read/write | Not used in `esp_audio_stack` | Sendspin / `speaker_source` need playback timestamps tied to I2S DMA completion. `esp_audio_stack` therefore uses `esp_codec_dev_read/write` directly and registers the ESP-IDF I2S TX completion callback, mirroring ESPHome's native I2S speaker model. |
+| `gmf_io` / `io_codec_dev` | GMF IO wrapper around codec-device read/write | Not used in `esp_audio_stack` | Sendspin / `speaker_source` need playback timestamps tied to I2S DMA completion. `esp_audio_stack` therefore owns RX acquisition and TX descriptor refill, and pairs the public ESP-IDF I2S completion callback with the exact descriptor and playback generation. Codec configuration remains with `esp_codec_dev`. |
 | `esp_codec_dev` | Codec control plus I2S read/write abstraction | Integrated now | `esp_audio_stack` now creates one shared I2S data interface and separate IN/OUT codec devices, matching Espressif's test pattern. ES7210, ES8311, ES8388, ES8374 and ES8389 control/gain/volume/mute/data read/write go through the official component while ESPHome keeps mic/speaker callback routing. |
 | `esp_board_manager` / `periph_i2s` | Board/peripheral lifecycle manager for I2S TX/RX STD/TDM/PDM | Audited, not active | Official adapter, but it currently hides `i2s_chan_config_t` DMA/auto-clear policy and enables channels on ref. Active backend stays on official `esp_driver_i2s` direct ownership. |
 | `esp_capture` audio sources | High-level capture sources, including codec AEC capture | Do not integrate now | It owns a capture pipeline and source lifecycle intended for recording/streaming. It conflicts with ESPHome's microphone, speaker, mixer and VoIP ownership. Useful as reference only. |

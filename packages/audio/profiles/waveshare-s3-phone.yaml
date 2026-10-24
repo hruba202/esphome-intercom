@@ -76,7 +76,6 @@ external_components:
 - source: ${audio_stack_components_source}
   components:
   - esp_audio_stack
-  - resampler
   - esp_aec
 packages:
   speaker_mute: !include '../../voip/speaker_mute.yaml'

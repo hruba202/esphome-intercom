@@ -1,12 +1,11 @@
 """Run production mixer cleanup with a start arriving during worker shutdown."""
-from pathlib import Path
 import subprocess
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests.esphome_native import NATIVE_COMPONENTS
 
 
 def test_pending_start_survives_stopped_task_cleanup(tmp_path):
-    text = (ROOT / "esphome/components/mixer/speaker/mixer_speaker.cpp").read_text()
+    text = (NATIVE_COMPONENTS / "mixer/speaker/mixer_speaker.cpp").read_text()
     start = text.index("void MixerSpeaker::loop()")
     method = text[start:text.index("esp_err_t MixerSpeaker::start(", start)]
     start_method = text[text.index("esp_err_t MixerSpeaker::start("):text.index("// NOLINTBEGIN", text.index("esp_err_t MixerSpeaker::start("))]

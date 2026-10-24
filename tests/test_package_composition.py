@@ -534,39 +534,31 @@ def test_local_gmf_override_only_binds_the_selected_afe(tmp_path):
     'voip-only/single-bus/waveshare-s3-voip.yaml',
     'full-experience/esphome-native/generic-s3-full-esphome-native.yaml',
 ])
-def test_resampler_source_matches_selected_audio_backend(profile_path: str) -> None:
+def test_resampler_uses_official_provider_for_every_audio_backend(profile_path: str) -> None:
     from tests.native_profile import profile
 
     document = profile(profile_path)
     providers = [item['source'] for item in document.get('external_components', [])
                  if 'resampler' in item.get('components', [])]
-    if 'esp_audio_stack' not in document:
-        assert not providers, 'Native audio must remain usable without Audio Stack adapters'
-        return
+    assert not providers, 'Audio Stack and native audio both use the official resampler'
     assert any(speaker['platform'] == 'resampler' for speaker in document['speaker'])
-    expected = str(Path(os.environ.get('AUDIO_STACK_REPO', ROOT.parent / 'esphome-audio-stack')) / 'esphome/components')
-    assert providers and all(source == expected for source in providers), (
-        'Audio Stack playback must use its matching resampler; falling back to native '
-        'silently loses bounded writes for decoder blocks larger than the input ring',
-        providers,
-    )
 
 
 @pytest.mark.parametrize('backend', [
     path for path in sorted((ROOT / 'packages/audio/profiles').glob('*.yaml'))
     if 'esp_audio_stack' in yaml_util.load_yaml(path)
 ], ids=lambda path: path.stem)
-def test_audio_stack_backend_owns_its_resampler_selection(backend: Path) -> None:
+def test_audio_stack_backend_does_not_override_the_official_resampler(backend: Path) -> None:
     document = yaml_util.load_yaml(backend)
     providers = [item for item in document.get('external_components', [])
                  if 'esp_audio_stack' in item.get('components', [])]
     assert len(providers) == 1
     assert providers[0]['source'] == '${audio_stack_components_source}'
-    assert 'resampler' in providers[0]['components']
+    assert 'resampler' not in providers[0]['components']
 
 
 @pytest.mark.parametrize('features', [FULL, ['voip'], ['voice'], ['music']])
-def test_ws3_resamplers_stay_off_the_afe_feed_core(tmp_path: Path, features: list[str]) -> None:
+def test_ws3_uses_official_resampler_scheduling_configuration(tmp_path: Path, features: list[str]) -> None:
     config = device_config(tmp_path, features)
     result = subprocess.run(
         [sys.executable, '-m', 'esphome', 'config', '--no-defaults', str(config)],
@@ -580,7 +572,5 @@ def test_ws3_resamplers_stay_off_the_afe_feed_core(tmp_path: Path, features: lis
     resamplers = [speaker for speaker in document['speaker'] if speaker['platform'] == 'resampler']
     assert resamplers
     for speaker in resamplers:
-        # A floating-point task without affinity gets pinned implicitly by IDF
-        # on its first FPU use. Core 0 already hosts the full AFE feed workload.
-        assert speaker.get('task_core', -1) == 1, speaker['id']
-        assert speaker.get('task_priority', 1) == 1
+        assert 'task_core' not in speaker, speaker['id']
+        assert 'task_priority' not in speaker, speaker['id']

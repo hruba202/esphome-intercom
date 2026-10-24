@@ -1,9 +1,7 @@
 """Native ESPHome 2026.10 mute/zero-volume behavior."""
-from pathlib import Path
 import subprocess
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from tests.esphome_native import NATIVE_COMPONENTS
 
 
 def method(source, signature):
@@ -17,7 +15,7 @@ def method(source, signature):
 
 
 def test_volume_preserves_mute_and_zero_silence(tmp_path):
-    component = ROOT / 'esphome/components/speaker_source'
+    component = NATIVE_COMPONENTS / 'speaker_source'
     stub = tmp_path / 'esphome/components/speaker'
     stub.mkdir(parents=True)
     (stub / 'speaker.h').write_text('''#pragma once

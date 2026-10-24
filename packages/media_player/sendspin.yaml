@@ -3,8 +3,6 @@ defaults:
   sendspin_audio_ring_buffer_size: '${ sendspin_audio_ring_buffer_size | default("262144") }'
 substitutions:
   sendspin_audio_ring_buffer_size: ${sendspin_audio_ring_buffer_size}
-packages:
-  sendspin_compat: !include sendspin_compat.yaml
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: true

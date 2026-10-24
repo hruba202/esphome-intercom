@@ -4,6 +4,44 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+## Development firmware: native audio providers
+
+**Start from the updated YAML for your exact board when rebuilding this
+preview.** Keep your device identity, credentials, wiring and wanted features.
+The maintained device packages now use official ESPHome 2026.10 audio, mixer,
+resampler, `speaker_source`, Voice Assistant, Micro Wake Word and OTA providers.
+The project-owned Audio Stack/AEC/AFE, VoIP Stack and Runtime Controller remain.
+
+For a custom configuration:
+
+1. Remove `audio`, `micro_wake_word`, `mixer`, `ota`, `resampler`,
+   `speaker_source` and `voice_assistant` from Git external-component lists
+   pointing to this project or Audio Stack. Keep the actual component blocks;
+   ESPHome supplies those providers. Remove an empty external-source entry.
+2. Remove the retired `audio_http_compat`, `sendspin_compat` and
+   `audio_dsp_iram` component declarations and their external-source entries.
+   Keep native `audio_http`, WAV/MP3/FLAC codecs, Sendspin, microphone and
+   speaker configuration selected by the maintained packages.
+3. Remove `tts_playback_start_timeout`, MWW `task_core`/`ring_buffer_duration`
+   and `task_core`/`task_priority` on `platform: resampler` speakers. These
+   were local options and are absent from the supported official schemas.
+   Task settings on our AFE/Audio Stack components are separate and remain
+   supported. Native scheduling and playback timeout behavior now apply.
+4. Keep package and component revisions coordinated, validate with ESPHome
+   2026.10.0 or newer, compile and upload. Updating HACS does not update the ESP.
+
+Audio processing, microphone downmix/BSS, gain/reference settings, media and
+announcement inputs, call ownership and the shared maintenance scripts remain
+in their existing owners. The AFE GMF vendor pin and P4 display adaptation are
+separate from this audio-provider retirement.
+
+The Box FULL AFE baseline has been exercised with calls, overlapping HTTP
+media/announcements, real HA announcements, ordinary Stop/restart, native
+Sendspin and completed/interrupted OTA. This is bounded functional evidence,
+not a long-uptime result for every supported board. The outstanding Spotpear
+announcement report remains open; preserve its complete logs and exact firmware
+revision if it recurs.
+
 ## Development firmware: ESPHome 2026.10 and music pairing
 
 Upgrade the builder to **ESPHome 2026.10.0 or newer** before compiling the current
@@ -239,9 +277,10 @@ firmware version numbers.
   removed; shared official callbacks provide those integrations.
 - `runtime/ha_connectivity.yaml` no longer exposes diagnostic API actions. Add
   `diagnostics/runtime.yaml` explicitly when needed.
-- `media_player/playback_compat.yaml` no longer loads the Sendspin-specific adapter.
-  Custom inline Sendspin configurations must also include
-  `media_player/sendspin_compat.yaml`, or use `media_player/sendspin.yaml`.
+- Sendspin now uses the official ESPHome provider. Custom inline Sendspin
+  configurations need no compatibility adapter; use `media_player/sendspin.yaml`
+  for the shared configuration. The legacy `media_player/sendspin_compat.yaml`
+  include remains harmless but can be removed.
 - HTTP playback, local-file announcements and Sendspin can be selected separately.
   Existing full media presets still compose the complete feature set.
 - Shared LVGL projection owns the voice phase and restores the mode preceding a
@@ -309,9 +348,9 @@ lists that point to this repository. Both now come from ESPHome. Keep
 for the Spotpear display, set `psram_dma: true` on the `mipi_spi` display itself.
 
 Include `packages/audio/http_media_codecs.yaml` for HTTP playback. It selects
-MP3/WAV codecs and the small `audio_http_compat` adapter that preserves WAV
-recognition for `audio/vnd.wave` responses. The retired `audio_http` directory
-is no longer an external component source.
+MP3/WAV codecs. Current development packages use the official HTTP source
+and decoder behavior; the former `audio_http_compat` adapter is retired.
+The retired `audio_http` directory is no longer an external component source.
 
 ## 2026.9.0: upgrade checklist
 
@@ -765,9 +804,10 @@ committed snapshot.
 Voice Assistant response state is now tied to TTS/media-player announcement
 lifecycle callbacks through `runtime_controller`. Slow local TTS backends can
 exceed ESPHome's historical 2-second playback-start watchdog, especially XTTS
-running locally. This release temporarily ships a project-local
-`voice_assistant` fork that exposes `tts_playback_start_timeout`; maintained
-full profiles set it to `10s` through the full voice/runtime packages.
+running locally. Older development snapshots supplied a configurable local
+watchdog. Current profiles use the official Voice Assistant provider and
+its native behavior; remove the obsolete `tts_playback_start_timeout` option
+when following the native-provider migration above.
 
 Sendspin is included in maintained full-experience profiles as a Music Assistant
 media source. It is not required for normal HA media, TTS, timer sounds,

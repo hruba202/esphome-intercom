@@ -84,7 +84,7 @@ switch:
   - speaker.mute_off: hw_speaker
 external_components:
 - source: ${audio_stack_components_source}
-  components: [esp_audio_stack, resampler]
+  components: [esp_audio_stack]
 packages:
   mute: !include '../../features/shared/microphone_mute.yaml'
   controls: !include '../../esp_audio_stack/controls.yaml'

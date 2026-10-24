@@ -45,5 +45,4 @@ external_components:
 - source: ${audio_stack_components_source}
   components:
   - esp_audio_stack
-  - resampler
   - esp_aec

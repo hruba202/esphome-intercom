@@ -13,18 +13,19 @@ ESPHome's license is included in `licenses/ESPHOME-LICENSE.txt`.
 
 | Local path | Upstream | Notes |
 |---|---|---|
-| `esphome/components/voice_assistant/` | ESPHome `voice_assistant` component | Fork with configurable TTS playback-start timeout. See `esphome/components/voice_assistant/UPSTREAM.md`. |
-| `esphome/components/audio/` | ESPHome audio component family | Local copy/adaptation used by maintained media profiles; resolves ESPHome audio codec libraries at build time. |
 | `esphome/components/mipi_dsi/` | ESPHome community component lineage | Local P4 display support and panel models. |
 
-When rebasing a fork, update its `UPSTREAM.md` and keep the ESPHome license
-available.
+The audio, Voice Assistant, MWW, mixer, resampler, speaker-source and OTA
+providers now come from the installed official ESPHome distribution. Their
+upstream licenses apply to generated firmware. No copies of those providers
+are shipped here. The remaining P4 display adaptation retains its provenance
+and the ESPHome license.
 
 ## Contributed camera component
 
 | Build source | Origin | License |
 |---|---|---|
-| `n-IA-hane/esphome-esp-video-camera` external component | Fork of the repository maintained by GitHub user `Psix-anp`, derived from ESPHome PR 16944 and retaining `@youkorr` as code owner | ESPHome split license, GPLv3 for C/C++ runtime files and MIT for Python and other files. The external repository includes its complete `LICENSE` and `NOTICE`; this repository also includes the ESPHome license in `licenses/ESPHOME-LICENSE.txt`. |
+| `Psix-anp/esphome-esp-video-camera` external component | Repository maintained by GitHub user `Psix-anp`, derived from ESPHome PR 16944 and retaining `@youkorr` as code owner | ESPHome split license, GPLv3 for C/C++ runtime files and MIT for Python and other files. The external repository includes its complete `LICENSE` and `NOTICE`; this repository also includes the ESPHome license in `licenses/ESPHOME-LICENSE.txt`. |
 
 ## Runtime Python dependency
 

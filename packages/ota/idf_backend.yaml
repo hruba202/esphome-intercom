@@ -1,8 +1,6 @@
-# Shared OTA backend for the full audio profiles. Its watchdog allowance is
-# scoped to flash erase/validation and restored afterwards.
+# Use the official ESPHome OTA backend for the full audio profiles.
 substitutions:
   ext_components_source: github://n-IA-hane/esphome-intercom@main
 
-external_components:
-  - source: ${ext_components_source}
-    components: [ota]
+esphome:
+  min_version: 2026.10.0

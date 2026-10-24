@@ -5,12 +5,12 @@ import os
 import subprocess
 import urllib.request
 
+from tests.esphome_native import NATIVE_COMPONENTS
 
-ROOT = Path(__file__).resolve().parents[1]
-REVISION = 'e06373fa41529064cb852e2312a32a8148ddaaac'
+REVISION = '891fdfc531ad38d9e90b5e9088be60a66c82ed4c'
 FILES = {
-    'include/gain.h': '91bd809286ba4907d9a27913fb68e1b2580bc2c5d0c71a89313deff1a0347a60',
-    'src/gain.cpp': '421e549b8abe6f9fc636725c4412fb224436986971d8e6f84d3645ec4b607a68',
+    'include/gain.h': '3e041d0344a0a4511eb18d3fadc4ee8ff2d681f315ebc846c45f0137fc5434b9',
+    'src/gain.cpp': '68c197695678ae22dd4767c3a2ae3b312f1ed34ec3989a93b5a6eb703389f1d0',
     'src/compiler.h': '65a46977da2d707cf51c23863d5e941b938631ecbb34b947435abc8c0ded3d1d',
     'src/q31_utils.h': '847f3cb2afcd7c6d5ca789088fdcc13e6223c63844d837a6b411ebad13e30088',
 }
@@ -28,7 +28,7 @@ def test_production_ducking_preserves_exposed_samples_and_ramp(tmp_path):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
         assert hashlib.sha256(target.read_bytes()).hexdigest() == digest, name
-    source = (ROOT / 'esphome/components/mixer/speaker/mixer_speaker.cpp').read_text()
+    source = (NATIVE_COMPONENTS / 'mixer/speaker/mixer_speaker.cpp').read_text()
     start = source.index('size_t SourceSpeaker::process_data_from_source(')
     end = source.index('\nvoid SourceSpeaker::enter_stopping_state_', start)
     code = r'''
@@ -44,7 +44,7 @@ struct RingBufferAudioSource {
   std::vector<int16_t> pcm;
   bool exposed = false;
   size_t available() const { return exposed ? pcm.size() * 2 : 0; }
-  size_t fill(int) { exposed = true; return pcm.size() * 2; }
+  size_t fill(int, bool) { exposed = true; return pcm.size() * 2; }
   uint8_t *mutable_data() { return reinterpret_cast<uint8_t *>(pcm.data()); }
 };
 }

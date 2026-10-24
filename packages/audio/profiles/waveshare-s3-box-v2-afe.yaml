@@ -30,10 +30,7 @@ esp_afe:
 external_components:
 - source: ${audio_stack_components_source}
   components: [esp_afe]
-- source: ${ext_components_source}
-  components: [audio_dsp_iram]
 packages:
   hardware: !include waveshare-s3-box-v2-common.yaml
   processor_controls: !include ${ '../../esp_afe/single_mic_entities.yaml' if _v2_average else '../../esp_afe/dual_mic_entities.yaml' }
   gmf_source: !include '../gmf_source.yaml'
-audio_dsp_iram: null

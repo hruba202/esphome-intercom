@@ -2,49 +2,6 @@
   "repository": "esphome/esphome",
   "revision": "2d0e3faa3d1282d1ec6928d4e76b62db3d37434c",
   "components": {
-    "audio": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Host test support",
-        "Coordinated audio-library dependencies",
-        "Prune unused right DSP lane for a validated mono Mixer while retaining stereo framing"
-      ],
-      "public_proposal": false
-    },
-    "micro_wake_word": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Task affinity creation for the released 2026.10 StaticTask API",
-        "Configurable ring buffer and model checks"
-      ],
-      "public_proposal": "https://github.com/esphome/esphome/pull/20126"
-    },
-    "voice_assistant": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Response completion and intent hook ordering",
-        "Stable scheduler and automation APIs"
-      ],
-      "patch_revision": "0bfd7b5146fd86e1510fb988a1326ee29491fe68",
-      "public_proposal": "https://github.com/esphome/esphome/pull/21050"
-    },
-    "mixer": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Audio transfer buffer API of the coordinated audio provider"
-      ],
-      "public_proposal": false
-    },
-    "speaker_source": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Pending-source stop and pipeline command ownership",
-        "Byte-stream playback credit and admitted-operation cancellation barrier",
-        "Worker-exit guard",
-        "On-demand queue diagnostics"
-      ],
-      "public_proposal": "https://github.com/esphome/esphome/pull/19501"
-    },
     "mipi_dsi": {
       "local_repository": "esphome-intercom",
       "adaptations": [
@@ -54,52 +11,57 @@
         "Stable bulk drawing and code-generation APIs"
       ],
       "public_proposal": false
-    },
-    "resampler": {
-      "local_repository": "esphome-audio-stack",
-      "adaptations": [
-        "Speaker task scheduling",
-        "Bounded write progress with older ring buffers",
-        "Stable task creation API",
-        "Internal mono-Mixer hint for coordinated owned audio; separate from the task-affinity proposal"
-      ],
-      "patch_revision": "71b816a3f6247685415cf49ed911ad6c928d2ea0",
-      "public_proposal": "https://github.com/esphome/esphome/pull/21055"
-    },
-    "ota": {
-      "local_repository": "esphome-intercom",
-      "adaptations": [
-        "Scoped watchdog and progress between final image validations",
-        "Stable log and multi-core lock APIs"
-      ],
-      "public_proposal": false
     }
   },
   "dependencies": {
     "gmf_ai_audio": {
       "upstream_revision": "255fb531ddc97ff5e1e113dad97c88f70d6297be",
       "adaptations": [
-        "Immediate PCM callback",
-        "ESP-SR 2.6.0 constraint",
-        "Host regression"
+        "ESP-SR 2.6.0 dependency constraint"
       ],
-      "public_proposal": "https://github.com/espressif/esp-gmf/pull/73"
-    },
-    "sendspin_compat": {
-      "reviewed_revisions": [
-        "91038b72892596b9ec0cccfec1b9e6ebc58ba148",
-        "b95cf854a784ed308b1f8fe9697f414b02768ddd"
-      ],
-      "adaptations": [
-        "Decoded-prefix handling for partially late chunks",
-        "Scoped worker configuration and rejected-configuration handling"
-      ],
-      "protocol_migration": true
+      "public_proposal": false,
+      "runtime_contract": "Official AFE manager callbacks. No element pipeline or custom element-output callback is used by the wrapper."
     }
   },
   "build_baseline": {
     "esphome": "2026.10.0",
     "esp_idf": "5.5.6",
-    "sendspin": "0.9.3"
-  }
+    "sendspin": "0.9.3",
+    "audio_libs": "4.0.1",
+    "micro_decoder": "0.4.0"
+  },
+  "native_components": [
+    "audio",
+    "audio_file",
+    "audio_http",
+    "media_source",
+    "microphone",
+    "micro_wake_word",
+    "mixer",
+    "ota",
+    "resampler",
+    "sendspin",
+    "speaker",
+    "speaker_source",
+    "voice_assistant"
+  ],
+  "native_provider_baseline": {
+    "distribution": "esphome",
+    "version": "2026.10.0",
+    "source_policy": "Use the installed official ESPHome providers without local source overrides or vendor source replacement helpers."
+  },
+  "retired_local_providers": [
+    "audio",
+    "micro_wake_word",
+    "mixer",
+    "ota",
+    "resampler",
+    "speaker_source",
+    "voice_assistant"
+  ],
+  "retired_adapters": [
+    "audio_dsp_iram",
+    "audio_http_compat",
+    "sendspin_compat"
+  ]
 }
