@@ -2,6 +2,10 @@
 
 #ifdef USE_ESP32
 
+// Optional owned extension. Standalone resampler providers can keep using the
+// four-argument API from the released ESPHome audio component.
+#define ESPHOME_AUDIO_HAS_MONO_CHANNEL_PRUNING 1
+
 #include "audio.h"
 #include "audio_transfer_buffer.h"
 
@@ -61,11 +65,13 @@ class AudioResampler {
   /// @param output_stream_info The desired outgoing sample rate, bits per sample, and number of channels
   /// @param number_of_taps Number of taps per FIR filter
   /// @param number_of_filters Number of FIR filters
+  /// @param downstream_mono True only when a validated mono renderer discards
+  /// the right lane. Stereo PCM framing and gain-ramp progression stay intact.
   /// @return ESP_OK if it is able to convert the incoming stream,
   ///         ESP_ERR_NO_MEM if the transfer buffers failed to allocate,
   ///         ESP_ERR_NOT_SUPPORTED if the stream can't be converted.
   esp_err_t start(AudioStreamInfo &input_stream_info, AudioStreamInfo &output_stream_info, uint16_t number_of_taps,
-                  uint16_t number_of_filters);
+                  uint16_t number_of_filters, bool downstream_mono = false);
 
   /// @brief Resamples audio from the ring buffer source and writes to the sink.
   /// @param stop_gracefully If true, it indicates the file decoder is finished. The resampler will resample all the
@@ -96,6 +102,13 @@ class AudioResampler {
   AudioStreamInfo output_stream_info_;
 
   std::unique_ptr<esp_audio_libs::resampler::Resampler> resampler_;
+
+  // Only a validated mono mixer can discard the right lane. Keep the public
+  // stereo layout so gain ramps, partial writes and frame credits stay intact.
+  std::unique_ptr<AudioSinkTransferBuffer> mono_input_buffer_;
+  std::unique_ptr<AudioSinkTransferBuffer> mono_output_buffer_;
+  uint32_t mono_input_frames_{0};
+  uint32_t mono_input_offset_{0};
 };
 
 }  // namespace esphome::audio

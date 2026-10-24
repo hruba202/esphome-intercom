@@ -9,6 +9,7 @@ entries:
         dl_fft2r_fc32_ansi:dl_rfft_pre_proc_fc32_ansi (noflash)
         dl_fft2r_fc32_ansi:dl_rfft_post_proc_fc32_ansi (noflash)
         dl_fft2r_fc32_ansi:dl_bitrev2r_fc32_ansi (noflash)
+        dl_fft4r_fc32_ansi:dl_bitrev4r_fc32_ansi (noflash)
         dl_rfft_f32:dl_rfft_f32_run (noflash)
         dl_rfft_f32:dl_irfft_f32_run (noflash)
 

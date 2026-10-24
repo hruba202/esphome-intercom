@@ -469,6 +469,133 @@ The checked-in capture and summary tools keep this workflow reproducible:
 ./.venv/bin/python tools/analyze_jtag_snapshots.py --help
 ```
 
+### ESP32-S3 profiling without application probes
+
+`tools/esp_profile.py` collects DEBUGPC samples and whole-core PMU counters
+through stock OpenOCD `irscan`/`drscan` commands, following the ESP32-S3 JTAG
+NAR protocol in the qualified Espressif release `v0.12.0-esp32-20260831`.
+The ESP32-S3 target does not expose the generic `xtensa dm` command, whose
+APB register addresses also differ from NAR register numbers. It never invokes
+the `profile` command, which can fall back to halting the target. It also
+rejects arbitrary Tcl commands, halted cores, zero PCs, PMU ownership conflicts
+and overflowing counters. Only one collector can own a local endpoint.
+During raw scans it temporarily suspends OpenOCD's background target polling
+and verifies its restoration on exit. This controls the debugger only;
+the ESP keeps executing, with its running state checked through DSR.
+
+Start with `doctor`, which checks local files without contacting hardware:
+
+```bash
+./.venv/bin/python tools/esp_profile.py doctor \
+  --elf firmware.elf --manifest build-identity.json --openocd /path/to/openocd
+```
+
+The build manifest contains `elf_sha256`, `firmware_sha256`, `device_mac`,
+`profile`, `scenario_contract` and `source_revisions`. Each source revision
+records its full `head`, a `tree_sha256` of the component contents and its
+`dirty` state. `running_identity` binds the ELF hash to an independently
+verified upload/device identity record through `evidence` and
+`evidence_sha256`. A filename or the newest ELF in a build directory is not
+proof that it matches the running firmware.
+
+Keep the original waveform, volumes, gains, DSP mode, enabled models and UI
+load in `scenario_contract`; these must match when comparing revisions.
+Use a fresh output directory for each independent measurement:
+
+```bash
+./.venv/bin/python tools/esp_profile.py record --mode pc \
+  --elf firmware.elf --manifest build-identity.json --scenario music-48k \
+  --seconds 60 --hz 100 --output test_captures/profile/music-48k/run-1
+./.venv/bin/python tools/esp_profile.py analyze \
+  test_captures/profile/music-48k/run-1 --elf firmware.elf \
+  --addr2line /path/to/xtensa-esp32s3-elf-addr2line
+```
+
+The two cores are sampled sequentially with host timestamps and slightly
+varying intervals. Results are **shares of observed PC samples**, including
+unresolved addresses, not exact task CPU percentages or per-function latency.
+PMU mode uses windows of at most five seconds; select `--event instructions`,
+`data_stalls`, `instruction_stalls` or `waiti`. It restores the previously
+unowned counters and requires `apptrace_enabled: false` in the manifest.
+These aggregate stalls are not flash/PSRAM cache-miss counts.
+
+`compare` accepts lists of baseline/candidate `analysis.json` files. It
+requires matching acquisition/workload contracts and unique capture identities.
+At least five independent windows per revision are needed for its run-based
+bootstrap interval. Repeating the same file does not create new measurements.
+
+SystemView is a separate diagnostic-build mode, using official FreeRTOS hooks
+with nonzero overhead. It requires `apptrace_enabled: true`,
+`systemview_enabled: true`, `--mode sysview --seconds 10`, `--idf-root`,
+`--idf-python`, the actual `--toolchain` prefix and `--openocd-log` pointing
+to the live endpoint's regular logfile at INFO verbosity or above. Host-only
+`echo` markers verify that this file belongs to the endpoint and delimit the
+active interval after native START and before native STOP. The collector saves
+the appended log with its hash, inode and original offset; missing markers,
+rotation, truncation, CRC retries or recovery invalidate the capture. A halt,
+resume or reset inside the active interval also invalidates it. Native
+attach/detach halts outside those markers do not alone reject the capture.
+The primary acquisition error is preserved if STOP or log qualification also
+fails. Raw per-core files and
+parser errors are retained. `analyze` excludes attach/detach edges, rejects
+overflow or a nonzero parser exit, and requires the hash-bound accepted log.
+Older captures without this evidence cannot qualify timing retroactively.
+On ESP32-S3 with ESP-IDF 5.5.6, the official AppTrace implementation documents
+trace-memory corruption under concurrent writes. OpenOCD can recover a CRC
+failure by halting and resuming the CPU even when incomplete-block and lost-byte
+counts remain zero. A successful parser and zero transport loss therefore do
+not establish uninterrupted execution. These checks reject that observer
+failure; they do not remove tracing overhead or qualify this mode on hardware.
+See the pinned [OpenOCD CRC recovery](https://github.com/espressif/openocd-esp32/blob/b0edad625b5edc0a64d52a641a7bd02e3a56c37d/src/target/espressif/esp_xtensa_apptrace.c#L231)
+and [ESP-IDF 5.5.6 S3 trace-memory workaround](https://github.com/espressif/esp-idf/blob/v5.5.6/components/app_trace/app_trace_membufs_proto.c#L153).
+Acquisition also requires zero incomplete
+transport blocks and lost bytes, and a verified final STOPPED state. Use the
+official shared ESP_TIMER timestamp source for dual-core captures; independent
+CPU clocks are not synchronized by the parser. It reports ready-to-run waits separately
+from scheduled residency. Residency includes untraced interrupts; it is not
+exclusive task CPU time. Qualify trace overhead and RAM usage before relying
+on a diagnostic build. PMU and AppTrace must not own the counters concurrently.
+
+SystemView admission also requires three independently collected, hash-bound
+JSON receipts. Add `boot_confirmation`, `post_prefit_evidence` and
+`runtime_preflight_evidence` to the manifest, each containing `evidence` and
+`evidence_sha256`. The collector reads these files; it does not upload firmware,
+connect to the ESPHome API or perform a memory-mapping halt for you.
+
+The boot receipt records the uploaded ELF/binary hashes, target MAC, build,
+the actual `Boot seems successful; resetting boot loop counter` log with its
+host timestamp, and a matching API identity obtained after that message.
+The post-preflight receipt records another matching API identity and a fresh
+requested audio-diagnostic `uptime_ms`. Do not estimate boot time from the
+ordinary Uptime sensor replayed on an API connection: its value can be cached.
+The runtime receipt records `verified_at`, `elf_sha256` and the independently
+read `live_app_elf_sha256`, together with the task/queue mapping used for analysis.
+
+Boot-time estimates tolerate five seconds for deferred diagnostic reporting.
+A detected reboot is allowed only when the matching live app identity and
+runtime pointers were observed after that new boot. Otherwise discard the old
+runtime mapping and obtain new evidence before recording. A successful boot
+message precedes ESPHome's unchecked IDF mark-valid return; it is not a direct
+partition-state read. The expected live app surviving a subsequent reboot is
+separate evidence of persistence. PC/PMU captures retain their existing identity
+contract; historical captures are not rewritten by this admission gate.
+
+Do not reuse hardware instruction TRAX on a SystemView image merely because
+its recorder is STOPPED. The compiled RTOS hooks still poll AppTrace's down
+channel, including shared TRAX protocol registers, when recording is disabled.
+Restoring the memory mux alone does not restore that protocol state. Use a
+separate, cold-booted TRAX-only diagnostic image with AppTrace/SystemView and
+their hooks absent. On ESP32-S3, enable the official `ESP32S3_TRAX` and
+`ESP32S3_TRAX_TWOBANKS` options, then verify the resulting 32 KiB memory
+reservation before use. These observer modes must have separate firmware and
+resource qualification; a failed mixed-observer run is not a production AFE
+regression by itself.
+
+Complete source audits and local regression gates before uploading a profiling
+candidate. Collect dumps/PCM separately from the main measurement windows.
+Keep captures private under `test_captures/`; profiling does not replace
+independent continuity, acoustic or wake-word hit-rate tests.
+
 On ESPHome 2026.7 and newer native ESP-IDF builds, custom partition tables use
 `esp32.partitions`; `board_build.partitions` under `platformio_options` is not
 the authoritative native-build setting. A partition-layout change on an

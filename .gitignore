@@ -19,6 +19,7 @@ codex.md
 /test_captures/
 /.pytest_cache/
 /.ruff_cache/
+/.test-deps/
 /.coverage
 /.coverage.*
 /.hypothesis/

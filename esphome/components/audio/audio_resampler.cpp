@@ -5,6 +5,7 @@
 #include "esphome/core/hal.h"
 
 #include <cstring>
+#include <pcm_convert.h>
 
 namespace esphome::audio {
 
@@ -44,9 +45,12 @@ esp_err_t AudioResampler::add_sink(speaker::Speaker *speaker) {
 #endif
 
 esp_err_t AudioResampler::start(AudioStreamInfo &input_stream_info, AudioStreamInfo &output_stream_info,
-                                uint16_t number_of_taps, uint16_t number_of_filters) {
+                                uint16_t number_of_taps, uint16_t number_of_filters, bool downstream_mono) {
   this->input_stream_info_ = input_stream_info;
   this->output_stream_info_ = output_stream_info;
+  this->mono_input_buffer_.reset();
+  this->mono_output_buffer_.reset();
+  this->mono_input_frames_ = this->mono_input_offset_ = 0;
 
   if (this->output_transfer_buffer_ == nullptr) {
     return ESP_ERR_NO_MEM;
@@ -66,9 +70,26 @@ esp_err_t AudioResampler::start(AudioStreamInfo &input_stream_info, AudioStreamI
 
   if ((input_stream_info.get_sample_rate() != output_stream_info.get_sample_rate()) ||
       (input_stream_info.get_bits_per_sample() != output_stream_info.get_bits_per_sample())) {
+    const bool prune_right = downstream_mono && input_stream_info.get_channels() == 2;
+    if (prune_right) {
+      // One aligned source exposure is projected once and retained across
+      // backpressure retries. A splice may expose one frame even with a tiny
+      // input soft limit, so each scratch allocation holds at least one frame.
+      this->mono_input_buffer_ = AudioSinkTransferBuffer::create(
+          std::max<uint32_t>(1, input_stream_info.bytes_to_frames(this->input_buffer_size_)) *
+          input_stream_info.samples_to_bytes(1));
+      this->mono_output_buffer_ = AudioSinkTransferBuffer::create(
+          std::max<uint32_t>(1, output_stream_info.bytes_to_frames(this->output_buffer_size_)) *
+          output_stream_info.samples_to_bytes(1));
+      if (this->mono_input_buffer_ == nullptr || this->mono_output_buffer_ == nullptr) {
+        return ESP_ERR_NO_MEM;
+      }
+    }
     this->resampler_ = make_unique<esp_audio_libs::resampler::Resampler>(
-        input_stream_info.bytes_to_samples(this->input_buffer_size_),
-        output_stream_info.bytes_to_samples(this->output_buffer_size_));
+        prune_right ? std::max<uint32_t>(1, input_stream_info.bytes_to_frames(this->input_buffer_size_))
+                    : input_stream_info.bytes_to_samples(this->input_buffer_size_),
+        prune_right ? std::max<uint32_t>(1, output_stream_info.bytes_to_frames(this->output_buffer_size_))
+                    : output_stream_info.bytes_to_samples(this->output_buffer_size_));
 
     // Use cascaded biquad filters when downsampling to avoid aliasing
     bool use_pre_filter = output_stream_info.get_sample_rate() < input_stream_info.get_sample_rate();
@@ -78,7 +99,7 @@ esp_err_t AudioResampler::start(AudioStreamInfo &input_stream_info, AudioStreamI
         .target_sample_rate = static_cast<float>(output_stream_info.get_sample_rate()),
         .source_bits_per_sample = input_stream_info.get_bits_per_sample(),
         .target_bits_per_sample = output_stream_info.get_bits_per_sample(),
-        .channels = input_stream_info_.get_channels(),
+        .channels = static_cast<uint8_t>(prune_right ? 1 : input_stream_info_.get_channels()),
         .use_pre_or_post_filter = use_pre_filter,
         .subsample_interpolate = false,  // Doubles the CPU load. Using more filters is a better alternative
         .number_of_taps = number_of_taps,
@@ -129,6 +150,14 @@ AudioResamplerState AudioResampler::resample(bool stop_gracefully, int32_t *ms_d
     delay(READ_WRITE_TIMEOUT_MS);
   }
 
+  // Preserve the existing sink wait above, but do not fill/project input or
+  // enter the DSP library when no complete output frame fits.
+  const size_t bytes_free = this->output_transfer_buffer_->free();
+  const uint32_t frames_free = this->output_stream_info_.bytes_to_frames(bytes_free);
+  if (frames_free == 0) {
+    return AudioResamplerState::RESAMPLING;
+  }
+
   // Expose a chunk of the ring buffer's internal storage.
   this->audio_source_->fill(pdMS_TO_TICKS(READ_WRITE_TIMEOUT_MS));
 
@@ -137,18 +166,33 @@ AudioResamplerState AudioResampler::resample(bool stop_gracefully, int32_t *ms_d
     return AudioResamplerState::RESAMPLING;
   }
 
-  const size_t bytes_free = this->output_transfer_buffer_->free();
-  const uint32_t frames_free = this->output_stream_info_.bytes_to_frames(bytes_free);
-
   const size_t bytes_available = this->audio_source_->available();
   const uint32_t frames_available = this->input_stream_info_.bytes_to_frames(bytes_available);
 
   if ((this->input_stream_info_.get_sample_rate() != this->output_stream_info_.get_sample_rate()) ||
       (this->input_stream_info_.get_bits_per_sample() != this->output_stream_info_.get_bits_per_sample())) {
     // Adjust gain by -3 dB to avoid clipping due to the resampling process
-    esp_audio_libs::resampler::ResamplerResults results =
-        this->resampler_->resample(this->audio_source_->data(), this->output_transfer_buffer_->get_buffer_end(),
-                                   frames_available, frames_free, -3);
+    const uint8_t *input = this->audio_source_->data();
+    uint8_t *output = this->output_transfer_buffer_->get_buffer_end();
+    if (this->mono_input_buffer_ != nullptr) {
+      const uint8_t input_bytes = this->input_stream_info_.samples_to_bytes(1);
+      if (this->mono_input_frames_ == 0) {
+        esp_audio_libs::pcm_convert::copy_frames(input, this->mono_input_buffer_->get_buffer_start(),
+                                                input_bytes, 2, input_bytes, 1, frames_available);
+        this->mono_input_frames_ = frames_available;
+        this->mono_input_offset_ = 0;
+      }
+      input = this->mono_input_buffer_->get_buffer_start() + this->mono_input_offset_ * input_bytes;
+      output = this->mono_output_buffer_->get_buffer_start();
+    }
+    const auto results = this->resampler_->resample(input, output, frames_available, frames_free, -3);
+    if (this->mono_input_buffer_ != nullptr) {
+      this->mono_input_frames_ -= results.frames_used;
+      this->mono_input_offset_ += results.frames_used;
+      const uint8_t output_bytes = this->output_stream_info_.samples_to_bytes(1);
+      esp_audio_libs::pcm_convert::copy_frames(output, this->output_transfer_buffer_->get_buffer_end(),
+                                              output_bytes, 1, output_bytes, 2, results.frames_generated);
+    }
 
     this->audio_source_->consume(this->input_stream_info_.frames_to_bytes(results.frames_used));
     this->output_transfer_buffer_->increase_buffer_length(

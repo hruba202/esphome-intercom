@@ -46,10 +46,12 @@ jobs:
       - name: Verify Node frontend test dependency
         run: node --version
       - name: Check Python code and test fixtures
-        run: python -m ruff check custom_components/voip_stack scripts tests
+        run: python -m ruff check custom_components/voip_stack scripts tests tools/esp_profile.py
       - name: Run software suite
         env:
           PYTEST_ADDOPTS: --junitxml=test-results/software.xml -ra
+          AUDIO_STACK_REPO: ${{ github.workspace }}/../esphome-audio-stack
+          AUDIO_LIBS_REPO: ${{ github.workspace }}/.test-deps/esp-audio-libs
         run: PYTHON=python scripts/test_suite.sh software-full --keep-going
       - name: Require executed software tests
         run: python scripts/check_test_results.py test-results/software.xml

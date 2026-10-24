@@ -6,7 +6,8 @@
       "local_repository": "esphome-intercom",
       "adaptations": [
         "Host test support",
-        "Coordinated audio-library dependencies"
+        "Coordinated audio-library dependencies",
+        "Prune unused right DSP lane for a validated mono Mixer while retaining stereo framing"
       ],
       "public_proposal": false
     },
@@ -59,7 +60,8 @@
       "adaptations": [
         "Speaker task scheduling",
         "Bounded write progress with older ring buffers",
-        "Stable task creation API"
+        "Stable task creation API",
+        "Internal mono-Mixer hint for coordinated owned audio; separate from the task-affinity proposal"
       ],
       "patch_revision": "71b816a3f6247685415cf49ed911ad6c928d2ea0",
       "public_proposal": "https://github.com/esphome/esphome/pull/21055"
