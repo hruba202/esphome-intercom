@@ -146,20 +146,32 @@ async def test_pickup_preparation_cannot_steal_answered_or_cancelled_call(
     try:
         await asyncio.to_thread(picker.command, "/dial pickup.transfer_b")
         await asyncio.wait_for(entered.wait(), 3)
+        from custom_components.voip_stack.runtime_data import sip_endpoint_manager
+
+        endpoint = sip_endpoint_manager(runtime.hass).udp_server.endpoint
+        picker_id = next(key for key in endpoint.pending_invites if key != session.call_id)
+        picker_transaction = endpoint.pending_invites[picker_id]
         if winner == "original_answer":
             await asyncio.to_thread(original.command, "/accept")
             await wait_for(lambda: session.state == "in_call")
         elif winner == "caller_hangup":
             await asyncio.to_thread(caller.hangup)
+            # Writing the peer's PTY does not mean CANCEL reached the PBX.
+            # Hold media preparation until the authoritative owner accepted
+            # termination; full cleanup can depend on releasing this gate.
+            await wait_for(session.termination_started.is_set)
+            assert not session.live
         else:
-            from custom_components.voip_stack.runtime_data import sip_endpoint_manager
-
-            manager = sip_endpoint_manager(runtime.hass)
-            pending = manager.udp_server.endpoint.pending_invites
-            picker_id = next(key for key in pending if key != session.call_id)
             await asyncio.to_thread(picker.hangup)
-            await wait_for(lambda: picker_id not in pending)
+            await wait_for(lambda: picker_id not in endpoint.pending_invites)
         release.set()
+        # The final-response cache is retired on ACK. Keep the transaction
+        # identity; local cancellation and remote rejection close differently.
+        if winner == "picker_cancel":
+            await wait_for(lambda: picker_transaction.final_task is None)
+        else:
+            await wait_for(lambda: "session closed" in picker.read().lower())
+        assert picker_transaction.status >= 300
         await wait_for(
             lambda: not runtime.runtime.endpoints.get("transfer_c").active_call_id
         )
