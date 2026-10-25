@@ -28,6 +28,7 @@ def test_unknown_firmware_feature_is_a_configuration_error(tmp_path, profile):
     ('sendspin', 'music', 'sendspin'),
     ('wake_word', 'voice', 'micro_wake_word'),
     ('timers', 'voice', 'voice_assistant'),
+    ('video', 'voip', 'esp32_camera'),
 ])
 def test_missing_feature_dependencies_are_visible(tmp_path, feature, required, absent_component):
     from esphome import yaml_util

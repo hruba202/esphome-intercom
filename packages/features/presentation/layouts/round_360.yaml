@@ -328,7 +328,7 @@ script:
           text: !lambda |-
             bool charging = false;  // V2 has no USB/charge-status GPIO.
             float bat = id(battery_percentage).state;
-            float wifi = id(wifi_pct).state;
+            float wifi = ${ 'id(wifi_pct).state' if 'diagnostics' in firmware_features else 'std::max(0.0f, std::min(100.0f, 2.0f * (wifi::global_wifi_component->wifi_rssi() + 100.0f)))' };
             std::string ret;
             if (bat < 10) ret = charging ? "\U000F089F" : "\U000F008E";
             else if (bat < 20) ret = charging ? "\U000F089C" : "\U000F007A";
@@ -374,6 +374,9 @@ script:
 defaults:
   _round_page_initializing_page:
   - id: initializing_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
     bg_color: 0
     widgets:
     - image:
@@ -381,8 +384,10 @@ defaults:
         src: assistant_gui_initializing
   _round_page_idle_page:
   - id: idle_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
-    on_swipe_up: ${ _round_gesture_26 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - animimg:
         id: idle_anim
@@ -402,16 +407,20 @@ defaults:
         auto_start: false
   _round_page_listening_page:
   - id: listening_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 16777215
-    on_swipe_up: ${ _round_gesture_27 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - image:
         align: CENTER
         src: assistant_gui_listening
   _round_page_thinking_page:
   - id: thinking_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 16777215
-    on_swipe_up: ${ _round_gesture_28 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - image:
         align: CENTER
@@ -518,9 +527,11 @@ defaults:
         text_align: CENTER
   _round_page_replying_page:
   - id: replying_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
     scrollbar_mode: 'off'
-    on_swipe_up: ${ _round_gesture_29 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - image:
         id: mood_bg
@@ -636,18 +647,25 @@ defaults:
         text_align: CENTER
   _round_page_error_page:
   - id: error_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
-    on_swipe_up: ${ _round_gesture_30 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - image:
         align: CENTER
         src: assistant_gui_error
   _round_page_muted_page:
   - id: muted_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
-    on_swipe_up: ${ _round_gesture_31 if _round_has_phone else [] }
+    on_swipe_up: ${_round_navigation_up}
   _round_page_no_ha_page:
   - id: no_ha_page
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
     widgets:
     - image:
@@ -655,29 +673,15 @@ defaults:
         src: error_no_ha
   _round_page_no_wifi_page:
   - id: no_wifi_page
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
     bg_color: 0
     widgets:
     - image:
         align: CENTER
         src: error_no_wifi
-  _round_page_settings_continuous_page:
-  - id: settings_continuous_page
-    bg_color: 2105376
-    scrollable: true
-    scroll_elastic: true
-    scroll_dir: VER
-    scrollbar_mode: AUTO
-    on_scroll:
-    - lambda: |-
-        if (!id(settings_active)) return;
-        if (lv_obj_get_scroll_y(id(settings_continuous_page)->obj) < -28) {
-          id(settings_close).execute();
-        }
-    widgets: ${ _round_audio_setting_0 + _round_audio_setting_1 + _round_audio_setting_2 + _round_audio_setting_3
-      + _round_audio_setting_4 + _round_audio_setting_5 + _round_audio_setting_6 + _round_audio_setting_7 + (_round_phone_setting_8
-      if _round_has_phone else []) + (_round_phone_setting_9 if _round_has_phone else []) + _round_audio_setting_10
-      + _round_audio_setting_11 + _round_audio_setting_12 + _round_audio_setting_13 + (_round_wake_word_setting
-      if _fw_wake_word else []) + _round_audio_setting_15 }
+  _round_page_settings_continuous_page: ${ _settings_page }
   _round_top_status:
   - label:
       id: top_clock_label
@@ -693,250 +697,9 @@ defaults:
       text: ''
       text_color: 16777215
       text_font: font_clock
-  _round_audio_setting_0:
-  - label:
-      text: Audio
-      align: TOP_MID
-      y: 18
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_16
-      text_color: 16777215
-  _round_audio_setting_1:
-  - label:
-      text: Master volume
-      align: TOP_MID
-      y: 48
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_14
-      text_color: 11579568
-  _round_audio_setting_2:
-  - slider:
-      id: ui_speaker_vol_slider
-      align: TOP_MID
-      y: 74
-      width: ${settings_row_width}
-      height: 14
-      min_value: 0
-      max_value: 100
-      value: !lambda |-
-        return id(master_volume).state;
-      adv_hittest: true
-      gesture_bubble: true
-      on_release:
-      - number.set:
-          id: master_volume
-          value: !lambda |-
-            return x;
-  _round_audio_setting_3:
-  - label:
-      text: Microphone gain
-      align: TOP_MID
-      y: 106
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_14
-      text_color: 11579568
-  _round_audio_setting_4:
-  - slider:
-      id: ui_mic_vol_slider
-      align: TOP_MID
-      y: 132
-      width: ${settings_row_width}
-      height: 14
-      min_value: -20
-      max_value: 30
-      value: !lambda |-
-        return id(mic_gain).state;
-      adv_hittest: true
-      gesture_bubble: true
-      on_release:
-      - number.set:
-          id: mic_gain
-          value: !lambda |-
-            return x;
-  _round_audio_setting_5:
-  - label:
-      text: Call
-      align: TOP_MID
-      y: 178
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_16
-      text_color: 16777215
-  _round_audio_setting_6:
-  - obj:
-      align: TOP_MID
-      y: 210
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Speaker mute
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_speaker_mute_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(speaker_mute).state;
-          on_value:
-          - lambda: |-
-              if (x == id(speaker_mute).state) return;
-              if (x) id(speaker_mute).turn_on();
-              else id(speaker_mute).turn_off();
-  _round_audio_setting_7:
-  - obj:
-      align: TOP_MID
-      y: 256
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Microphone mute
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_mic_mute_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(mute).state;
-          on_value:
-          - lambda: |-
-              if (x == id(mute).state) return;
-              if (x) id(mute).turn_on();
-              else id(mute).turn_off();
-  _round_audio_setting_10:
-  - label:
-      text: AEC
-      align: TOP_MID
-      y: 400
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_16
-      text_color: 16777215
-  _round_audio_setting_11:
-  - obj:
-      align: TOP_MID
-      y: 432
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Echo cancellation
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_aec_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(aec_switch).state;
-          on_value:
-          - lambda: |-
-              if (x == id(aec_switch).state) return;
-              if (x) id(aec_switch).turn_on();
-              else id(aec_switch).turn_off();
-  _round_audio_setting_12:
-  - dropdown:
-      id: ui_aec_mode_dd
-      align: TOP_MID
-      y: 480
-      width: ${settings_mid_width}
-      options: ${firmware_processing_modes}
-      on_value:
-      - select.set_index:
-          id: aec_mode_select
-          index: !lambda |-
-            return x;
-  _round_audio_setting_13:
-  - label:
-      text: Voice assistant
-      align: TOP_MID
-      y: 538
-      width: ${settings_mid_width}
-      text_align: CENTER
-      text_font: montserrat_16
-      text_color: 16777215
-  _round_wake_word_setting:
-  - obj:
-      align: TOP_MID
-      y: 570
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Wake word
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_wake_word_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(wake_word_switch).state;
-          on_value:
-          - lambda: |-
-              if (x == id(wake_word_switch).state) return;
-              if (x) id(wake_word_switch).turn_on();
-              else id(wake_word_switch).turn_off();
-  _round_audio_setting_15:
-  - obj:
-      align: TOP_MID
-      y: 652
-      width: 1
-      height: 1
-      bg_opa: TRANSP
-      border_width: 0
-  _round_gesture_26:
-  - script.execute: swipe_to_voip
-  _round_gesture_27:
-  - script.execute: swipe_to_voip
-  _round_gesture_28:
-  - script.execute: swipe_to_voip
-  _round_gesture_29:
-  - script.execute: swipe_to_voip
-  _round_gesture_30:
-  - script.execute: swipe_to_voip
-  _round_gesture_31:
-  - script.execute: swipe_to_voip
   _round_phone_pages:
   - id: call_idle_page
+    scrollable: false
     bg_color: 255
     on_swipe_left:
     - voip_stack.next_contact: null
@@ -944,10 +707,8 @@ defaults:
     on_swipe_right:
     - voip_stack.prev_contact: null
     - script.execute: update_call_idle_labels
-    on_swipe_up:
-    - script.execute: call_to_dialer
-    on_swipe_down:
-    - script.execute: call_to_va
+    on_swipe_up: ${_round_navigation_up}
+    on_swipe_down: ${_round_navigation_down}
     widgets:
     - label:
         id: call_idle_title_label
@@ -1022,6 +783,9 @@ defaults:
         on_short_click:
         - voip_stack.call_toggle: null
   - id: call_ringing_in_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
     bg_color: 16711680
     widgets:
     - label:
@@ -1076,6 +840,9 @@ defaults:
         on_short_click:
         - voip_stack.decline_call: null
   - id: call_ringing_out_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
     bg_color: 16750848
     widgets:
     - label:
@@ -1116,6 +883,9 @@ defaults:
         on_short_click:
         - voip_stack.decline_call: null
   - id: call_in_call_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
     bg_color: 34816
     widgets:
     - label:
@@ -1156,6 +926,9 @@ defaults:
         on_short_click:
         - voip_stack.call_toggle: null
   - id: call_ended_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
     bg_color: 2105376
     on_click:
     - lambda: id(call_ended_active) = false;
@@ -1200,11 +973,10 @@ defaults:
         text_align: CENTER
         long_mode: SCROLL
   - id: call_dialer_page
+    scrollable: false
     bg_color: 1053468
-    on_swipe_down:
-    - script.execute: dialer_to_contacts
-    on_swipe_up:
-    - script.execute: call_to_settings
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
     widgets:
     - label:
         id: call_dial_value_label
@@ -1218,6 +990,7 @@ defaults:
         text_align: CENTER
         long_mode: SCROLL
         clickable: true
+        scrollable: false
         gesture_bubble: true
         on_short_click:
         - script.execute: voip_dial_backspace
@@ -1233,6 +1006,7 @@ defaults:
         border_width: 0
         pad_row: 0
         pad_column: 5
+        scrollable: false
         gesture_bubble: true
         items:
           bg_color: 2568514
@@ -1260,6 +1034,7 @@ defaults:
         border_width: 0
         pad_row: 0
         pad_column: 5
+        scrollable: false
         gesture_bubble: true
         items:
           bg_color: 2568514
@@ -1287,6 +1062,7 @@ defaults:
         border_width: 0
         pad_row: 0
         pad_column: 5
+        scrollable: false
         gesture_bubble: true
         items:
           bg_color: 2568514
@@ -1314,6 +1090,7 @@ defaults:
         border_width: 0
         pad_row: 0
         pad_column: 5
+        scrollable: false
         gesture_bubble: true
         items:
           bg_color: 2568514
@@ -1348,6 +1125,7 @@ defaults:
         border_width: 0
         shadow_opa: TRANSP
         radius: 22
+        scrollable: false
         gesture_bubble: true
         on_short_click:
         - script.execute: voip_dial_call
@@ -1357,67 +1135,8 @@ defaults:
             text: 󰏲
             text_color: 16777215
             text_font: call_icons
+            scrollable: false
             gesture_bubble: true
-  _round_phone_setting_8:
-  - obj:
-      align: TOP_MID
-      y: 302
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Auto answer
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_auto_answer_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(auto_answer_switch).state;
-          on_value:
-          - lambda: |-
-              if (x == id(auto_answer_switch).state) return;
-              if (x) id(auto_answer_switch).turn_on();
-              else id(auto_answer_switch).turn_off();
-  _round_phone_setting_9:
-  - obj:
-      align: TOP_MID
-      y: 348
-      width: ${settings_mid_width}
-      height: 38
-      bg_opa: TRANSP
-      border_width: 0
-      pad_all: 0
-      widgets:
-      - label:
-          text: Do not disturb
-          align: LEFT_MID
-          x: 0
-          width: 120
-          text_font: montserrat_14
-          text_color: 11579568
-      - switch:
-          id: ui_dnd_sw
-          align: RIGHT_MID
-          width: 44
-          height: 24
-          state:
-            checked: !lambda |-
-              return id(dnd_switch).state;
-          on_value:
-          - lambda: |-
-              if (x == id(dnd_switch).state) return;
-              if (x) id(dnd_switch).turn_on();
-              else id(dnd_switch).turn_off();
   _round_phone_layout: |-
     const auto &gx = id(layout_x);
     const auto &gy = id(layout_y);

@@ -469,6 +469,50 @@ The checked-in capture and summary tools keep this workflow reproducible:
 ./.venv/bin/python tools/analyze_jtag_snapshots.py --help
 ```
 
+### Render the on-device Options page
+
+Use the actual expanded configuration with ESPHome's official host snapshot
+display. The renderer imports the production page, fonts, theme and settings
+callbacks. It replaces hardware data owners with host fixtures, without an
+audio or SIP stack:
+
+```bash
+esphome config device.yaml > device-expanded.yaml
+./.venv/bin/python tools/render_lvgl.py \
+  --input device-expanded.yaml --page settings_continuous_page \
+  --width 240 --height 240 \
+  --output test_captures/options-preview \
+  --build-parent /tmp/options-preview-build
+```
+
+Use the complete config dump here, without `--no-defaults`, so native generated
+entities are available to the host fixtures. Do not use `--show-secrets`.
+Box V2 uses 360 by 360 pixels; P4 uses `settings_p4_page` and the selected
+orientation's dimensions. `--prepare-only` writes the host configuration
+without compiling or running it.
+
+Inspect the top, middle and end snapshots, including the physical circular
+boundary on round displays. Check the fixed Back button, wrapped labels,
+values and units, optional controls and the final VoIP section. A host
+snapshot proves the rendered layout, not panel operation, touch propagation,
+speaker audio or DSP behavior. Gesture tests need real LVGL pointer input;
+calling a gesture handler directly does not exercise hit testing or bubbling.
+
+For round profiles with VoIP, add `--pointer` to exercise the production
+startup page registry, page selector and LVGL pointer input. Check the bounded
+Assist -> Contacts -> Dialer -> Options sequence: UP advances, DOWN goes back,
+and neither end wraps. Inside Options, test navigation from the fixed header
+or exposed area outside the scrolling body, and verify that dragging inside
+the body scrolls without leaving the page. During a call, a recognized swipe
+must not become a hangup, while a normal hangup tap must still work. These
+host checks do not replace validation of the physical touchscreen.
+
+Settings must update from their existing owners' notifications and refresh on
+page entry. Verify that opening or refreshing the page causes no writes to
+the controls, that a rejected command restores the actual value, and that a
+dragged slider is not overwritten by a concurrent state notification. Changes
+to playback metadata alone must not redraw an unchanged volume control.
+
 ### ESP32-S3 profiling without application probes
 
 `tools/esp_profile.py` collects DEBUGPC samples and whole-core PMU counters

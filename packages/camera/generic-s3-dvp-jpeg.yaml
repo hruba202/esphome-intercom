@@ -1,0 +1,38 @@
+# Native ESPHome DVP/JPEG capture and the existing VoIP camera adapter, no display required.
+i2c:
+  - id: camera_i2c
+    sda: ${camera_sda_pin}
+    scl: ${camera_scl_pin}
+    scan: false
+
+esp32_camera:
+  id: esp32_cam
+  name: Camera
+  external_clock:
+    pin: ${camera_xclk_pin}
+    frequency: ${camera_xclk_frequency}
+  i2c_id: camera_i2c
+  data_pins: ${camera_data_pins}
+  vsync_pin: ${camera_vsync_pin}
+  href_pin: ${camera_href_pin}
+  pixel_clock_pin: ${camera_pclk_pin}
+  resolution: ${camera_width}x${camera_height}
+  pixel_format: jpeg
+  jpeg_quality: ${camera_jpeg_quality}
+  frame_buffer_location: PSRAM
+  frame_buffer_count: ${camera_frame_buffers}
+  max_framerate: ${camera_framerate} fps
+  idle_framerate: ${camera_idle_framerate}
+  vertical_flip: ${camera_vertical_flip}
+  horizontal_mirror: ${camera_horizontal_mirror}
+
+voip_stack:
+  video:
+    codec: jpeg
+    camera_id: esp32_cam
+    width: ${camera_width}
+    height: ${camera_height}
+    framerate: ${camera_framerate}
+
+packages:
+  video_controls: !include '../voip/video_entities.yaml'

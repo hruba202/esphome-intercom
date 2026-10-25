@@ -4,13 +4,22 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+> **ESP firmware migration: start from the current YAML for your exact board.**
+> Device packages, feature composition and display/runtime bindings have changed
+> substantially. Bring your device settings into the new profile instead of
+> stacking the new packages onto an old assembled YAML. Rebuild and upload the
+> firmware to install ESP-side changes; updating HACS only updates Home Assistant.
+> Follow the [device-package migration](#development-firmware-new-device-packages)
+> below.
+
 ## Development firmware: native audio providers
 
 **Start from the updated YAML for your exact board when rebuilding this
 preview.** Keep your device identity, credentials, wiring and wanted features.
 The maintained device packages now use official ESPHome 2026.10 audio, mixer,
 resampler, `speaker_source`, Voice Assistant, Micro Wake Word and OTA providers.
-The project-owned Audio Stack/AEC/AFE, VoIP Stack and Runtime Controller remain.
+Audio Stack/AEC/AFE and VoIP Stack remain project-owned. FULL profiles also use
+Runtime Controller; standalone VoIP-only profiles use VoIP Stack callbacks.
 
 For a custom configuration:
 
@@ -101,6 +110,32 @@ through HACS. It does not require deleting the HA integration, its phones or
 your working device. This preview uses coordinated `dev` packages and component
 sources. Use its published source references rather than mixing them with `main`.
 
+### Choose FULL or standalone VoIP-only
+
+Start from `yamls/full-experience/` for Assist, wake word, music and telephone
+features coordinated by Runtime Controller. For a standalone telephone, use the
+matching entrypoint under `yamls/voip-only/`. Those profiles use VoIP Stack's
+native callbacks for phone state, optional ringtone, LEDs and display controls.
+They do not include Runtime Controller.
+
+Changing a FULL profile to `firmware_features: [voip]` changes its selected
+features while retaining the FULL architecture. Choose a VoIP-only entrypoint
+when you want the standalone phone architecture.
+
+For generic ESP32-S3 devices with a native DVP JPEG camera:
+
+| Profile | Entrypoint | Application lifecycle |
+| --- | --- | --- |
+| FULL Audio + Video | [`generic-s3-full-aec-camera.yaml`](../yamls/full-experience/single-bus/generic-s3-full-aec-camera.yaml) | Runtime Controller with the selected Assist, media and phone features |
+| VoIP-only + camera | [`generic-s3-voip-camera.yaml`](../yamls/voip-only/single-bus/generic-s3-voip-camera.yaml) | VoIP Stack callbacks, without Runtime Controller |
+
+Both examples expose board memory, microphone/amplifier wiring and camera GPIOs
+through substitutions. The reference wiring is for Freenove FNK0085 N8R8; select
+values for your actual board. S3 supports camera video transmission, without
+rendering the remote video on an S3 display. Supported P4 video profiles retain
+camera transmission and remote-video rendering. Audio is bidirectional when
+the device includes both a microphone and a speaker.
+
 ### Migrate a copied device YAML
 
 1. Keep your old YAML and secrets for comparison. Select the current equivalent
@@ -129,6 +164,19 @@ sources. Use its published source references rather than mixing them with `main`
 7. Check the device's selected functions: call in and out, hang up and redial,
    invoke Assist, play and stop media, and check the display/LED after each action.
    Test only functions your profile includes, then their intended combinations.
+
+Use only the selectors exposed by the chosen example. If it provides
+`audio_processor`, `mic_mix` or `voip_transport`, edit those substitutions rather
+than adding another audio backend or transport package. Fixed-backend profiles
+retain their stated backend. FULL round displays now navigate vertically through
+Assist, Contacts, Keypad and Options, omitting unavailable pages and stopping at
+the ends; the Options body scrolls independently of page navigation.
+
+To inspect the resolved configuration with its packages expanded, run:
+
+```sh
+esphome config your-device.yaml
+```
 
 This recommendation does not mean that every existing leaf include was removed.
 It gives a clean starting point for the new composition while preserving your

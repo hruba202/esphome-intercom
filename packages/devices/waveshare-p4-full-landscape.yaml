@@ -70,7 +70,6 @@ substitutions:
         updates_number: 1
     speaker:
     - id: !extend 'voip_speaker_input'
-      output_speaker: voip_mixer_input
       task_stack_in_psram: true
       buffer_duration: 128ms
   firmware_music_binding:
@@ -80,7 +79,6 @@ substitutions:
       task_stack_in_psram: true
     speaker:
     - id: !extend 'media_speaker_input'
-      output_speaker: media_mixer_input
       task_stack_in_psram: true
   firmware_announcement_binding:
     media_source:
@@ -89,7 +87,6 @@ substitutions:
       task_stack_in_psram: true
     speaker:
     - id: !extend 'tts_speaker_input'
-      output_speaker: tts_mixer_input
       task_stack_in_psram: true
   firmware_controls:
     packages:

@@ -37,7 +37,9 @@ class DiagnosticReader:
             self.pending = {}
         if self.pending is None:
             return
-        self.pending.update(re.findall(r'\b([a-z0-9_]+)=([^\s]+)', message))
+        # VoIP video repeats audio's packet counters and active flag.
+        prefix = 'video_' if self.tag == '[voip_stack.diagnostics:' and re.search(r'\]:\s*video:\s', message) else ''
+        self.pending.update((prefix + key, value) for key, value in re.findall(r'\b([a-z0-9_]+)=([^\s]+)', message))
         if 'END v=1 ' in message:
             self.latest, self.pending = self.pending, None
             self.sequence += 1

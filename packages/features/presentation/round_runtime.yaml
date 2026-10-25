@@ -195,6 +195,42 @@ globals:
   restore_value: false
   initial_value: '{0}'
 script:
+- id: round_navigate
+  parameters:
+    delta: int
+  then:
+  - lambda: |-
+      // Consume a recognized swipe even when an endpoint or priority owner
+      // keeps the current page. It must not become a click on its old button.
+      auto *input = lv_indev_active();
+      if (input != nullptr && lv_indev_get_gesture_dir(input) != LV_DIR_NONE) {
+        lv_indev_wait_release(input);
+      }
+      if (id(g_ota_in_progress) || id(init_in_progress) ||
+          ${ 'id(phone).is_active()' if _round_has_phone else 'false' } ||
+          ${ 'id(runtime).is_activity_active("timer_ringing")' if _round_has_timers else 'false' }) return;
+      if (delta == 0) return;
+
+      // These are positions in the visible sequence, derived from the
+      // existing owners. No additional navigation state is retained.
+      int current = id(settings_active) ? 3 :
+          ${ '(id(voip_dialer_active) ? 2 : (id(current_mode) == 1 ? 1 : 0))' if _round_has_phone else '0' };
+      const int step = delta > 0 ? 1 : -1;
+      int next = current + step;
+      while (next >= 0 && next <= 3) {
+        if ((next == 0 && ${ 'true' if _fw_voice else 'false' }) ||
+            ((next == 1 || next == 2) && ${ 'true' if _round_has_phone else 'false' }) || next == 3) break;
+        next += step;
+      }
+      if (next < 0 || next > 3) return;
+
+      id(settings_active) = next == 3;
+      id(g_settings_index) = 0;
+      id(current_mode) = next == 1 || next == 2 ? 1 : 0;
+      ${ 'id(voip_dialer_active) = next == 2;\n      id(call_ended_active) = false;' if _round_has_phone else '' }
+      id(nav_anim) = step > 0 ? LV_SCR_LOAD_ANIM_MOVE_TOP : LV_SCR_LOAD_ANIM_MOVE_BOTTOM;
+      id(nav_anim_ms) = 300;
+      id(draw_display).execute();
 - id: apply_media_artwork
   then:
   - lambda: |-
@@ -276,16 +312,21 @@ switch:
 packages:
   phase: !include 'phase.yaml'
   navigation: !include '../../lvgl/lvgl_settings_navigation.yaml'
-  volume_settings: !include '../../lvgl/lvgl_settings_sync_volumes.yaml'
-  mute_settings: !include '../../lvgl/lvgl_settings_sync_mute.yaml'
-  processing_settings: !include '../../lvgl/lvgl_settings_sync_aec.yaml'
-  wake_word_settings: ${ _round_wake_word_settings if _fw_wake_word else {} }
+  settings: !include 'settings/main.yaml'
   player_hooks: ${ _round_player_display if _fw_playback else {} }
   phone: ${ _round_phone_ui if _round_has_phone else {} }
   timers: ${ _round_timer_ui if _round_has_timers else {} }
   artwork: ${ _round_artwork if _fw_sendspin else {} }
   content: !include 'round_content.yaml'
 defaults:
+  _round_navigation_up:
+  - script.execute:
+      id: round_navigate
+      delta: 1
+  _round_navigation_down:
+  - script.execute:
+      id: round_navigate
+      delta: -1
   _round_player_display:
     media_player:
     - id: !extend 'speaker_media_player'
@@ -358,6 +399,11 @@ defaults:
       // Skip page load if already showing (avoids redundant SPI transfer)
       bool page_changed = (target != lv_disp_get_scr_act(nullptr));
       if (page_changed) {
+        // A navigation gesture must not become a click on the old screen.
+        auto *input = lv_indev_active();
+        if (input != nullptr && lv_indev_get_gesture_dir(input) != LV_DIR_NONE) {
+          lv_indev_wait_release(input);
+        }
         // Stop animation before page switch to prevent split-screen glitch
         lv_anim_del(id(idle_anim), nullptr);
         // Honour swipe-driven animation hint, otherwise instant load.
@@ -386,10 +432,11 @@ defaults:
       // the reducer selected its intended policy state.
       id(runtime_rendered_page) = page_name;
 
-      // Dense text and the round dialer use the complete visible disk.
+      // Dense text, the dialer and scrollable Options use the complete disk.
       const bool show_status =
           target != id(replying_page)->obj &&
           target != id(thinking_page)->obj &&
+          target != id(settings_continuous_page)->obj &&
           ${ 'target != id(call_dialer_page)->obj' if _round_has_phone else 'true' };
       if (show_status) {
         lv_obj_clear_flag(id(top_clock_label), LV_OBJ_FLAG_HIDDEN);
@@ -424,10 +471,11 @@ defaults:
       - script.stop: reply_pagination_timer
   _round_render_after_phone:
   - script.execute: draw_display
-  _round_wake_word_settings: !include '../../lvgl/lvgl_settings_sync_va.yaml'
 touchscreen:
 - id: !extend 'touch'
   on_touch: ${ _round_touch_common + (_round_touch_timer if _round_has_timers else []) }
 substitutions:
   _round_has_phone: ${ _fw_display and _fw_voip }
   _round_has_timers: ${ _fw_display and _fw_timers }
+  _round_navigation_up: ${_round_navigation_up}
+  _round_navigation_down: ${_round_navigation_down}

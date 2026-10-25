@@ -30,10 +30,12 @@ defaults:
   - lambda: |-
       id(g_settings_pages).clear();
       id(g_settings_pages).push_back(id(settings_continuous_page)->obj);
+      id(current_mode) = ${ 1 if not _fw_voice and _fw_voip else 0 };
+      id(settings_active) = ${ 'true' if not _fw_voice and not _fw_voip else 'false' };
   - script.execute: backlight_timer
 esphome:
   on_boot:
-    priority: 600
+  - priority: 600
     then: ${ (_spotpear_boot_display if _fw_display else []) + (_spotpear_boot_wake_word if _fw_wake_word else [])
       + _spotpear_boot_delay + (_spotpear_boot_phone if _fw_display and _fw_voip else []) + _spotpear_boot_wait
       + _spotpear_boot_fallback }

@@ -1,11 +1,10 @@
 # Spotpear full-experience VoIP navigation.
 #
-# Base vertical stack:
-#   VA --swipe up--> contacts --swipe up--> settings
-# Device-specific pages may insert another screen between contacts and settings.
+# Round page navigation is owned by round_navigate: Assist, contacts, dialer,
+# Options. Up advances, down returns, and neither endpoint wraps.
 #
 # Requires the full-experience scripts/globals:
-#   swipe_to_va, settings_open, nav_anim, nav_anim_ms.
+#   round_navigate, nav_anim, nav_anim_ms.
 
 script:
   - id: !extend settings_open_transition
@@ -22,8 +21,12 @@ script:
 
   - id: call_to_settings
     then:
-      - script.execute: settings_open
+      - script.execute:
+          id: round_navigate
+          delta: 1
 
   - id: call_to_va
     then:
-      - script.execute: swipe_to_va
+      - script.execute:
+          id: round_navigate
+          delta: -1

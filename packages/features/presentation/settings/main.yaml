@@ -1,0 +1,160 @@
+# One settings page, composed at configuration time from the available controls.
+# Round displays: Assist, contacts, dialer, Options, with absent features skipped.
+# Swipe up to advance and down to go back, without wrapping at either endpoint.
+# Its body scrolls; use the fixed header or exposed outer area for navigation.
+# The fixed Back button goes to the previous view.
+substitutions:
+  _settings_round: ${ _settings_round | default(true) }
+  _settings_afe: ${ _settings_afe | default(true) }
+  _settings_single_mic: ${ _settings_single_mic | default(true) }
+  _settings_video: ${ _settings_video | default(false) }
+  _settings_page_id: ${ _settings_page_id | default('settings_continuous_page') }
+  _settings_modes: ${firmware_processing_modes}
+  _settings_font: ${ ('montserrat_14' if (display_width | int) <= 240 else 'montserrat_20') if _settings_round else settings_label_font }
+  _settings_control_width: ${ (settings_row_width | int) if _settings_round else ((settings_row_width | int) - 20) // 2 }
+  _settings_switch_width: ${ [settings_switch_width | int, 60] | max }
+  _settings_switch_height: ${ [settings_switch_height | int, 36] | max }
+  _settings_slider_touch_pad: ${ [0, ((40 if (display_width | int) <= 240 else 48) - (settings_slider_height | int)) // 2] | max }
+  _settings_row_height: 48
+  _settings_label_width: ${ (_settings_control_width | int) - (_settings_switch_width | int) - 12 }
+  _settings_header_y: ${ (display_height | int) // 10 if _settings_round else 0 }
+  _settings_header_height: ${ 52 if _settings_round else 56 }
+  _settings_content_y: ${ (_settings_header_y | int) + (_settings_header_height | int) }
+  _settings_register_audio:
+    lambda: ${_settings_audio_callbacks}
+  _settings_register_voip:
+    lambda: ${ _settings_voip_callback if _fw_voip else '' }
+  _settings_register_page:
+    lambda: |-
+      // SCREEN_LOADED follows active-screen selection with and without animation.
+      lv_obj_add_event_cb(id(${_settings_page_id})->obj, [](lv_event_t *) {
+        id(settings_sync_widgets).execute();
+      }, LV_EVENT_SCREEN_LOADED, nullptr);
+  _settings_close_round:
+  - script.execute:
+      id: round_navigate
+      delta: -1
+  _settings_close_p4:
+  - lvgl.page.show:
+      id: main_page
+      animation: MOVE_BOTTOM
+      time: 250ms
+  _settings_general_columns:
+  - obj:
+      id: settings_general_controls
+      width: ${settings_row_width}
+      height: SIZE_CONTENT
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      scrollable: false
+      layout:
+        type: FLEX
+        flex_flow: ${ 'COLUMN' if _settings_round else 'ROW' }
+        flex_align_main: SPACE_BETWEEN
+        flex_align_cross: START
+        pad_row: ${settings_pad_row}
+      widgets: ${ _settings_left_column + _settings_right_column }
+  _settings_left_column:
+  - obj:
+      id: settings_audio_column
+      width: ${_settings_control_width}
+      height: SIZE_CONTENT
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      scrollable: false
+      layout:
+        type: FLEX
+        flex_flow: COLUMN
+        flex_align_main: START
+        flex_align_cross: CENTER
+        pad_row: ${settings_pad_row}
+      widgets: ${_settings_left_widgets}
+  _settings_right_column:
+  - obj:
+      id: settings_voice_column
+      width: ${_settings_control_width}
+      height: SIZE_CONTENT
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      scrollable: false
+      layout:
+        type: FLEX
+        flex_flow: COLUMN
+        flex_align_main: START
+        flex_align_cross: CENTER
+        pad_row: ${settings_pad_row}
+      widgets: ${_settings_right_widgets}
+  _settings_page:
+  - id: ${_settings_page_id}
+    bg_color: 0x202020
+    scrollable: false
+    on_swipe_up: ${ _round_navigation_up if _settings_round else [] }
+    on_swipe_down: ${ _round_navigation_down if _settings_round else [] }
+    widgets:
+    - obj:
+        id: settings_page_header
+        align: TOP_MID
+        y: ${_settings_header_y}
+        width: ${ settings_narrow_width if _settings_round else settings_row_width }
+        height: ${_settings_header_height}
+        bg_color: 0x202020
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+        - button:
+            id: settings_back_button
+            width: ${ 66 if _settings_round else 100 }
+            height: 44
+            on_click: ${ _settings_close_round if _settings_round else _settings_close_p4 }
+            widgets:
+            - label:
+                align: CENTER
+                text: Back
+                text_font: ${_settings_font}
+        - label:
+            text: Options
+            text_color: 0xFFFFFF
+            text_font: ${_settings_font}
+    - obj:
+        id: settings_page_wrapper
+        x: 0
+        y: ${_settings_content_y}
+        width: 100%
+        height: ${ (display_height | int) - (_settings_content_y | int) }
+        bg_color: 0x202020
+        border_width: 0
+        pad_top: 8
+        pad_bottom: ${ (display_height | int) // 6 if _settings_round else 16 }
+        pad_left: 0
+        pad_right: 0
+        scrollable: true
+        gesture_bubble: ${ not _settings_round }
+        scroll_dir: VER
+        scrollbar_mode: AUTO
+        layout:
+          type: FLEX
+          flex_flow: COLUMN
+          flex_align_main: START
+          flex_align_cross: CENTER
+          flex_align_track: CENTER
+          pad_row: ${settings_pad_row}
+        widgets: ${ _settings_general_columns + (_settings_voip_widgets if _fw_voip else []) }
+packages:
+  audio_video: !include audio_video.yaml
+  voip: !include ${ 'voip.yaml' if _fw_voip else '../../shared/absent.yaml' }
+script:
+- id: settings_sync_widgets
+  then: ${ _settings_refresh_audio + (_settings_refresh_voip if _fw_voip else []) }
+esphome:
+  on_boot:
+  - priority: -200
+    then: ${ [_settings_register_audio, _settings_register_page] + ([_settings_register_voip] if _fw_voip else []) }

@@ -307,17 +307,77 @@ def test_box3_display_and_sensor_dock_are_independent(tmp_path: Path, processor:
     assert generated.returncode == 0, generated.stdout + generated.stderr
 
 
-@pytest.mark.parametrize('profile_path', [
+_HEADLESS_STANDALONE_PROFILES = [
     'yamls/voip-only/esphome-native/generic-s3-voip-esphome-native-full-duplex.yaml',
     'yamls/voip-only/esphome-native/generic-s3-voip-esphome-native-mic-only.yaml',
     'yamls/voip-only/esphome-native/generic-s3-voip-esphome-native-speaker-only.yaml',
     'yamls/voip-only/single-bus/generic-s3-voip.yaml',
     'yamls/voip-only/dual-bus/generic-s3-voip.yaml',
     'yamls/voip-only/single-bus/waveshare-s3-voip.yaml',
-])
-@pytest.mark.parametrize('features', [['voip', 'status_led', 'diagnostics'], ['voip'], [], ['status_led', 'diagnostics']])
+]
+# Follow the maintained catalog, including new untracked entrypoints while
+# excluding gitignored local diagnostics and secrets before opening any file.
+_MAINTAINED_PHONE_YAMLS = [
+    ROOT / path for path in subprocess.check_output(
+        ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '--',
+         'yamls/voip-only', 'yamls/experimental'], cwd=ROOT, text=True).splitlines()
+    if path.endswith('.yaml') and Path(path).name != 'secrets.yaml'
+]
+_STANDALONE_PHONE_CASES = [
+    pytest.param(profile_path, features, id=f'features{index}-{profile_path}')
+    for profile_path in _HEADLESS_STANDALONE_PROFILES
+    for index, features in enumerate((['voip', 'status_led', 'diagnostics'], ['voip'], [], ['status_led', 'diagnostics']))
+] + [
+    pytest.param(str(path.relative_to(ROOT)), None,
+                 id='shipped-default-' + str(path.relative_to(ROOT / 'yamls/voip-only')).replace('/', '-'))
+    for path in sorted(_MAINTAINED_PHONE_YAMLS)
+    if path.is_relative_to(ROOT / 'yamls/voip-only')
+] + [
+    pytest.param(str(path.relative_to(ROOT)), None,
+                 id='experimental-default-' + path.name)
+    for path in sorted(_MAINTAINED_PHONE_YAMLS)
+    if path.is_relative_to(ROOT / 'yamls/experimental') and 'voip-only' in path.name
+]
+
+
+def _assert_standalone_callbacks_without_runtime(document, generated=None):
+    from tests.native_profile import nodes, text
+
+    assert 'runtime_controller' not in document
+    assert not any(str(key).startswith('runtime_controller.')
+                   for node in nodes(document) for key in node)
+    for entry in document.get('external_components', []):
+        assert 'runtime_controller' not in entry.get('components', [])
+        assert 'esphome-runtime-controller' not in str(entry.get('source', ''))
+    # An unused source substitution is not a loaded component. Inspect the
+    # actual callbacks, lambdas and platform options, without that metadata.
+    resolved = {key: value for key, value in document.items() if key != 'substitutions'}
+    behavior = text(resolved)
+    for forbidden in ('runtime_controller::', 'runtime_controller.event',
+                      'USE_RUNTIME_CONTROLLER', 'id(runtime)'):
+        assert forbidden not in behavior
+    if 'voip_stack' in document:
+        for event in ('on_calling', 'on_ringing', 'on_in_call', 'on_idle', 'on_hangup', 'on_call_failed'):
+            assert event in document['voip_stack'], event
+    if generated is not None:
+        for forbidden in ('runtime_controller::', 'USE_RUNTIME_CONTROLLER',
+                          '#include "esphome/components/runtime_controller/'):
+            assert forbidden not in generated
+
+
+@pytest.mark.parametrize('profile_path,features', _STANDALONE_PHONE_CASES)
+@pytest.mark.timeout(180)
 def test_standalone_phone_has_no_implicit_led_or_coordinator(tmp_path, profile_path, features):
+    shipped = features is None
+    original = yaml_util.load_yaml(ROOT / profile_path)
+    if shipped:
+        features = original['substitutions']['firmware_features']
     config = device_config(tmp_path, features, profile_path)
+    if shipped:
+        data = yaml_util.load_yaml(config)
+        data.update({key: value for key, value in original.items() if key not in ('substitutions', 'packages')})
+        data.setdefault('esphome', {})['build_path'] = str(tmp_path / 'build')
+        config.write_text(yaml_util.dump(data))
     result = subprocess.run(
         [sys.executable, '-m', 'esphome', 'config', '--no-defaults', str(config)],
         capture_output=True, text=True, timeout=120,
@@ -328,15 +388,26 @@ def test_standalone_phone_has_no_implicit_led_or_coordinator(tmp_path, profile_p
     expanded.write_text(result.stdout)
     document = yaml_util.load_yaml(expanded)
     assert ('voip_stack' in document) is ('voip' in features)
+    _assert_standalone_callbacks_without_runtime(document)
+    if not profile_path.startswith('yamls/voip-only/'):
+        return
     assert not {'runtime_controller', 'voice_assistant', 'micro_wake_word', 'sendspin'} & document.keys()
-    assert ('light' in document) is ('status_led' in features)
+    assert ('light' in document) is ('status_led' in features or (shipped and 'display' in features))
     assert ('microphone' in document) is ('speaker-only' not in profile_path)
     assert ('speaker' in document) is ('mic-only' not in profile_path)
+    samples = {'yamls/voip-only/single-bus/spotpear-ball-v2-voip.yaml',
+               'yamls/voip-only/single-bus/waveshare-p4-touch-videophone-h264.yaml'}
+    if shipped and profile_path not in samples:
+        return
     generated = subprocess.run(
         [sys.executable, '-m', 'esphome', 'compile', '--only-generate', str(config)],
         capture_output=True, text=True, timeout=120,
     )
     assert generated.returncode == 0, generated.stdout + generated.stderr
+    main_cpp = next(tmp_path.rglob('main.cpp'))
+    generated_components = '\n'.join((main_cpp.parent / name).read_text()
+                                     for name in ('main.cpp', 'esphome.h', 'esphome/core/defines.h'))
+    _assert_standalone_callbacks_without_runtime(document, generated_components)
 
 
 @pytest.mark.parametrize('profile_path', [

@@ -17,7 +17,7 @@ REQUIRES = {
     "wake_word": ("voice",),
     "timers": ("voice",),
     "sendspin": ("music",),
-    "video": ("voip", "display"),
+    "video": ("voip",),
 }
 
 

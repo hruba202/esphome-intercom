@@ -8,3 +8,7 @@ binary_sensor:
   - script.execute: backlight_timer
   on_release:
   - script.execute: backlight_timer
+
+defaults:
+  _settings_afe: ${ _v2_afe }
+  _settings_single_mic: ${ _v2_average }

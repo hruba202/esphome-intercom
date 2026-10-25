@@ -1,0 +1,67 @@
+# GENERIC ESP32-S3 SIP AUDIO + VIDEO: shared I2S, software AEC and native DVP JPEG.
+# Standalone VoIP callbacks own the phone; no Voice Assistant, wake word or FULL runtime.
+# Reference wiring: Freenove FNK0085 N8R8, INMP441 and MAX98357A.
+# Adapt the pins and memory below for your module. This VoIP-only variant needs its own hardware test.
+# Camera pinout: https://github.com/Freenove/Freenove_ESP32_S3_WROOM_Board
+#
+# Mic and amplifier share BCLK/WS, with separate DIN/DOUT and a common GND.
+# Power INMP441 VDD and its right-channel L/R selector from 3V3.
+# Bus/speaker: 48 kHz. Processed microphone: 16 kHz with software playback reference.
+# Camera: JPEG TX over SIP/RTP, no display required.
+#
+# Packages compose the firmware. To inspect the expanded YAML:
+#   esphome config generic-s3-voip-camera.yaml
+
+substitutions:
+  name: generic-s3-voip-camera
+  friendly_name: Generic S3 VoIP Camera
+  firmware_features: [voip, status_led, diagnostics, video]
+  voip_transport: udp  # SIP signaling: udp or tcp. Audio/video media remain RTP/UDP.
+
+  # Match the actual module's flash and PSRAM.
+  board_type: freenove_esp32_s3_wroom
+  board_flash_size: 8MB
+  board_flash_mode: dio
+  board_psram_mode: octal
+  board_psram_speed: 80MHz
+
+  # Shared I2S clocks; microphone SD goes to DIN, amplifier DIN goes to DOUT.
+  i2s_bclk_pin: GPIO14
+  i2s_lrclk_pin: GPIO21
+  i2s_din_pin: GPIO47
+  i2s_dout_pin: GPIO1
+  speaker_enable_pin: GPIO41  # Use "" when the amplifier enable is tied high.
+  audio_mic_channel: right  # L/R tied to 3V3 selects right; GND selects left.
+  audio_bus_bits: 32
+  audio_slot_bits: 32
+  audio_task_core: 0
+
+  # Native DVP camera, data pins ordered D0 through D7.
+  camera_sda_pin: GPIO4
+  camera_scl_pin: GPIO5
+  camera_xclk_pin: GPIO15
+  camera_xclk_frequency: 20MHz
+  camera_vsync_pin: GPIO6
+  camera_href_pin: GPIO7
+  camera_pclk_pin: GPIO13
+  camera_data_pins: [GPIO11, GPIO9, GPIO8, GPIO10, GPIO12, GPIO18, GPIO17, GPIO16]
+  camera_width: 640
+  camera_height: 480
+  camera_framerate: 10
+  camera_jpeg_quality: 10
+  camera_frame_buffers: 1
+  camera_idle_framerate: 0.1 fps
+  camera_vertical_flip: true
+  camera_horizontal_mirror: true
+
+  # Optional status LED, driven directly by the phone callbacks.
+  status_led_pin: GPIO48
+  status_led_chipset: WS2812
+  status_led_rgb_order: GRB
+
+  ext_components_source: github://n-IA-hane/esphome-intercom@dev
+  voip_stack_components_source: github://n-IA-hane/esphome-voip-stack@dev
+  audio_stack_components_source: github://n-IA-hane/esphome-audio-stack@dev
+
+packages:
+  device: github://n-IA-hane/esphome-intercom/packages/devices/generic-s3-phone-single-camera.yaml@dev

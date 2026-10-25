@@ -106,6 +106,42 @@ editing the original YAML, and do not add `--show-secrets` to share a config.
 For codec-free stereo microphones and the available acquisition layouts, see
 [Audio Stack microphone delivery](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/docs/AUDIO_TUNING.md#1-choose-how-microphones-reach-the-processor).
 
+## On-device Options
+
+Spotpear Ball v2, Waveshare Box V2 and P4 FULL displays share one Options page.
+It is composed with the selected firmware features; no extra includes are
+needed in the main device YAML.
+
+On the round displays, the vertical sequence is **Assist -> Contacts -> Dialer
+-> Options**. Swipe **from bottom to top** to advance and **from top to bottom**
+to go back. The first and last views stop there, without wrapping. Views for
+features not compiled in are skipped: without VoIP, the sequence is Assist
+and Options; with VoIP but no Voice Assistant, it starts at Contacts. A
+display-only profile shows Options alone.
+
+Inside Options, swipes in the body scroll the controls. Navigate from the
+fixed header or an exposed area outside the scrolling body, or use **Back**
+to return to the previous view. P4 keeps its existing settings gesture and
+button.
+
+Audio comes first: master volume, playback volume, microphone gain and mutes.
+Master controls the complete speaker output, including calls. Playback volume
+is shared by music and announcements. Processing controls follow the chosen
+backend: AEC and processing mode, plus NS, AGC and VAD where available. The
+dual-microphone AFE profile has no runtime BSS switch. The mode selector retains
+the backend's existing restrictions during active Assist or VoIP sessions.
+
+Wake word and Sendspin pairing controls appear only with their features.
+The final **VoIP** section contains auto answer, Do not disturb, conference
+ringing and video sending where a video pipeline is present. Removing `voip`
+also removes this section, its widgets and bindings. Extension and group
+configuration remains in Home Assistant. Backend, microphone delivery and SIP
+transport are still compile-time choices in the device YAML.
+
+The page reads the existing controls and follows their state notifications.
+Opening it does not reset volumes, gains or saved preferences. Options does
+not add a periodic polling task or a second audio/telephone state owner.
+
 ## Work through a FULL profile
 
 The examples below use the headless
@@ -256,7 +292,7 @@ removing one feature does not promise that every related library disappears.
 | `status_led` | The actual status light and projection | Only on boards with that hardware; BOX-3's legacy indication uses its display backlight |
 | `diagnostics` | Native ESPHome diagnostic entities | Optional, independent of detailed debug logging |
 | `sensor_dock` | BOX-3 dock bus and sensors | BOX-3 profiles only, independent of its screen |
-| `video` | Selected P4 camera, SIP codec and renderer | P4 video profiles only; requires `voip` and `display` |
+| `video` | Camera transmission and the selected SIP video codec | Requires `voip`; P4 renderer profiles also require `display` |
 
 If a dependency is absent, its dependent feature is not instantiated. For example,
 `sendspin` without `music`, or `wake_word` without `voice`, contributes no consumer.
@@ -376,11 +412,13 @@ ESPHome client handles discovery, encryption and pairing; no separate custom
 player or Sendspin clock is installed.
 
 1. Open Music Assistant's player settings and select **Setup** for the speaker.
-2. Choose dynamic PIN pairing. If the flow requests confirmation, open the ESP
-   device in Home Assistant and press **Sendspin Confirm Pairing**.
-3. Read **Sendspin Pairing Code** on the same device and enter that temporary
-   code in Music Assistant. It clears after the attempt. **Sendspin Cancel
-   Pairing** cancels the pending request.
+2. Choose dynamic PIN pairing. If the flow requests confirmation, use the
+   Sendspin pairing section in the device's **Options**, or press **Sendspin
+   Confirm Pairing** on the ESP device in Home Assistant.
+3. Read the temporary code in Options or **Sendspin Pairing Code** in Home
+   Assistant and enter it in Music Assistant. It clears after the attempt.
+   The cancel button in Options or **Sendspin Cancel Pairing** in Home
+   Assistant cancels the pending request.
 4. Play a track, stop it, then try a second track. A normal restart preserves
    pairing; it is not repeated for every playback.
 

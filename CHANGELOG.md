@@ -2,6 +2,11 @@
 
 ## 2026.11.0-dev
 
+> **Recommended: update your ESP firmware too.** Rebuild and upload the current
+> board YAML with the coordinated development components for all device-side
+> features and fixes. Updating the HA integration through HACS does not update
+> the firmware running on an ESP.
+
 > **Attention: ESPHome 2026.10.0 or newer is required.**
 >
 > ESPHome 2026.10 brings substantial audio changes, including several of our
@@ -15,6 +20,35 @@
 
 
 Development preview with changes since stable 2026.10.1.
+
+### ESP32-S3 camera video calls
+
+- ESP32-S3 devices can transmit native ESPHome JPEG camera video during SIP
+  calls, including devices without a display. Rendering the remote video on
+  an S3 screen is not yet supported.
+- ESP32-P4 retains bidirectional video, sending its camera stream and displaying
+  the remote caller. Devices with a microphone and speaker retain bidirectional
+  audio on both S3 and P4.
+- Add generic FULL and standalone VoIP-only camera entrypoints, with board
+  memory, microphone/amplifier pins and camera settings exposed at the top.
+  The standalone profile uses VoIP Stack callbacks without Runtime Controller.
+  Thanks to [jayfan0](https://github.com/n-IA-hane/esphome-voip-stack/pull/6) for
+  the native camera contribution and S3 hardware checks.
+
+### Round display settings and package startup
+
+- Share a scrollable Options page with audio controls and an optional VoIP
+  section. FULL round displays navigate through Assist, Contacts, Keypad and
+  Options vertically, stopping at each end and omitting unavailable pages.
+- Update visible controls from entity notifications instead of periodic
+  settings refreshes, and consume navigation gestures before they can become
+  clicks on the previous screen. Ordinary button taps remain available.
+- Preserve all startup automations when packages merge, restoring device
+  initialization and Options-page registration.
+- Allow a board-specific full-charge voltage reference for the BOX V2 battery
+  percentage. Document the new package migration and separate FULL and
+  standalone phone entrypoints in the breaking changes.
+- Keep audio and video packet counters separate in the host diagnostic reader.
 
 ### SIP registration compatibility
 

@@ -1,10 +1,13 @@
 # =============================================================================
-# LVGL settings carousel: state + navigation scripts.
-# Drop-in for any device that includes one or more `lvgl/lvgl_settings_*.yaml`
-# pages. The device YAML must populate `g_settings_pages` at on_boot with the
-# page object pointers in swipe-left order, and trigger `settings_open`
-# from a swipe (typically on the idle page) and `settings_close` from
-# the settings pages' on_swipe_down.
+# Shared settings registry, retaining the legacy page-list API.
+# FULL round profiles use round_navigate from round_runtime for this sequence:
+# Assist -> Contacts -> Dialer -> Options, skipping views not compiled in.
+# Swipe bottom to top to advance, top to bottom to go back. Ends do not wrap.
+# Inside Options, the body scrolls. Navigate from its fixed header or exposed
+# area outside the scrolling body, or use Back to return to the previous view.
+# The device populates g_settings_pages at boot. Older users of the multi-page
+# API can still call the legacy cycling action settings_navigate below; FULL
+# round navigation does not use that action.
 #
 # Provides:
 #   globals: settings_active (bool), g_settings_pages (vector<lv_obj_t*>),
@@ -54,7 +57,7 @@ script:
                            delta >= 0 ? LV_SCR_LOAD_ANIM_MOVE_LEFT : LV_SCR_LOAD_ANIM_MOVE_RIGHT,
                            250, 0, false);
 
-  # Enter settings: jump to the first page in the carousel.
+  # Enter settings. Full round profiles register one page.
   - id: settings_open
     then:
       - script.execute: settings_open_transition
