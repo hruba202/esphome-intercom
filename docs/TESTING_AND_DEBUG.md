@@ -469,7 +469,7 @@ The checked-in capture and summary tools keep this workflow reproducible:
 ./.venv/bin/python tools/analyze_jtag_snapshots.py --help
 ```
 
-### Render the on-device Options page
+### Render the on-device options page
 
 Use the actual expanded configuration with ESPHome's official host snapshot
 display. The renderer imports the production page, fonts, theme and settings

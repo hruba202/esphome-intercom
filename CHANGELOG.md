@@ -38,8 +38,8 @@ Development preview with changes since stable 2026.10.1.
 ### Round display settings and package startup
 
 - Share a scrollable Options page with audio controls and an optional VoIP
-  section. FULL round displays navigate through Assist, Contacts, Keypad and
-  Options vertically, stopping at each end and omitting unavailable pages.
+  section. Spotpear and BOX V2 FULL displays navigate through Assist, Contacts,
+  Keypad and Options vertically, stopping at each end and omitting unavailable pages.
 - Update visible controls from entity notifications instead of periodic
   settings refreshes, and consume navigation gestures before they can become
   clicks on the previous screen. Ordinary button taps remain available.

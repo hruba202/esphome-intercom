@@ -242,6 +242,65 @@ def test_spotpear_layout_and_aec_sync_use_runtime_contracts() -> None:
     assert options == by_id(config['select'], 'aec_mode_select')['options']
 
 
+def _master_volume_boot_writes(boot, scripts=()):
+    """Find number controls, not getter/callback references, reachable at boot."""
+    declarations = {str(item['id']): item.get('then', []) for item in scripts if 'id' in item}
+    pending = [boot]
+    visited = set()
+    writes = []
+    master = r'id\s*\(\s*master_volume\s*\)\s*\.\s*'
+    while pending:
+        for node in nodes(pending.pop()):
+            for operation in ('set', 'increment', 'decrement', 'to_min', 'to_max'):
+                action = 'number.' + operation
+                if action in node and action_id(node, action) == 'master_volume':
+                    writes.append(action)
+            if 'script.execute' in node:
+                target = str(action_id(node, 'script.execute'))
+                if target in declarations and target not in visited:
+                    visited.add(target)
+                    pending.append(declarations[target])
+            if 'lambda' not in node:
+                continue
+            code = str(node['lambda'])
+            if re.search(master + r'(?:control|publish_state)\s*\(', code):
+                writes.append('master_volume direct mutation')
+            if re.search(r'\bset_master_volume(?:_q31)?\s*\(', code):
+                writes.append('audio owner master setter')
+            if re.search(master + r'make_call\s*\(\s*\)[^;]*\.\s*perform\s*\(', code):
+                writes.append('master_volume NumberCall.perform')
+            for variable in re.findall(r'\b(\w+)\s*=\s*' + master + r'make_call\s*\(\s*\)', code):
+                if re.search(r'\b' + re.escape(variable) + r'\s*\.\s*perform\s*\(', code):
+                    writes.append('master_volume staged NumberCall.perform')
+            for target in re.findall(r'id\s*\(\s*(\w+)\s*\)\s*\.\s*execute\s*\(', code):
+                if target in declarations and target not in visited:
+                    visited.add(target)
+                    pending.append(declarations[target])
+    return writes
+
+
+@pytest.mark.parametrize('boot,expected', [
+    ([{'lambda': 'id(master_volume).add_on_state_callback([](float) { id(sync).execute(); });'}], False),
+    ([{'lambda': 'const float value = id(master_volume).state;'}], False),
+    ([{'lambda': 'auto unused = id(master_volume).make_call();'}], False),
+    ([{'number.set': {'id': 'mic_gain', 'value': 0}}], False),
+    *[([{'number.' + action: {'id': 'master_volume', 'value': 1}}], True)
+      for action in ('set', 'increment', 'decrement', 'to_min', 'to_max')],
+    ([{'lambda': 'id(master_volume).make_call().set_value(1).perform();'}], True),
+    ([{'lambda': 'auto call = id(master_volume).make_call(); call.set_value(1); call.perform();'}], True),
+    ([{'lambda': 'id(audio_stack).set_master_volume(0.01f);'}], True),
+    ([{'lambda': 'id(master_volume).publish_state(1);'}], True),
+])
+def test_master_volume_boot_oracle_distinguishes_controls_from_observers(boot, expected):
+    assert bool(_master_volume_boot_writes(boot)) is expected
+
+
+def test_master_volume_boot_oracle_follows_called_scripts():
+    scripts = [{'id': 'set_defaults', 'then': [{'number.set': {'id': 'master_volume', 'value': 1}}]}]
+    assert _master_volume_boot_writes([{'script.execute': 'set_defaults'}], scripts)
+    assert _master_volume_boot_writes([{'lambda': 'id(set_defaults).execute();'}], scripts)
+
+
 def test_p4_full_profile_has_native_camera_and_sip_jpeg() -> None:
     config = profile(P4_LANDSCAPE_FULL_AFE)
     providers = {name for provider in config['external_components'] for name in provider['components']}
@@ -265,8 +324,20 @@ def test_p4_full_profile_has_native_camera_and_sip_jpeg() -> None:
     assert by_id(config['lvgl']['pages'], 'call_video_surface')
     code = values_text(config['script'])
     assert 'id(phone).get_contact_count()' in code and 'get_contacts_csv()' not in code
-    assert 'master_volume' not in values_text(config['esphome'].get('on_boot', []))
-    assert 'ui_video_send_sw' not in values_text(config['lvgl'])
+    boot = config['esphome'].get('on_boot', [])
+    assert not _master_volume_boot_writes(boot, config['script']), 'Boot must not overwrite master volume'
+    assert 'id(master_volume).add_on_state_callback' in values_text(boot)
+    video_control_pages = [page for page in config['lvgl']['pages']
+                           if any(node.get('id') == 'ui_video_send_sw' for node in nodes(page))]
+    assert [page['id'] for page in video_control_pages] == ['settings_p4_page']
+    video_control = by_id(video_control_pages[0], 'ui_video_send_sw')
+    assert 'on_change' in video_control and 'on_value' not in video_control
+    video_commands = values_text(video_control['on_change'])
+    assert 'id(voip_video_send).turn_on()' in video_commands
+    assert 'id(voip_video_send).turn_off()' in video_commands
+    video_sync = values_text(by_id(config['script'], 'settings_sync_video_send'))
+    assert 'id(voip_video_send).state' in video_sync
+    assert 'turn_on()' not in video_sync and 'turn_off()' not in video_sync
     video_entities = (ROOT / 'packages/voip/video_entities.yaml').read_text()
     assert 'video_send:' in video_entities and 'restore_mode: RESTORE_DEFAULT_ON' in video_entities
     sdk = config['esp32']['framework']['sdkconfig_options']

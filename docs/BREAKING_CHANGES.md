@@ -168,9 +168,11 @@ the device includes both a microphone and a speaker.
 Use only the selectors exposed by the chosen example. If it provides
 `audio_processor`, `mic_mix` or `voip_transport`, edit those substitutions rather
 than adding another audio backend or transport package. Fixed-backend profiles
-retain their stated backend. FULL round displays now navigate vertically through
-Assist, Contacts, Keypad and Options, omitting unavailable pages and stopping at
-the ends; the Options body scrolls independently of page navigation.
+retain their stated backend. Spotpear and BOX V2 FULL displays now navigate
+vertically through Assist, Contacts, Keypad and Options, omitting unavailable
+pages and stopping at the ends; the Options body scrolls independently of page
+navigation. The experimental first-generation round layout retains its own
+navigation adapter.
 
 To inspect the resolved configuration with its packages expanded, run:
 

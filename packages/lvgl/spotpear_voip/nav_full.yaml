@@ -1,10 +1,11 @@
 # Spotpear full-experience VoIP navigation.
 #
-# Round page navigation is owned by round_navigate: Assist, contacts, dialer,
-# Options. Up advances, down returns, and neither endpoint wraps.
+# Legacy call-page bridges retain their existing settings and VA owners.
+# Modern round pages invoke round_navigate directly; these compatibility
+# actions also serve the first-generation layout, which has no dialer.
 #
 # Requires the full-experience scripts/globals:
-#   round_navigate, nav_anim, nav_anim_ms.
+#   settings_open, swipe_to_va, nav_anim, nav_anim_ms.
 
 script:
   - id: !extend settings_open_transition
@@ -21,12 +22,8 @@ script:
 
   - id: call_to_settings
     then:
-      - script.execute:
-          id: round_navigate
-          delta: 1
+      - script.execute: settings_open
 
   - id: call_to_va
     then:
-      - script.execute:
-          id: round_navigate
-          delta: -1
+      - script.execute: swipe_to_va

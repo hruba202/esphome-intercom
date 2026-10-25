@@ -488,6 +488,20 @@ def test_first_generation_round_feature_composition(tmp_path, removed):
     assert ('voice_assistant' in document) is ('voice' in features)
     assert ('lvgl' in document) is ('display' in features)
 
+    if 'voip' in features and 'display' in features:
+        from tests.native_profile import action_id
+
+        scripts = {str(item['id']): item for item in document['script']}
+        for bridge, target in (('call_to_settings', 'settings_open'), ('call_to_va', 'swipe_to_va')):
+            assert target in scripts
+            assert [action_id(action, 'script.execute') for action in scripts[bridge]['then']] == [target]
+    if removed is None:
+        generated = subprocess.run(
+            [sys.executable, '-m', 'esphome', 'compile', '--only-generate', str(config)],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert generated.returncode == 0, generated.stdout + generated.stderr
+
 
 @pytest.mark.parametrize('profile_path', [
     'yamls/voip-only/single-bus/spotpear-ball-v2-voip.yaml',
