@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from enum import StrEnum
 import hmac
 import logging
@@ -79,6 +79,9 @@ class SipRegistration:
     instance_id: str = ""
     reg_id: int = 0
     outbound: bool = False
+    gruu_epoch: str = ""
+    public_gruu: str = ""
+    temporary_gruu: str = ""
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -168,14 +171,8 @@ def _extract_register_username(request: sip.SipMessage) -> str:
 
 
 def _header_param(header: str, name: str) -> str:
-    wanted = name.lower()
-    for part in (header or "").split(";")[1:]:
-        if "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        if key.strip().lower() == wanted:
-            return value.strip()
-    return ""
+    _head, parameters = sip._split_semicolon_params(header or "")
+    return next((value or "" for key, value in parameters if key == name.casefold()), "")
 
 
 def _parse_expires(raw: str, default: int = 3600) -> int:
@@ -239,13 +236,17 @@ def _outbound_contact(
     instance_id = _header_param(raw_contact, "+sip.instance").strip('"<>')
     raw_reg_id = _header_param(raw_contact, "reg-id")
     supports_outbound = "outbound" in sip.option_tags(request, "Supported")
-    if not supports_outbound or (not instance_id and not raw_reg_id):
+    if not supports_outbound or not raw_reg_id:
         # +sip.instance is also used independently by GRUU-aware user agents.
         # Supported: outbound advertises capability, it does not require every
         # registration to use an outbound flow.  The Contact becomes an RFC
         # 5626 flow identity only when the UA supplies the paired parameters.
+        if "gruu" in sip.option_tags(request, "Supported") and instance_id:
+            if not instance_id.lower().startswith("urn:uuid:"):
+                raise ValueError("invalid GRUU instance ID")
+            return f"urn:uuid:{uuid.UUID(instance_id[9:])}", 0, False
         return "", 0, False
-    if not instance_id or not raw_reg_id:
+    if not instance_id:
         raise ValueError("incomplete RFC 5626 Contact")
     reg_id = int(raw_reg_id)
     if not 1 <= reg_id <= 2_147_483_647:
@@ -338,6 +339,7 @@ class SipRegistrar:
         self.last_sip_status_code = 0
         self.last_sip_reason = ""
         self.on_registration_change = on_registration_change
+        self._gruu_tokens = None
 
     def _notify_registration_change(self, username: str, registered: bool) -> None:
         if self.on_registration_change is None:
@@ -407,6 +409,34 @@ class SipRegistrar:
                 key=lambda registration: (-registration.q, registration.contact_uri),
             )
         )
+
+    def resolve_gruu(self, uri: sip.SipUri) -> tuple[SipRegistration, ...] | None:
+        """Return only the addressed instance; None denotes an ordinary AoR."""
+        params = {key.casefold(): value for key, value in uri.params}
+        if "gr" not in params:
+            return None
+        if self._gruu_tokens is None:
+            return ()
+        if uri.user.startswith("tgruu-"):
+            identity = self._gruu_tokens.temporary_identity(uri)
+            if identity is None:
+                return ()
+            account, instance, epoch = identity
+            return tuple(item for item in self.registered_contacts(account)
+                         if item.instance_id == instance and item.gruu_epoch == epoch)
+        return tuple(item for item in self.registered_contacts(uri.user)
+                     if item.instance_id and params["gr"] == self._gruu_tokens.public_id(uri.user, item.instance_id))
+
+    def local_gruu_target(self, uri: sip.SipUri) -> sip.SipUri | None:
+        """Resolve an issued instance address without rewriting its Request-URI."""
+        if (uri.host.casefold() != self.local_ip.casefold()
+                or sip.sip_default_port(uri) != self.local_sip_port):
+            return None
+        contacts = self.resolve_gruu(uri)
+        if not contacts:
+            return None
+        binding = max(contacts, key=lambda item: (item.q, item.expires_at, item.cseq))
+        return sip.parse_sip_uri(binding.contact_uri)
 
     @staticmethod
     def _new_binding_key(
@@ -809,6 +839,25 @@ class SipRegistrar:
                         next_registrations,
                         account.username,
                     )
+                epoch = public_gruu = temporary_gruu = ""
+                if contact.instance_id and "gruu" in sip.option_tags(request, "Supported"):
+                    from .core.sip_gruu import GruuTokens
+                    if self._gruu_tokens is None:
+                        self._gruu_tokens = GruuTokens()
+                    previous_binding = next_registrations.get(key)
+                    reset_temporary = previous_binding is not None and previous_binding.call_id != call_id
+                    epoch = (token_hex(16) if reset_temporary else
+                             next((item.gruu_epoch for item in next_registrations.values()
+                                   if item.username.casefold() == account.username.casefold()
+                                   and item.instance_id == contact.instance_id and item.gruu_epoch), token_hex(16)))
+                    aor = sip.parse_sip_uri(request.header("To"))
+                    location = sip.parse_sip_uri(request.uri)
+                    aor = replace(aor, port=aor.port or location.port or self.local_sip_port)
+                    public_gruu, temporary_gruu = self._gruu_tokens.issue(aor, contact.instance_id, epoch)
+                    for binding_key, binding in tuple(next_registrations.items()):
+                        if binding.username.casefold() == account.username.casefold() and binding.instance_id == contact.instance_id:
+                            next_registrations[binding_key] = replace(binding, gruu_epoch=epoch,
+                                public_gruu=public_gruu, temporary_gruu=temporary_gruu)
                 next_registrations[key] = SipRegistration(
                     username=account.username,
                     contact_uri=contact.contact_uri,
@@ -824,6 +873,7 @@ class SipRegistrar:
                     instance_id=contact.instance_id,
                     reg_id=contact.reg_id,
                     outbound=contact.outbound,
+                    gruu_epoch=epoch, public_gruu=public_gruu, temporary_gruu=temporary_gruu,
                 )
 
         self.registrations = next_registrations
@@ -866,14 +916,16 @@ class SipRegistrar:
             for registration in registrations
         ]
         for index, registration in enumerate(registrations):
-            if not registration.outbound:
-                continue
             key, value = headers[index]
-            headers[index] = (
-                key,
-                f'{value};+sip.instance="<{registration.instance_id}>"'
-                f";reg-id={registration.reg_id}",
-            )
+            if registration.outbound or registration.public_gruu:
+                value += f';+sip.instance="<{registration.instance_id}>"'
+            if registration.outbound:
+                value += f";reg-id={registration.reg_id}"
+            if registration.public_gruu:
+                value += f';pub-gruu="{registration.public_gruu}";temp-gruu="{registration.temporary_gruu}"'
+            headers[index] = key, value
+        if any(item.public_gruu for item in registrations):
+            headers.append(("Supported", "gruu"))
         if any(registration.outbound for registration in registrations):
             headers.extend(
                 (("Require", "outbound"), ("Supported", "outbound"), ("Flow-Timer", "25"))
@@ -919,8 +971,10 @@ class SipRegistrar:
     def roster_entries(self) -> list[RosterEntry]:
         return self.registered_roster_entries()
 
-    def registered_roster_entries(self) -> list[RosterEntry]:
+    def registered_roster_entries(self, *, instance_uri: sip.SipUri | None = None) -> list[RosterEntry]:
         self.expire()
+        selected = self.resolve_gruu(instance_uri) if instance_uri is not None else None
+        selected_user = selected[0].username.casefold() if selected else ""
         entries: list[RosterEntry] = []
         registered_usernames = sorted(
             {registration.username.lower() for registration in self.registrations.values()}
@@ -929,7 +983,7 @@ class SipRegistrar:
             account = self.accounts.get(username)
             if account is None or not account.enabled:
                 continue
-            registrations = self.registered_contacts(account.username)
+            registrations = (selected if selected_user == username else self.registered_contacts(account.username))
             if not registrations:
                 continue
             registration = registrations[0]

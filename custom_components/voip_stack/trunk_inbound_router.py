@@ -55,7 +55,6 @@ from .outbound_bridge_commit import (
 )
 from .pbx_routing import dtmf_extension_routes
 from .peer_snapshot import async_build_peer_snapshot
-from .phone_endpoint import EndpointKind
 from .peer import sip_uri_for_peer
 from .phonebook_runtime import registered_roster_entries
 from .router import CallContext, RouteAction, RouteReason, route_inbound_trunk
@@ -558,6 +557,8 @@ async def async_route_trunk_invite(
         generic_video_relay=video_relay is not None,
         allow_video_transcoding=bool(cfg.get(CONF_VIDEO_TRANSCODING, False)),
     )
+    from .sip_runtime import configure_local_contact
+    configure_local_contact(hass, client)
     enable_reused_tcp_connection(
         hass,
         client,

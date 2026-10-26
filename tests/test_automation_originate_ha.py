@@ -149,6 +149,15 @@ async def lab(hass, monkeypatch, socket_enabled):
         base_rtp_port = probe.getsockname()[1]
     entry = MockConfigEntry(domain="voip_stack", data={})
     entry.add_to_hass(hass)
+    from homeassistant.helpers import entity_registry as er
+    er.async_get(hass).async_get_or_create(
+        "sensor", "voip_stack", "voip_stack_phonebook", config_entry=entry,
+        suggested_object_id="voip_phonebook",
+    )
+    er.async_get(hass).async_get_or_create(
+        "event", "voip_stack", "voip_stack_call_event", config_entry=entry,
+        suggested_object_id="voip_stack_call",
+    )
     calls = SipEndpointRuntime(allow_dark_sessions=True)
     calls.activate()
     runtime = VoipStackRuntime(
@@ -162,10 +171,19 @@ async def lab(hass, monkeypatch, socket_enabled):
     monkeypatch.setattr(module, "roster_from_peers", lambda *_args: roster)
     from custom_components.voip_stack.parking import async_park_call
     from custom_components.voip_stack.call_recording import async_start_recording, async_stop_recording, async_get_recording, async_delete_recording
+    from custom_components.voip_stack.call_pickup import async_pickup_call
+    from custom_components.voip_stack.phone_state import async_get_phone_state
+    from custom_components.voip_stack.external_call_access import async_set_external_call_access
     await services.async_register_services(hass, {
         "call": voip_stack._handle_sip_call_target_service,
+        "answer": voip_stack._handle_sip_answer_service,
+        "decline": voip_stack._handle_sip_decline_service,
         "forward": voip_stack._handle_sip_forward_service,
+        "transfer": voip_stack._handle_sip_transfer_service,
         "park": async_park_call,
+        "pickup": async_pickup_call,
+        "get_phone_state": async_get_phone_state,
+        "set_external_call_access": async_set_external_call_access,
         "start_recording": async_start_recording,
         "stop_recording": async_stop_recording,
         "get_recording": async_get_recording,
@@ -183,8 +201,7 @@ async def lab(hass, monkeypatch, socket_enabled):
     yield obj
     from custom_components.voip_stack.endpoint_session import TerminationIntent
     for session in list(calls.sessions.values()):
-        if session.live:
-            await calls.request_termination(session.call_id, TerminationIntent("test_done"))
+        await calls.request_termination(session.call_id, TerminationIntent("test_done"))
     for transport in transports:
         transport.close()
     for task in collectors:
@@ -385,6 +402,9 @@ async def test_final_sip_answer_wins_timeout_while_media_is_starting(lab, monkey
     task = asyncio.create_task(script.async_run(context=Context()))
     try:
         await asyncio.wait_for(ringing.wait(), 2)
+        call_id = phone.last_request.header("Call-ID")
+        deadline = lab.calls.resource_for(call_id, "deadline:phone_policy")
+        assert deadline is not None
         phone.answer()
         await asyncio.wait_for(starting.wait(), 2)
         if remote_hangup:
@@ -396,8 +416,8 @@ async def test_final_sip_answer_wins_timeout_while_media_is_starting(lab, monkey
             return
         call_id = phone.last_request.header("Call-ID")
         session = lab.calls.get_session(call_id)
-        deadline = lab.calls.resource_for(call_id, "deadline:phone_policy")
-        assert deadline is not None
+        # A committed final answer may now cancel this owned deadline
+        # automatically. Its already-queued callback must also remain harmless.
         deadline._expired()
         fallback = next((item for item in session.tasks if item.get_name() == "phone-policy-fallback"), None)
         if fallback is not None:
@@ -752,7 +772,8 @@ async def test_two_scripts_speak_and_hang_up_their_own_call_without_ids(lab, mon
         while not phone.audio.empty():
             raw, _ = phone.audio.get_nowait()
             payload = rtp.parse_packet(raw).payload
-            if any(payload): voiced.append(payload)
+            if any(payload):
+                voiced.append(payload)
         assert b''.join(voiced) == b'\x01\x80' * 960
     assert not lab.calls.sessions
     assert not lab.runtime.softphones
@@ -784,3 +805,59 @@ async def test_multiple_calls_in_same_execution_require_explicit_selection(lab):
             "call_id":result["call_id"], "expected_generation":result["generation"],
         }, blocking=True, context=context)
     assert not lab.calls.sessions
+
+
+async def test_outgoing_announcement_owns_rtp_port_before_invite_and_reuses_it(lab, monkeypatch):
+    """An independent peer cannot take the advertised port during signaling."""
+    phone = lab.phones[0]
+    answer = phone.answer
+    advertised = []
+    exposed = []
+
+    def observe_answer():
+        port = int(re.search(rb"m=audio (\d+)", phone.last_request.body)[1])
+        advertised.append(port)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as contender:
+            try:
+                contender.bind(("0.0.0.0", port))
+            except OSError:
+                pass
+            else:
+                exposed.append(port)
+        answer()
+
+    monkeypatch.setattr(phone, "answer", observe_answer)
+    for _ in range(2):
+        result = await dial(lab, Context())
+        assert not exposed, "The INVITE advertised an RTP port not yet bound by its owner"
+        media = lab.calls.resource_for(result["call_id"], "relay")
+        assert media.transport.get_extra_info("sockname")[1] == advertised[-1]
+        await lab.calls.terminate_call_wait(result["call_id"], reason="test_done")
+        assert not lab.calls.sessions
+        assert not lab.runtime.rtp_port_pool["used"]
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as released:
+            released.bind(("0.0.0.0", advertised[-1]))
+
+
+async def test_outgoing_rtp_bind_failure_releases_call_and_allows_retry(lab, monkeypatch):
+    from custom_components.voip_stack import automation_originate
+
+    def unavailable(_port):
+        raise OSError("RTP socket unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(automation_originate, "bind_sip_rtp_socket", unavailable)
+        with pytest.raises(ServiceValidationError):
+            await dial(lab, Context())
+    assert not lab.phones[0].invites
+    assert not lab.calls.sessions
+    assert not lab.runtime.rtp_port_pool["used"]
+    assert all(not phone.active_call_id for phone in lab.runtime.endpoints.endpoints)
+    result = await dial(lab, Context())
+    media = lab.calls.resource_for(result["call_id"], "relay")
+    port = media.local_rtp_port
+    await lab.calls.terminate_call_wait(result["call_id"], reason="test_done")
+    assert not lab.calls.sessions
+    assert not lab.runtime.rtp_port_pool["used"]
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as released:
+        released.bind(("0.0.0.0", port))

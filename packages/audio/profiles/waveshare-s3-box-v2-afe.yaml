@@ -1,0 +1,36 @@
+# Separate inputs retain dual-mic BSS. Downmix explicitly selects mono AFE.
+substitutions:
+  afe_agc_restore_mode: RESTORE_DEFAULT_OFF
+esp_afe:
+  id: afe_processor
+  type: fd
+  mode: high_perf
+  mic_num: ${ 1 if _v2_average else 2 }
+  output_prebuffer_frames: ${ 0 if _v2_average else 1 }
+  aec_filter_length: 4
+  aec_nlp_level: normal
+  memory_alloc_mode: more_psram
+  task_core: 1
+  task_priority: 5
+  ringbuf_size: 8
+  feed_task_core: 0
+  feed_task_priority: 5
+  feed_task_stack_size: 3072
+  fetch_task_core: 1
+  fetch_task_priority: 9
+  fetch_task_stack_size: 3072
+  se_enabled: ${ not _v2_average }
+  ns_enabled: true
+  vad_enabled: true
+  continuous_vad: true
+  agc_enabled: false
+  feed_buf_in_psram: true
+  feed_ring_in_psram: true
+  fetch_ring_in_psram: true
+external_components:
+- source: ${audio_stack_components_source}
+  components: [esp_afe]
+packages:
+  hardware: !include waveshare-s3-box-v2-common.yaml
+  processor_controls: !include ${ '../../esp_afe/single_mic_entities.yaml' if _v2_average else '../../esp_afe/dual_mic_entities.yaml' }
+  gmf_source: !include '../gmf_source.yaml'

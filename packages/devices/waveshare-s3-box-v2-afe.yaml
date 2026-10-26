@@ -1,0 +1,8 @@
+# Compatibility entrypoint. New configurations can select the backend in
+# devices/waveshare-s3-box-v2.yaml without copying this device's wiring.
+substitutions:
+  audio_processor: afe
+  mic_mix: passthrough
+  mic_id: mic_afe
+packages:
+  device: !include waveshare-s3-box-v2.yaml

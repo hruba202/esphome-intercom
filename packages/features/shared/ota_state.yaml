@@ -1,0 +1,6 @@
+# One maintenance-state flag, shared by full and standalone compositions.
+globals:
+- id: g_ota_in_progress
+  type: bool
+  restore_value: false
+  initial_value: 'false'

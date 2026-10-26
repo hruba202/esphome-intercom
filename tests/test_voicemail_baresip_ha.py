@@ -16,7 +16,7 @@ from custom_components.voip_stack.phone_endpoint import PhoneEndpoint, EndpointK
 from custom_components.voip_stack.roster import RosterEntry
 from custom_components.voip_stack.sip_registrar import SipAccount
 from custom_components.voip_stack.store import config_entry
-from .test_trunk_calls_ha import trunks, lab
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
 
 pytestmark = [pytest.mark.ha, pytest.mark.skipif(shutil.which("baresip") is None, reason="baresip is not installed")]
 
@@ -55,6 +55,9 @@ async def test_baresip_registers_gets_mwi_plays_and_deletes_message(trunks, tmp_
         async def async_stream_result(self):
             yield bytes(640)
     monkeypatch.setattr(tts, "async_create_stream", lambda *_args: Speech())
+    from custom_components.voip_stack import voicemail_config
+    from types import SimpleNamespace
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda *_: SimpleNamespace(available=True))
     archive = await get_archive(lab.hass)
     writer = await archive.begin("baresip", caller="Lab delivery")
     for _ in range(25):
@@ -83,9 +86,11 @@ module aubridge.so
 module_app account.so
 module_app mwi.so
 """)
-    (config / "accounts").write_text(
+    account = (
         f'<sip:baresip@127.0.0.1:{lab.runtime.transport_config["sip_port"]}>'
-        ';auth_user=baresip;auth_pass=voicemail-lab-only;regint=60;mwi=yes;dtmfmode=rtpevent\n')
+        ';auth_user=baresip;auth_pass=voicemail-lab-only;regint=60;mwi=yes;dtmfmode=rtpevent'
+    )
+    (config / "accounts").write_text("")
     (config / "accounts").chmod(0o600)
     peer = None
     deleted = asyncio.Event()
@@ -95,8 +100,15 @@ module_app mwi.so
             deleted.set()
     unsubscribe = lab.hass.bus.async_listen("voip_stack_voicemail_operation", operation)
     try:
-        peer = await asyncio.to_thread(BareSip, config)
+        # Register after the peer's modules are ready. The pinned mwi module's
+        # startup timer appends subscriptions to the list it is iterating if
+        # REGISTER_OK arrives first. Keep that peer initialization race out of
+        # the protocol test without changing its SIP, MWI or IVR exchanges.
+        peer = await asyncio.to_thread(BareSip, config, wait_for_registration=False)
+        await asyncio.to_thread(peer.command, "/uanew " + account)
+        await asyncio.to_thread(peer.wait_for, "registered successfully", 5)
         await asyncio.to_thread(peer.wait_for, "Voice-Message: 1/0", 5)
+        assert peer.output.count("mwi: subscribing to messages") == 1
         await asyncio.to_thread(peer.dial, "*97")
         await asyncio.to_thread(peer.digits, "01#2", 0.3)
         await asyncio.wait_for(deleted.wait(), 5)
@@ -117,10 +129,14 @@ module_app mwi.so
             samples = struct.unpack(f"<{audio.getnframes() * audio.getnchannels()}h", audio.readframes(audio.getnframes()))
             assert any(2000 <= abs(sample) <= 2400 for sample in samples)
         evidence = Path(__file__).parents[1] / "test_captures/ha-pbx/baresip-voicemail"
-        evidence.mkdir(exist_ok=True)
+        evidence.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(wav, evidence / "received.wav")
         (evidence / "baresip.log").write_text(peer.output)
     finally:
         unsubscribe()
+        if peer is not None:
+            evidence = Path(__file__).parents[1] / "test_captures/ha-pbx/baresip-voicemail"
+            evidence.mkdir(parents=True, exist_ok=True)
+            (evidence / "baresip.log").write_text(peer.output)
         if peer is not None and peer.proc.poll() is None:
             await asyncio.to_thread(peer.close)

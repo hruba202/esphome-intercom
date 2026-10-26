@@ -241,7 +241,8 @@ HA-router calls:
 - local HA target rings the HA softphone;
 - ESP targets forward to their SIP URI/host;
 - local SIP endpoints forward to their registered Contact while registered;
-- phone/external numbers use the trunk only when the trunk is registered;
+- phone/external numbers use the selected available trunk; registered trunks
+  require a usable registration, while static trunks do not send REGISTER;
 - disabled entries reject with a SIP terminal reason.
 
 Inbound trunk calls:

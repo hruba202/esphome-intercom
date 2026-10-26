@@ -7,6 +7,8 @@ import os
 import shutil
 import subprocess
 import sys
+import json
+import ast
 
 import pytest
 
@@ -65,3 +67,53 @@ def test_mutation_is_refused_in_the_primary_checkout(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "disposable git worktree" in result.stderr
+
+
+def _record_suite_arguments(tmp_path: Path, mode: str, *options: str) -> list[str]:
+    """Exercise the public runner without launching pytest recursively."""
+    recorder = tmp_path / "python"
+    recorded = tmp_path / "arguments.json"
+    recorder.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "if sys.argv[1:3] == ['-m', 'pytest']:\n"
+        "    open(os.environ['RECORDED_ARGS'], 'w').write(json.dumps(sys.argv[3:]))\n"
+    )
+    recorder.chmod(0o755)
+    result = subprocess.run(
+        [str(RUNNER), mode, *options], cwd=ROOT, capture_output=True, text=True,
+        env={**os.environ, "PYTHON": str(recorder), "HA_PYTHON": str(recorder),
+             "RECORDED_ARGS": str(recorded)},
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(recorded.read_text())
+
+
+@pytest.mark.parametrize("mode", ["software-full", "ha", "browser", "peer"])
+def test_direct_suites_forward_reproduction_options(tmp_path: Path, mode: str) -> None:
+    arguments = _record_suite_arguments(tmp_path, mode, "--seed", "123", "--keep-going")
+    assert "--hypothesis-seed" in arguments
+    assert arguments[arguments.index("--hypothesis-seed") + 1] == "123"
+    assert arguments.count("--maxfail=0") == 1
+
+
+def test_browser_suite_selects_all_real_browser_regressions(tmp_path: Path) -> None:
+    arguments = _record_suite_arguments(tmp_path, "browser")
+    assert arguments[arguments.index("-m") + 1] == "browser_real"
+    assert "tests/test_browser_audio_startup.py" in arguments
+    assert "tests/test_frontend_media_devices_runtime.py" in arguments
+    assert "tests/test_frontend_card_browser_layout.py" in arguments
+    assert "tests/test_frontend_video_browser.py" in arguments
+    # New Playwright tests must be assigned to this same executable CI suite.
+    playwright_files = set()
+    for path in (ROOT / "tests").glob("test_*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            imported = node.module if isinstance(node, ast.ImportFrom) else ""
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "importorskip" and node.args
+                    and isinstance(node.args[0], ast.Constant)):
+                imported = node.args[0].value
+            if isinstance(imported, str) and imported.startswith("playwright."):
+                playwright_files.add(str(path.relative_to(ROOT)))
+    assert playwright_files <= set(arguments)

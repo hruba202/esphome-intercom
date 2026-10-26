@@ -1,0 +1,73 @@
+# Reconfigure the one AFE owner after selected consumers are quiescent.
+defaults:
+  afe_mode_options: ${ afe_mode_options | default(["fd_low_cost", "fd_high_perf"]) }
+  afe_initial_mode: ${ afe_initial_mode | default("fd_high_perf") }
+  afe_mode_restore_value: ${ afe_mode_restore_value | default(false) }
+  _fw_voice_busy:
+    voice_assistant.is_running: {}
+  _fw_phone_busy:
+    not:
+      voip_stack.is_idle: {}
+  _fw_no_busy:
+    lambda: return false;
+  _fw_mode_stop_wake_word:
+  - micro_wake_word.stop: {}
+  _fw_mode_resume_wake_word:
+  - if:
+      condition:
+        switch.is_off: mute
+      then:
+      - script.execute: start_mww_when_ready
+  _fw_mode_restart_audio:
+  - esp_audio_stack.start: {}
+  - delay: 300ms
+  _fw_mode_change:
+  - esp_audio_stack.stop: {}
+  - wait_until:
+      condition:
+        esp_audio_stack.is_idle: {}
+      timeout: 2s
+  - esp_afe.set_mode:
+      id: afe_processor
+      mode: !lambda |-
+        return x;
+  - wait_until:
+      condition:
+        lambda: return id(afe_processor).is_reconfigure_idle();
+      timeout: 20s
+  - if:
+      condition:
+        lambda: return id(afe_processor).is_reconfigure_idle() && id(afe_processor).get_last_reconfigure_ok();
+      then: ${ _fw_mode_restart_audio + (_fw_mode_resume_wake_word if _fw_wake_word else []) }
+      else:
+      - logger.log:
+          level: ERROR
+          tag: main
+          format: AFE mode switch did not complete cleanly; audio restart skipped
+substitutions:
+  afe_initial_mode: ${afe_initial_mode}
+  afe_mode_restore_value: ${afe_mode_restore_value}
+select:
+- platform: template
+  name: AEC Mode
+  id: aec_mode_select
+  icon: mdi:tune-vertical
+  options: ${ afe_mode_options }
+  initial_option: ${ afe_initial_mode }
+  optimistic: false
+  restore_value: ${afe_mode_restore_value}
+  set_action:
+  - if:
+      condition:
+        lambda: return !id(init_in_progress) && x != id(afe_processor).get_mode_name();
+      then:
+      - if:
+          condition:
+            or: ${ ([_fw_voice_busy] if _fw_voice else []) + ([_fw_phone_busy] if _fw_voip else []) + [_fw_no_busy]
+              }
+          then:
+          - logger.log:
+              level: WARN
+              format: Cannot switch AEC mode during active VA/VoIP
+          else: ${ (_fw_mode_stop_wake_word if _fw_wake_word else []) + _fw_mode_change }
+  - lambda: id(aec_mode_select).publish_state(id(afe_processor).get_mode_name());

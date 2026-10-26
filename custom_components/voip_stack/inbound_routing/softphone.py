@@ -20,7 +20,6 @@ from ..media_ports import (
 )
 from ..phone_endpoint import (
     EndpointAvailability,
-    EndpointKind,
     PhoneEndpoint,
 )
 from ..router import RouteReason
@@ -295,12 +294,6 @@ def answer_inbound_ha_softphone(
         session_device_id=target.device_id,
     )
     registry.attach_media(invite.call_id, softphone_media)
-    registry.add_leg(
-        invite.call_id,
-        invite.call_id,
-        role="ha_softphone",
-        state=CallState.IN_CALL.value,
-    )
     video_active = bool(
         invite.video_format is not None
         and local_video_rtp_port

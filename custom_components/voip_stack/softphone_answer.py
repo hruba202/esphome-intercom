@@ -160,12 +160,6 @@ async def async_answer_browser_call(
         )
         registry.attach_media(call_id, conference_media)
         bind_service_call_controller(registry, call_id, call)
-        registry.add_leg(
-            call_id,
-            call_id,
-            role="ha_softphone",
-            state=CallState.IN_CALL.value,
-        )
         publish_phone_projection(
             hass,
             session,
@@ -376,6 +370,7 @@ async def async_answer_browser_call(
             callee=resolved_callee,
             route_kind="ha_softphone",
             endpoint_id=endpoint_id,
+            dest_endpoint_id=endpoint_id,
             session_device_id=endpoint_device_id,
             media_client_id=str(call.data.get("media_client_id") or ""),
             expected_generation=authoritative_session.generation,
@@ -453,12 +448,6 @@ async def async_answer_browser_call(
                 call_id,
                 desired_video_direction,
             )
-    registry.add_leg(
-        call_id,
-        call_id,
-        role="ha_softphone",
-        state=CallState.IN_CALL.value,
-    )
     _LOGGER.info("SIP answered call_id=%s", call_id)
     video_active = bool(
         invite.video_format is not None

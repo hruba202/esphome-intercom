@@ -1220,8 +1220,9 @@ set_voicemail_settings:
   name: Configure voicemail
   description: >-
     Enable a phone's mailbox independently of its forwarding rules. Omitted
-    fields retain their settings. Messages stay available when new deposits
-    are disabled.
+    fields retain their settings. Disabling the mailbox permanently deletes
+    its messages, files, PIN and mailbox settings. Enabling it again creates
+    an empty mailbox.
   fields:
     device_id:
       name: Phone mailbox
@@ -1235,7 +1236,7 @@ set_voicemail_settings:
               model: SIP account
             - integration: esphome
     enabled:
-      name: Accept voicemail
+      name: Enable mailbox
       selector:
         boolean:
     max_seconds:
@@ -1511,3 +1512,75 @@ delete_recording:
       required: true
       selector:
         text:
+
+get_phone_state:
+  name: Get phone state
+  description: Read a phone, its calls and mailbox counters without changing the call.
+  fields:
+    device_id:
+      name: Phone
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+
+pickup:
+  name: Pick up call
+  description: Recover a ringing phone or parking slot on the selected phone.
+  fields:
+    device_id:
+      name: Recovering phone
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+    target_device_id:
+      name: Ringing phone
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+    slot:
+      name: Parking slot
+      selector:
+        text: {}
+    answer_timeout:
+      name: Wait for answer
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: s
+    advanced:
+      name: Advanced options
+      collapsed: true
+      fields:
+        call_id:
+          name: Call ID
+          selector:
+            text: {}
+        expected_generation:
+          name: Call generation
+          selector:
+            number:
+              min: 0
+              mode: box
+        leg_id:
+          name: Call leg
+          selector:
+            text: {}

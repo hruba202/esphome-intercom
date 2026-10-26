@@ -1,0 +1,14 @@
+# Waveshare V2 presentation uses the common round runtime and its native 360-pixel layout.
+packages:
+  runtime: !include '../round_runtime.yaml'
+  layout: !include '../layouts/round_360.yaml'
+binary_sensor:
+- id: !extend 'battery_above_standby_threshold'
+  on_press:
+  - script.execute: backlight_timer
+  on_release:
+  - script.execute: backlight_timer
+
+defaults:
+  _settings_afe: ${ _v2_afe }
+  _settings_single_mic: ${ _v2_average }

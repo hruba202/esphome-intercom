@@ -359,6 +359,43 @@ staleClaim._onBusEvent({{
 }});
 assert.equal(staleClaim.softphoneCallIdFor("test"), "");
 
+// The shared activity feed exists only for consumers or an owned conversation.
+const lazyEngine = new Engine();
+lazyEngine._ownedSoftphoneCalls.clear();
+let busRequests = 0, busStops = 0;
+const lazyConnection = {{subscribeMessage: async () => {{
+  busRequests++;
+  return () => busStops++;
+}}}};
+lazyEngine._busConnection = lazyConnection;
+lazyEngine._ensureBusSubscriptions(lazyConnection);
+assert.equal(busRequests, 0);
+const stopOne = lazyEngine.subscribeCallEvents(() => {{}});
+const stopTwo = lazyEngine.subscribeCallEvents(() => {{}});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(busRequests, 1);
+stopOne();
+assert.equal(busStops, 0);
+stopTwo();
+assert.equal(busStops, 1);
+const stopPending = lazyEngine.subscribeCallEvents(() => {{}});
+stopPending();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(busStops, 2);
+
+// Activity replay is independent of call termination and does not revive old slots.
+const activityEngine = new Engine();
+activityEngine.claimSoftphoneSession("active-call", "test");
+activityEngine._onBusEvent({{event_type: "voip_stack.activity", data: {{parked: ["701"], phones: []}}}});
+const activityEvents = [];
+const stopActivity = activityEngine.subscribeCallEvents(event => activityEvents.push(event));
+assert.equal(activityEvents.at(-1).data.parked[0], "701");
+activityEngine._onBusEvent({{event_type: "voip_stack.activity", data: {{parked: [], phones: []}}}});
+assert.equal(activityEvents.at(-1).data.parked.length, 0);
+assert.equal(activityEngine.softphoneCallIdFor("test"), "active-call");
+stopActivity();
+activityEngine.releaseSoftphoneSession("active-call", "test");
+
 // The backend phone snapshot remains authoritative while a video call is
 // already attached: changing Send Video must reconcile the live camera
 // sender, not merely affect the next call.
@@ -759,6 +796,16 @@ canvas._endpointId = "kitchen";
 assert.equal(canvas.claimVideoCanvas(ownerA, canvasA, "kitchen"), false);
 assert.equal(canvas._videoCanvas, canvasB);
 
+// A renderer from the previous call cannot expose video on the next call.
+const visibility = new Engine();
+visibility._callId = "new-call";
+visibility._video = {{ visible: true, callId: "old-call" }};
+assert.equal(visibility.videoVisible, false);
+visibility._video.callId = "new-call";
+assert.equal(visibility.videoVisible, true);
+visibility._callId = "";
+assert.equal(visibility.videoVisible, false);
+
 // A same-call audio-only -> video-active state update must reconcile the
 // optional video channel even though the audio WebSocket is already open.
 const reconcile = new Engine();
@@ -967,6 +1014,46 @@ class RuntimeWorkletNode {{
 }}
 context.window.AudioContext = RuntimeAudioContext;
 context.AudioWorkletNode = RuntimeWorkletNode;
+// Parking can replace the audio path while retaining the same logical Call-ID.
+// A late completion from the retired setup must not hang up its replacement.
+const parked = new Engine();
+const parkedServices = [];
+const parkedErrors = [];
+parked._hass = {{callService: async (...args) => parkedServices.push(args)}};
+parked._mediaAttachState = async () => ({{state:"in_call",call_id:"parked-call"}});
+parked._sessionAttachKey = "phone|parked-call";
+parked._connect = async (deviceId, callId, endpointId) => {{
+  parked._deviceId=deviceId;parked._callId=callId;parked._endpointId=endpointId;
+}};
+parked.addEventListener("error", event => parkedErrors.push(event.detail));
+let releaseRetiredSetup, setupEntered, retiredContext;
+const retiredSetupReady = new Promise(resolve => {{releaseRetiredSetup=resolve;}});
+const setupStarted = new Promise(resolve => {{setupEntered=resolve;}});
+let loads = 0;
+parked._loadAudioWorklets = async (audioContext) => {{
+  if (++loads === 1) {{retiredContext=audioContext; setupEntered(); await retiredSetupReady;}}
+}};
+const parkedPcm = {{call_id:"parked-call",tx_format:"48000:s16le:1:10",
+  rx_format:"48000:s16le:1:10",audio_direction:"recvonly"}};
+const retiredSetup = parked._setupAudioOrAbort("phone-device",{{audio_mode:"full_duplex"}},
+  parkedPcm,"phone|parked-call","phone");
+await setupStarted;
+await parked._cleanupAudio("route_replaced");
+await parked._setupAudio({{audio_mode:"full_duplex"}},parkedPcm,"phone|parked-call");
+const replacementContext = parked._audioContext;
+const replacementPlayback = parked._playbackNode;
+releaseRetiredSetup();
+assert.equal(await retiredSetup,false);
+assert.deepEqual(parkedServices,[],"Retired audio setup must never issue hangup");
+assert.deepEqual(parkedErrors,[]);
+assert.equal(parked._audioContext,replacementContext);
+assert.equal(parked._playbackNode,replacementPlayback);
+assert.equal(retiredContext.state,"closed");
+assert.equal(replacementContext.state,"running");
+assert.equal(parked._audioReady,true);
+assert.equal(parked._callId,"parked-call");
+await parked.close();
+
 const preparedSession = new Engine();
 const loadWorklets = preparedSession._loadAudioWorklets.bind(preparedSession);
 let releaseModules;

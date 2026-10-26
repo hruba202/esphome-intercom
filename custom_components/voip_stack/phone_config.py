@@ -22,7 +22,6 @@ from .const import (
     CONF_HA_SOFTPHONE_DND,
     CONF_HA_SOFTPHONE_EXTENSION,
     CONF_HA_SOFTPHONE_RING_GROUP,
-    CONF_PHONEBOOK_CONTACTS,
     CONF_SIP_ACCOUNTS,
     DOMAIN,
     HA_PEER_FALLBACK_NAME,
@@ -626,10 +625,9 @@ def validate_sip_account_namespace(
     from .contact_config import contact_dicts
 
     existing: list[Mapping[str, Any]] = contact_dicts(entry)
-    if entry.data.get("parking", {}).get("enabled"):
-        existing.append({"parking_feature_routes": entry.data["parking"]})
-    if entry.data.get("voicemail", {}).get("enabled"):
-        existing.append({"mailbox_feature_routes": True})
+    from .parking_config import normalize_parking_config
+    existing.append({"parking_feature_routes": normalize_parking_config(entry.data.get("parking", {}))})
+    existing.append({"mailbox_feature_routes": True})
     existing.extend(
         subentry.data
         for subentry in phone_subentries(entry)

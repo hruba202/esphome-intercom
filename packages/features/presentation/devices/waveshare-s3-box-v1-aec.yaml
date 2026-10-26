@@ -1,0 +1,1977 @@
+# Round presentation with shared content hooks and board-specific rendering.
+wifi:
+  on_connect:
+  - script.execute: draw_display
+  on_disconnect:
+  - script.execute: draw_display
+api:
+  on_client_connected:
+  - script.execute: draw_display
+font:
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 300
+  id: font_response
+  size: 15
+  glyphsets:
+  - ${font_glyphsets}
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 300
+  id: font_timer
+  size: 30
+  glyphs: '0123456789:'
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 600
+  id: font_clock
+  size: 20
+  glyphs: 0123456789:%
+  extras:
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+    glyphs:
+    - 󰁹
+    - 󰂎
+    - 󰁺
+    - 󰁻
+    - 󰁼
+    - 󰁽
+    - 󰁾
+    - 󰁿
+    - 󰂀
+    - 󰂁
+    - 󰂂
+    - 󰕓
+    - 󰢟
+    - 󰢜
+    - 󰂆
+    - 󰂇
+    - 󰂈
+    - 󰢝
+    - 󰂉
+    - 󰢞
+    - 󰂊
+    - 󰂋
+    - 󰢿
+    - 󰢼
+    - 󰢽
+    - 󰢾
+    - 󰟐
+    - 󱗐
+- file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+  id: call_icons
+  size: 42
+  glyphs:
+  - 󰏲
+  - 󰏵
+  - 󰜱
+  - 󰜴
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 700
+  id: font_title
+  size: 24
+  glyphsets:
+  - GF_Latin_Core
+  extras:
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+    glyphs:
+    - 󰛋
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 500
+  id: font_state
+  size: 28
+  glyphs: ' ACDEGILNR'
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 400
+  id: font_info
+  size: 20
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Roboto Mono
+    weight: 400
+  id: font_page_counter
+  size: 14
+  glyphs: 0123456789/
+image:
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error.png
+  id: assistant_gui_error
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/listening.png
+  id: assistant_gui_listening
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/thinking.png
+  id: assistant_gui_thinking
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/timer_finished.png
+  id: assistant_gui_timer_finished
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/loading.png
+  id: assistant_gui_initializing
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_wifi.png
+  id: error_no_wifi
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_ha.png
+  id: error_no_ha
+  resize: 360x360
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_00.png
+  id: idle_00
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_01.png
+  id: idle_01
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_02.png
+  id: idle_02
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_03.png
+  id: idle_03
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_04.png
+  id: idle_04
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_05.png
+  id: idle_05
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_06.png
+  id: idle_06
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_07.png
+  id: idle_07
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_08.png
+  id: idle_08
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_09.png
+  id: idle_09
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_10.png
+  id: idle_10
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_11.png
+  id: idle_11
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_12.png
+  id: idle_12
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_13.png
+  id: idle_13
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_14.png
+  id: idle_14
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_15.png
+  id: idle_15
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_16.png
+  id: idle_16
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_17.png
+  id: idle_17
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_18.png
+  id: idle_18
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_19.png
+  id: idle_19
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/happy.png
+  id: mood_happy
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/neutral.png
+  id: mood_neutral
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/angry.png
+  id: mood_angry
+  resize: 360x360
+  type: RGB565
+  transparency: opaque
+lvgl:
+  displays:
+  - s3_box_lcd
+  buffer_size: 50%
+  color_depth: 16
+  log_level: WARN
+  top_layer:
+    widgets: ${ (_v1_timer_overlay if _fw_timers else []) + _v1_top_status }
+  pages: ${ _v1_page_initializing_page + _v1_page_idle_page + _v1_page_listening_page + _v1_page_thinking_page +
+    _v1_page_replying_page + _v1_page_error_page + _v1_page_muted_page + (_v1_page_timer_finished_page if _fw_timers
+    else []) + _v1_page_no_ha_page + _v1_page_no_wifi_page + (_v1_page_call_idle_page if _fw_voip else []) + (_v1_page_call_ringing_in_page
+    if _fw_voip else []) + (_v1_page_call_ringing_out_page if _fw_voip else []) + (_v1_page_call_in_call_page if
+    _fw_voip else []) + (_v1_page_call_ended_page if _fw_voip else []) + _v1_page_settings_continuous_page }
+globals:
+- id: voice_assistant_phase
+  type: int
+  restore_value: false
+  initial_value: ${voice_assist_not_ready_phase_id}
+- id: current_mode
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: nav_anim
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: nav_anim_ms
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: reply_page_index
+  type: int
+  restore_value: false
+  initial_value: '0'
+- id: reply_total_pages
+  type: int
+  restore_value: false
+  initial_value: '1'
+- id: wrapped_lines_reply
+  type: std::vector<std::string>
+  restore_value: false
+- id: chord_widths_cache
+  type: std::vector<int>
+  restore_value: false
+- id: text_row_y
+  type: std::vector<int>
+  restore_value: false
+- id: y_metrics
+  type: std::vector<int>
+  restore_value: false
+script:
+- id: apply_media_artwork
+  then:
+  - lambda: !lambda |-
+      lv_img_set_src(id(mood_bg), id(mood_neutral));
+      lv_obj_invalidate(id(mood_bg));
+- id: !extend 'render_ui_state'
+  then: ${ _v1_render_0 + _v1_render_1 + _v1_render_2 + (_v1_render_3 if _fw_voip else []) + _v1_render_4 }
+- id: !extend 'ui_tts_started'
+  then:
+  - lambda: !lambda |-
+      std::string t = text;
+      esphome::image::Image *mood = id(mood_neutral);
+      if (t.size() >= 3) {
+        std::string prefix = t.substr(0, 3);
+        if (prefix == ":-)") {
+          mood = id(mood_happy);
+        } else if (prefix == ":-(") {
+          mood = id(mood_angry);
+        } else if (prefix == ":-|") {
+          // neutral (default)
+        }
+        if (prefix == ":-)" || prefix == ":-(" || prefix == ":-|") {
+          t = t.substr(3);
+          if (!t.empty() && t[0] == ' ') t = t.substr(1);
+        }
+      }
+      lv_img_set_src(id(mood_bg), mood);
+      id(text_response).publish_state(t);
+  - globals.set:
+      id: reply_page_index
+      value: '0'
+  - script.stop: reply_pagination_timer
+  - script.stop: backlight_timer
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(current_mode) == 0 && id(ui_state) == ${ui_state_va_replying};
+      then:
+      - script.execute: update_replying_text
+      - if:
+          condition:
+            lambda: !lambda |-
+              return id(reply_total_pages) > 1;
+          then:
+          - script.execute: reply_pagination_timer
+      - script.execute: draw_display
+- id: compute_layout_metrics
+  then:
+  - lambda: !lambda |-
+      const int w = ${display_width};
+      const int h = ${display_height};
+      const int r = w / 2;
+      const int cy = h / 2;
+      const int side_margin = w / 40;
+      const int line_h = h / 13;
+      const int line_spacing = h / 60;
+      const int top_pad = h / 24;
+      const int bottom_pad = h / 24;
+
+      // y_metrics: proportional UI grid (same formula as original)
+      id(y_metrics).clear();
+      id(y_metrics).reserve(14);
+      id(y_metrics).push_back(0);            // [0] top
+      id(y_metrics).push_back(h / 2);        // [1] center
+      id(y_metrics).push_back(h);             // [2] height
+      id(y_metrics).push_back(h / 8);         // [3] title
+      id(y_metrics).push_back(h * 7 / 24);    // [4] subtitle
+      id(y_metrics).push_back(h * 5 / 12);    // [5] state
+      id(y_metrics).push_back(h * 13 / 24);   // [6] label
+      id(y_metrics).push_back(h * 5 / 8);     // [7] info
+      id(y_metrics).push_back(h * 37 / 48);   // [8] contacts
+      id(y_metrics).push_back(h * 5 / 6);     // [9] action hint
+      id(y_metrics).push_back(h * 41 / 48);   // [10] bottom info
+      id(y_metrics).push_back(h - h / 16);    // [11] bottom status
+      id(y_metrics).push_back(h - 2);          // [12] page counter
+      id(y_metrics).push_back(h * 3 / 20);    // [13] timer box height
+
+      // text_row_y + chord_widths_cache: VA text rows for circular wrapping
+      id(text_row_y).clear();
+      id(chord_widths_cache).clear();
+      int y = top_pad;
+      while (y + line_h <= h - bottom_pad) {
+        id(text_row_y).push_back(y);
+        int mid_y = y + line_h / 2;
+        int dy = abs(mid_y - cy);
+        int chord_w = 0;
+        if (dy < r) {
+          chord_w = (int)(2.0f * sqrtf((float)(r * r - dy * dy))) - side_margin * 2;
+          if (chord_w < 0) chord_w = 0;
+        }
+        id(chord_widths_cache).push_back(chord_w);
+        y += (line_h + line_spacing);
+      }
+- id: reposition_widgets
+  then:
+  - lambda: !lambda |
+      const auto &ym = id(y_metrics);
+      const auto &row_y = id(text_row_y);
+      const auto &cw = id(chord_widths_cache);
+      if (ym.size() < 14 || row_y.empty()) return;
+
+      // Helper: position label at y_center (original uses TextAlign::CENTER)
+      // LVGL TOP_MID: y_top = y_center - font_line_height / 2
+      auto set_center_y = [](lv_obj_t* obj, int y_center) {
+        const lv_font_t* f = lv_obj_get_style_text_font(obj, LV_PART_MAIN);
+        int fh = lv_font_get_line_height(f);
+        lv_obj_set_y(obj, y_center - fh / 2);
+      };
+
+      // --- call pages: percentages + align handle positioning, no reposition needed ---
+
+      // --- Thinking page: chord-width labels (10 children after image) ---
+      lv_obj_t* think[] = {
+        id(think_line_0), id(think_line_1), id(think_line_2), id(think_line_3), id(think_line_4),
+        id(think_line_5), id(think_line_6), id(think_line_7), id(think_line_8), id(think_line_9)
+      };
+      for (size_t i = 0; i < row_y.size() && i < 10; i++) {
+        lv_obj_set_y(think[i], row_y[i]);
+        lv_obj_set_width(think[i], cw[i]);
+      }
+
+      // --- Replying page: chord-width labels ---
+      lv_obj_t* reply[] = {
+        id(reply_line_0), id(reply_line_1), id(reply_line_2), id(reply_line_3), id(reply_line_4),
+        id(reply_line_5), id(reply_line_6), id(reply_line_7), id(reply_line_8), id(reply_line_9)
+      };
+      for (size_t i = 0; i < row_y.size() && i < 10; i++) {
+        lv_obj_set_y(reply[i], row_y[i]);
+        lv_obj_set_width(reply[i], cw[i]);
+      }
+
+      // Page counter at bottom
+      lv_obj_set_y(id(reply_page_counter), ym[12]);
+
+      // Timer overlay: dynamic height from y_metrics[13]
+      ${ _v1_timer_geometry_0 if _fw_timers else '' }
+      ${ _v1_timer_geometry_1 if _fw_timers else '' }
+      ${ _v1_timer_geometry_2 if _fw_timers else '' }
+      ${ _v1_timer_geometry_3 if _fw_timers else '' }
+- id: draw_display
+  mode: restart
+  then: ${ _v1_draw_tail_0 + _v1_draw_tail_1 + (_v1_draw_tail_2 if _fw_voip else []) + (_v1_draw_tail_3 if _fw_timers
+    else []) }
+- id: switch_to_va
+  then:
+  - globals.set:
+      id: current_mode
+      value: '0'
+  - script.execute: set_idle_or_mute_phase
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(voice_assistant_phase) == ${voice_assist_replying_phase_id};
+      then:
+      - script.execute: update_replying_text
+      - if:
+          condition:
+            lambda: !lambda |-
+              return id(reply_total_pages) > 1;
+          then:
+          - script.execute: reply_pagination_timer
+  - script.execute: draw_display
+- id: update_idle_labels
+  then:
+  - lvgl.label.update:
+      id: top_clock_label
+      text:
+        format: '%02d:%02d'
+        args:
+        - id(my_time).now().hour
+        - id(my_time).now().minute
+  - if:
+      condition:
+      - lambda: !lambda |-
+          return id(battery_percentage).has_state() && !std::isnan(id(battery_percentage).state);
+      then:
+      - lvgl.label.update:
+          id: top_battery_label
+          text: !lambda |-
+            bool charging = id(usb_connected).state;
+            float bat = id(battery_percentage).state;
+            float wifi = id(wifi_pct).state;
+            std::string ret;
+            if (bat < 10) ret = charging ? "\U000F089F" : "\U000F008E";
+            else if (bat < 20) ret = charging ? "\U000F089C" : "\U000F007A";
+            else if (bat < 30) ret = charging ? "\U000F0086" : "\U000F007B";
+            else if (bat < 40) ret = charging ? "\U000F0087" : "\U000F007C";
+            else if (bat < 50) ret = charging ? "\U000F0088" : "\U000F007D";
+            else if (bat < 60) ret = charging ? "\U000F089D" : "\U000F007E";
+            else if (bat < 70) ret = charging ? "\U000F0089" : "\U000F007F";
+            else if (bat < 80) ret = charging ? "\U000F089E" : "\U000F0080";
+            else if (bat < 90) ret = charging ? "\U000F008A" : "\U000F0081";
+            else if (bat < 100) ret = charging ? "\U000F008B" : "\U000F0082";
+            else ret = "\U000F0079";
+            if (wifi < 20) ret += "\U000F08BF";
+            else if (wifi < 55) ret += "\U000F08BC";
+            else if (wifi < 80) ret += "\U000F08BD";
+            else ret += "\U000F08BE";
+            ret += api::global_api_server->is_connected() ? "\U000F07D0" : "\U000F15D0";
+            return ret;
+      else:
+      - lvgl.label.update:
+          id: top_battery_label
+          text: ''
+- id: backlight_timer
+  mode: restart
+  then:
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  - delay: 30s
+  - light.turn_on:
+      id: backlight
+      brightness: 60%
+  - delay: 120s
+  - if:
+      condition:
+        binary_sensor.is_on: usb_connected
+      then:
+      - light.turn_on:
+          id: backlight
+          brightness: 20%
+      else:
+      - light.turn_off: backlight
+button:
+- platform: factory_reset
+  id: factory_reset_btn
+  internal: true
+time:
+- platform: sntp
+  id: my_time
+  timezone: Europe/Rome
+  servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+text_sensor:
+- id: text_request
+  platform: template
+  on_value:
+    then:
+    - lambda: !lambda |-
+        const std::string &text = x;
+        lv_obj_t* lines[] = {
+          id(think_line_0), id(think_line_1), id(think_line_2), id(think_line_3), id(think_line_4),
+          id(think_line_5), id(think_line_6), id(think_line_7), id(think_line_8), id(think_line_9)
+        };
+        for (size_t i = 0; i < 10; i++) lv_label_set_text(lines[i], "");
+        if (text == "...") return;
+        std::vector<std::string> words;
+        words.reserve(text.size()/5);
+        size_t start = 0;
+        for (size_t i = 0; i <= text.size(); ++i) {
+          if (i == text.size() || text[i] == ' ' || text[i] == '\n' || text[i] == '\r' || text[i] == '\t') {
+            if (i > start) words.push_back(text.substr(start, i - start));
+            start = i + 1;
+          }
+        }
+        if (words.empty() || id(chord_widths_cache).empty()) return;
+        const auto &chords = id(chord_widths_cache);
+        const size_t total_rows = chords.size();
+        const lv_font_t *font = lv_obj_get_style_text_font(id(think_line_0), LV_PART_MAIN);
+        // Start from middle of display (row total_rows/2 - 3)
+        size_t start_row = total_rows / 2 - 3;
+        if (start_row >= total_rows) start_row = 0;
+        // lines[] already cleared above
+        size_t row = start_row;
+        size_t word_idx = 0;
+        const int avg_char_w = lv_font_get_line_height(font) * 2 / 3;  // ~60% of line height
+        while (row < total_rows && row < 10 && word_idx < words.size()) {
+          const int chord_w = chords[row];
+          if (chord_w <= 0) { row++; continue; }
+          const size_t sw = word_idx;
+          std::string line;
+          line.reserve(chord_w / avg_char_w);
+          while (word_idx < words.size()) {
+            const auto &word = words[word_idx];
+            std::string candidate = line.empty() ? word : (line + ' ' + word);
+            if ((int)(candidate.length() * avg_char_w) > chord_w) {
+              lv_point_t size;
+              lv_text_get_size(&size, candidate.c_str(), font, 0, 0, INT32_MAX, LV_TEXT_FLAG_NONE);
+              if (size.x > chord_w) {
+                if (word_idx == sw) { line = word; word_idx++; }
+                break;
+              }
+            }
+            line = candidate;
+            word_idx++;
+          }
+          if (word_idx > sw) lv_label_set_text(lines[row], line.c_str());
+          row++;
+        }
+- id: text_response
+  platform: template
+  on_value:
+    then:
+    - lambda: !lambda |-
+        // Skip redundant "..." during replying phase (label text set by update_replying_text)
+        if (x == "..." && id(voice_assistant_phase) == ${voice_assist_replying_phase_id}) {
+          return;
+        }
+        const std::string &text = x;
+        std::vector<std::string> words;
+        words.reserve(text.size()/5);
+        size_t start = 0;
+        for (size_t i = 0; i <= text.size(); ++i) {
+          if (i == text.size() || text[i] == ' ' || text[i] == '\n' || text[i] == '\r' || text[i] == '\t') {
+            if (i > start) {
+              words.push_back(text.substr(start, i - start));
+            }
+            start = i + 1;
+          }
+        }
+        id(reply_page_index) = 0;
+        id(wrapped_lines_reply).clear();
+        id(reply_total_pages) = 1;
+        if (words.empty() || id(chord_widths_cache).empty()) return;
+        const auto &chords = id(chord_widths_cache);
+        const size_t total_rows = chords.size();
+        const lv_font_t *font = lv_obj_get_style_text_font(id(reply_line_0), LV_PART_MAIN);
+        const int avg_char_w = lv_font_get_line_height(font) * 2 / 3;
+        size_t word_idx = 0;
+        size_t safety = 0;
+        size_t line_count = 0;
+        while (word_idx < words.size() && safety++ < words.size() * 2) {
+          int row = line_count % total_rows;
+          const int chord_w = chords[row];
+          if (chord_w <= 0) { id(wrapped_lines_reply).push_back(""); line_count++; continue; }
+          const size_t start_word = word_idx;
+          std::string line;
+          line.reserve(chord_w / avg_char_w);
+          while (word_idx < words.size()) {
+            const auto &word = words[word_idx];
+            std::string candidate = line.empty() ? word : (line + ' ' + word);
+            if ((int)(candidate.length() * avg_char_w) > chord_w) {
+              lv_point_t size;
+              lv_text_get_size(&size, candidate.c_str(), font, 0, 0, INT32_MAX, LV_TEXT_FLAG_NONE);
+              if (size.x > chord_w) {
+                if (word_idx == start_word) { line = word; word_idx++; }
+                break;
+              }
+            }
+            line = candidate;
+            word_idx++;
+          }
+          if (word_idx > start_word) {
+            id(wrapped_lines_reply).push_back(line);
+            line_count++;
+          }
+        }
+        while (!id(wrapped_lines_reply).empty() && (id(wrapped_lines_reply).size() % 10) != 0) {
+          id(wrapped_lines_reply).push_back("");
+        }
+        line_count = id(wrapped_lines_reply).size();
+        id(reply_total_pages) = (line_count + 10 - 1) / 10;
+        if (id(reply_total_pages) < 1) id(reply_total_pages) = 1;
+interval:
+- interval: 30s
+  then:
+  - script.execute: update_idle_labels
+defaults:
+  _v1_phone: !include '../../voip/presentation/waveshare-s3-box-v1-aec.yaml'
+  _v1_timers: !include '../../timers/presentation/waveshare-s3-box-v1-aec.yaml'
+  _v1_artwork: !include '../../../media_player/sendspin_artwork.yaml'
+  _v1_settings_voice: !include '../../../lvgl/lvgl_settings_sync_va.yaml'
+  _v1_player:
+    media_player:
+    - id: !extend 'speaker_media_player'
+      on_play:
+      - script.execute: backlight_timer
+      on_pause:
+      - script.execute: backlight_timer
+      on_idle:
+      - delay: 200ms
+      - script.execute: backlight_timer
+  _v1_boot_fallback_0:
+  - globals.set:
+      id: init_in_progress
+      value: 'false'
+  _v1_boot_fallback_1:
+  - script.execute: draw_display
+  _v1_boot_fallback_2:
+  - script.execute: start_mww_when_ready
+  _v1_boot_0:
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  _v1_boot_1:
+  - script.execute: compute_layout_metrics
+  _v1_boot_2:
+  - script.execute: reposition_widgets
+  _v1_boot_3:
+  - lambda: !lambda |-
+      id(g_settings_pages).clear();
+      id(g_settings_pages).push_back(id(settings_continuous_page)->obj);
+  _v1_boot_4:
+  - script.execute: backlight_timer
+  _v1_boot_5:
+  - micro_wake_word.stop: null
+  _v1_boot_6:
+  - delay: 1s
+  _v1_boot_7:
+  - lambda: !lambda |-
+      id(peer_name) = id(phone).get_current_destination();
+  _v1_boot_8:
+  - delay: 30s
+  _v1_boot_9:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(init_in_progress);
+      then: ${ _v1_boot_fallback_0 + _v1_boot_fallback_1 + (_v1_boot_fallback_2 if _fw_wake_word else []) }
+  _v1_page_initializing_page:
+  - id: initializing_page
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_initializing
+  _v1_page_idle_page:
+  - id: idle_page
+    bg_color: 0
+    on_swipe_up: ${ _v1_gesture_52 if _fw_voip else [] }
+    widgets:
+    - animimg:
+        id: idle_anim
+        align: CENTER
+        width: 360
+        height: 360
+        src:
+        - idle_00
+        - idle_01
+        - idle_02
+        - idle_03
+        - idle_04
+        - idle_05
+        - idle_06
+        - idle_07
+        - idle_08
+        - idle_09
+        - idle_10
+        - idle_11
+        - idle_12
+        - idle_13
+        - idle_14
+        - idle_15
+        - idle_16
+        - idle_17
+        - idle_18
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_18
+        - idle_17
+        - idle_16
+        - idle_15
+        - idle_14
+        - idle_13
+        - idle_12
+        - idle_11
+        - idle_10
+        - idle_09
+        - idle_08
+        - idle_07
+        - idle_06
+        - idle_05
+        - idle_04
+        - idle_03
+        - idle_02
+        - idle_01
+        duration: 6600ms
+        auto_start: false
+  _v1_page_listening_page:
+  - id: listening_page
+    bg_color: 16777215
+    on_swipe_up: ${ _v1_gesture_53 if _fw_voip else [] }
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_listening
+  _v1_page_thinking_page:
+  - id: thinking_page
+    bg_color: 16777215
+    on_swipe_up: ${ _v1_gesture_54 if _fw_voip else [] }
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_thinking
+    - label:
+        id: think_line_0
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_1
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_2
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_3
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_4
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_5
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_6
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_7
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_8
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_9
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+  _v1_page_replying_page:
+  - id: replying_page
+    bg_color: 0
+    scrollbar_mode: 'off'
+    on_swipe_up: ${ _v1_gesture_55 if _fw_voip else [] }
+    widgets:
+    - image:
+        id: mood_bg
+        align: CENTER
+        src: mood_neutral
+    - label:
+        id: reply_line_0
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_1
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_2
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_3
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_4
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_5
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_6
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_7
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_8
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_9
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_page_counter
+        align: TOP_MID
+        y: 0
+        text: ''
+        text_color: 8947848
+        text_font: font_page_counter
+        text_align: CENTER
+  _v1_page_error_page:
+  - id: error_page
+    bg_color: 0
+    on_swipe_up: ${ _v1_gesture_56 if _fw_voip else [] }
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_error
+  _v1_page_muted_page:
+  - id: muted_page
+    bg_color: 0
+    on_swipe_up: ${ _v1_gesture_57 if _fw_voip else [] }
+  _v1_page_timer_finished_page:
+  - id: timer_finished_page
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_timer_finished
+  _v1_page_no_ha_page:
+  - id: no_ha_page
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: error_no_ha
+  _v1_page_no_wifi_page:
+  - id: no_wifi_page
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: error_no_wifi
+  _v1_page_call_idle_page:
+  - id: call_idle_page
+    bg_color: 255
+    on_swipe_left:
+    - voip_stack.next_contact: null
+    - script.execute: update_call_idle_labels
+    on_swipe_right:
+    - voip_stack.prev_contact: null
+    - script.execute: update_call_idle_labels
+    on_swipe_up: ${ _v1_gesture_58 if _fw_voip else [] }
+    on_swipe_down: ${ _v1_gesture_59 if _fw_voip else [] }
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        id: call_idle_status_label
+        align: TOP_MID
+        y: 17%
+        text: IDLE
+        text_color: 65280
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_idle_contacts_label
+        align: TOP_MID
+        y: ${call_contacts_y}
+        text: 󰛋 0
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+    - label:
+        id: call_idle_peer_label
+        align: CENTER
+        text: '-'
+        text_color: 16777215
+        text_font: font_title
+        width: ${call_peer_width}
+        text_align: CENTER
+        long_mode: SCROLL
+    - button:
+        id: call_idle_prev_contact_btn
+        align: CENTER
+        x: -60
+        y: -34
+        width: 60
+        height: 60
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰜱
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.prev_contact: null
+        - script.execute: update_call_idle_labels
+    - button:
+        id: call_idle_next_contact_btn
+        align: CENTER
+        x: 60
+        y: -34
+        width: 60
+        height: 60
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰜴
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.next_contact: null
+        - script.execute: update_call_idle_labels
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏲
+            align: CENTER
+            text_color: 65280
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+  _v1_page_call_ringing_in_page:
+  - id: call_ringing_in_page
+    bg_color: 16711680
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: RINGING
+        text_color: 16776960
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_ringing_in_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_ringing_in_peer_width}
+    - button:
+        floating: true
+        align: LEFT_MID
+        x: ${call_btn_offset}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏲
+            align: CENTER
+            text_color: 65280
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+    - button:
+        floating: true
+        align: RIGHT_MID
+        x: -5
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.decline_call: null
+  _v1_page_call_ringing_out_page:
+  - id: call_ringing_out_page
+    bg_color: 16750848
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: CALLING
+        text_color: 0
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_ringing_out_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16711680
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.decline_call: null
+  _v1_page_call_in_call_page:
+  - id: call_in_call_page
+    bg_color: 34816
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: IN CALL
+        text_color: 255
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_in_call_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16711680
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+  _v1_page_call_ended_page:
+  - id: call_ended_page
+    bg_color: 2105376
+    on_click:
+    - lambda: !lambda |-
+        id(call_ended_active) = false;
+    - script.execute: draw_display
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: CENTER
+        y: -22%
+        text: Call ended
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_ended_text_width}
+    - label:
+        id: call_ended_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - label:
+        align: CENTER
+        y: 13%
+        text: 'Reason:'
+        text_color: 16777215
+        text_font: font_info
+        text_align: CENTER
+        width: ${call_ended_text_width}
+    - label:
+        id: call_ended_reason_label
+        align: CENTER
+        y: 25%
+        text: '-'
+        text_color: 16764006
+        text_font: font_info
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_ended_reason_text_width}
+  _v1_page_settings_continuous_page:
+  - id: settings_continuous_page
+    bg_color: 2105376
+    scrollable: true
+    scroll_elastic: true
+    scroll_dir: VER
+    scrollbar_mode: AUTO
+    on_scroll:
+    - lambda: !lambda |-
+        if (!id(settings_active)) return;
+        if (lv_obj_get_scroll_y(id(settings_continuous_page)->obj) < -28) {
+          id(settings_close).execute();
+        }
+    widgets: ${ _v1_setting_0 + _v1_setting_1 + _v1_setting_2 + _v1_setting_3 + _v1_setting_4 + _v1_setting_5 +
+      _v1_setting_6 + _v1_setting_7 + (_v1_setting_8 if _fw_voip else []) + (_v1_setting_9 if _fw_voip else [])
+      + _v1_setting_10 + _v1_setting_11 + _v1_setting_12 + _v1_setting_13 + (_v1_setting_14 if _fw_wake_word else
+      []) + _v1_setting_15 }
+  _v1_top_status:
+  - label:
+      id: top_clock_label
+      align: TOP_MID
+      y: 90%
+      text: ''
+      text_color: 16777215
+      text_font: font_clock
+  - label:
+      id: top_battery_label
+      align: TOP_MID
+      y: 82%
+      text: ''
+      text_color: 16777215
+      text_font: font_clock
+  _v1_timer_overlay:
+  - obj:
+      id: timer_overlay
+      align: TOP_MID
+      width: 1
+      height: 1
+      bg_color: 16777215
+      border_color: 0
+      border_width: 1
+      hidden: true
+      widgets:
+      - bar:
+          id: timer_bar
+          align: CENTER
+          width: 1
+          height: 1
+          min_value: 0
+          max_value: 100
+          value: 50
+          indicator:
+            bg_color: 2551098
+      - label:
+          id: timer_label
+          align: CENTER
+          text: ''
+          text_color: 0
+          text_font: font_timer
+  _v1_setting_0:
+  - label:
+      text: Audio
+      align: TOP_MID
+      y: 18
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_16
+      text_color: 16777215
+  _v1_setting_1:
+  - label:
+      text: Master volume
+      align: TOP_MID
+      y: 48
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_14
+      text_color: 11579568
+  _v1_setting_2:
+  - slider:
+      id: ui_speaker_vol_slider
+      align: TOP_MID
+      y: 74
+      width: ${settings_row_width}
+      height: 14
+      min_value: 0
+      max_value: 100
+      value: !lambda |-
+        return id(master_volume).state;
+      adv_hittest: true
+      gesture_bubble: true
+      on_release:
+      - number.set:
+          id: master_volume
+          value: !lambda |-
+            return x;
+  _v1_setting_3:
+  - label:
+      text: Microphone gain
+      align: TOP_MID
+      y: 106
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_14
+      text_color: 11579568
+  _v1_setting_4:
+  - slider:
+      id: ui_mic_vol_slider
+      align: TOP_MID
+      y: 132
+      width: ${settings_row_width}
+      height: 14
+      min_value: -20
+      max_value: 30
+      value: !lambda |-
+        return id(mic_gain).state;
+      adv_hittest: true
+      gesture_bubble: true
+      on_release:
+      - number.set:
+          id: mic_gain
+          value: !lambda |-
+            return x;
+  _v1_setting_5:
+  - label:
+      text: Call
+      align: TOP_MID
+      y: 178
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_16
+      text_color: 16777215
+  _v1_setting_6:
+  - obj:
+      align: TOP_MID
+      y: 210
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Speaker mute
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_speaker_mute_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(speaker_mute).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(speaker_mute).state) return;
+              if (x) id(speaker_mute).turn_on();
+              else id(speaker_mute).turn_off();
+  _v1_setting_7:
+  - obj:
+      align: TOP_MID
+      y: 256
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Microphone mute
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_mic_mute_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(mute).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(mute).state) return;
+              if (x) id(mute).turn_on();
+              else id(mute).turn_off();
+  _v1_setting_8:
+  - obj:
+      align: TOP_MID
+      y: 302
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Auto answer
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_auto_answer_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(auto_answer_switch).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(auto_answer_switch).state) return;
+              if (x) id(auto_answer_switch).turn_on();
+              else id(auto_answer_switch).turn_off();
+  _v1_setting_9:
+  - obj:
+      align: TOP_MID
+      y: 348
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Do not disturb
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_dnd_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(dnd_switch).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(dnd_switch).state) return;
+              if (x) id(dnd_switch).turn_on();
+              else id(dnd_switch).turn_off();
+  _v1_setting_10:
+  - label:
+      text: AEC
+      align: TOP_MID
+      y: 400
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_16
+      text_color: 16777215
+  _v1_setting_11:
+  - obj:
+      align: TOP_MID
+      y: 432
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Echo cancellation
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_aec_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(aec_switch).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(aec_switch).state) return;
+              if (x) id(aec_switch).turn_on();
+              else id(aec_switch).turn_off();
+  _v1_setting_12:
+  - dropdown:
+      id: ui_aec_mode_dd
+      align: TOP_MID
+      y: 480
+      width: ${settings_mid_width}
+      options:
+      - SR low cost
+      - SR high perf
+      on_value:
+      - select.set_index:
+          id: aec_mode_select
+          index: !lambda |-
+            return x;
+  _v1_setting_13:
+  - label:
+      text: Voice assistant
+      align: TOP_MID
+      y: 538
+      width: ${settings_mid_width}
+      text_align: CENTER
+      text_font: montserrat_16
+      text_color: 16777215
+  _v1_setting_14:
+  - obj:
+      align: TOP_MID
+      y: 570
+      width: ${settings_mid_width}
+      height: 38
+      bg_opa: TRANSP
+      border_width: 0
+      pad_all: 0
+      widgets:
+      - label:
+          text: Wake word
+          align: LEFT_MID
+          x: 0
+          width: 120
+          text_font: montserrat_14
+          text_color: 11579568
+      - switch:
+          id: ui_wake_word_sw
+          align: RIGHT_MID
+          width: 44
+          height: 24
+          state:
+            checked: !lambda |-
+              return id(wake_word_switch).state;
+          on_value:
+          - lambda: !lambda |-
+              if (x == id(wake_word_switch).state) return;
+              if (x) id(wake_word_switch).turn_on();
+              else id(wake_word_switch).turn_off();
+  _v1_setting_15:
+  - obj:
+      align: TOP_MID
+      y: 652
+      width: 1
+      height: 1
+      bg_opa: TRANSP
+      border_width: 0
+  _v1_gesture_52:
+  - script.execute: swipe_to_voip
+  _v1_gesture_53:
+  - script.execute: swipe_to_voip
+  _v1_gesture_54:
+  - script.execute: swipe_to_voip
+  _v1_gesture_55:
+  - script.execute: swipe_to_voip
+  _v1_gesture_56:
+  - script.execute: swipe_to_voip
+  _v1_gesture_57:
+  - script.execute: swipe_to_voip
+  _v1_gesture_58:
+  - script.execute: call_to_settings
+  _v1_gesture_59:
+  - script.execute: call_to_va
+  _v1_phone_state: |
+    const std::string s = id(phone).get_state_str();
+    bool in_call = (s == "ringing" || s == "calling" ||
+                    s == "remote_ringing" || s == "connecting" ||
+                    s == "in_call");
+    if (in_call) {
+      id(settings_active) = false;  // call interrupts settings view
+    }
+  _v1_phone_ended: |-
+    else if (id(call_ended_active) && !id(phone).is_active()) {
+      target = id(call_ended_page)->obj;
+    }
+  _v1_phone_route: |-
+    else if (id(current_mode) == 1) {
+      // VoIP mode
+      const std::string s = id(phone).get_state_str();
+      if (s == "ringing") {
+        target = id(call_ringing_in_page)->obj;
+      } else if (s == "calling" || s == "remote_ringing") {
+        target = id(call_ringing_out_page)->obj;
+      } else if (s == "in_call" || s == "connecting") {
+        target = id(call_in_call_page)->obj;
+      } else {
+        target = id(call_idle_page)->obj;
+      }
+    }
+  _v1_route_name_63: else if (target == id(call_idle_page)->obj) page_name = "call_idle";
+  _v1_route_name_64: else if (target == id(call_ringing_in_page)->obj) page_name = "call_ringing_in";
+  _v1_route_name_65: else if (target == id(call_ringing_out_page)->obj) page_name = "call_ringing_out";
+  _v1_route_name_66: else if (target == id(call_in_call_page)->obj) page_name = "call_in_call";
+  _v1_route_name_67: else if (target == id(call_ended_page)->obj) page_name = "call_ended";
+  _v1_route_name_68: else if (target == id(timer_finished_page)->obj) page_name = "timer_finished";
+  _v1_draw_tail_0:
+  - lambda: !lambda |-
+      // Determine target page
+      lv_obj_t* target = nullptr;
+      ${ _v1_phone_state if _fw_voip else '' }
+      // Timer ringing owns the UI while the alarm is active. This must use
+      // the runtime_controller timer activity, not voice_assistant_phase, because media_player
+      // callbacks can legitimately update the phase while playing the alarm.
+      if (${ 'id(runtime).is_activity_active("timer_ringing")' if _fw_timers else 'false' }) {
+        ${ 'target = id(timer_finished_page)->obj;' if _fw_timers else '' }
+      } ${ _v1_phone_ended if _fw_voip else '' } else if (id(settings_active) && !id(g_settings_pages).empty()) {
+        int idx = id(g_settings_index);
+        int n = (int) id(g_settings_pages).size();
+        if (idx < 0 || idx >= n) idx = 0;
+        target = id(g_settings_pages)[idx];
+      } else if (id(init_in_progress)) {
+        target = id(initializing_page)->obj;
+      } else if (!wifi::global_wifi_component->is_connected()) {
+        target = id(no_wifi_page)->obj;
+      } else if (id(runtime).is_activity_active("no_ha")) {
+        target = id(no_ha_page)->obj;
+      } ${ _v1_phone_route if _fw_voip else '' } else {
+        // VA mode
+        int phase = id(voice_assistant_phase);
+        if (phase == ${voice_assist_listening_phase_id}) {
+          target = id(listening_page)->obj;
+        } else if (phase == ${voice_assist_thinking_phase_id}) {
+          target = id(thinking_page)->obj;
+        } else if (phase == ${voice_assist_replying_phase_id}) {
+          target = id(replying_page)->obj;
+        } else if (phase == ${voice_assist_error_phase_id}) {
+          target = id(error_page)->obj;
+        } else if (phase == ${voice_assist_muted_phase_id}) {
+          target = id(muted_page)->obj;
+        } else if (phase == ${voice_assist_not_ready_phase_id}) {
+          target = id(no_ha_page)->obj;
+        } else {
+          target = id(idle_page)->obj;
+        }
+      }
+
+      if (target == nullptr) return;
+
+      const char* page_name = "unknown";
+      if (target == id(idle_page)->obj) page_name = "idle";
+      else if (target == id(listening_page)->obj) page_name = "listening";
+      else if (target == id(thinking_page)->obj) page_name = "thinking";
+      else if (target == id(replying_page)->obj) page_name = "replying";
+      else if (target == id(error_page)->obj) page_name = "error";
+      else if (target == id(muted_page)->obj) page_name = "muted";
+      ${ _v1_route_name_63 if _fw_voip else '' }
+      ${ _v1_route_name_64 if _fw_voip else '' }
+      ${ _v1_route_name_65 if _fw_voip else '' }
+      ${ _v1_route_name_66 if _fw_voip else '' }
+      ${ _v1_route_name_67 if _fw_voip else '' }
+      ${ _v1_route_name_68 if _fw_timers else '' }
+
+      // Skip page load if already showing (avoids redundant SPI transfer)
+      bool page_changed = (target != lv_disp_get_scr_act(nullptr));
+      if (page_changed) {
+        // Stop animation before page switch to prevent split-screen glitch
+        lv_anim_del(id(idle_anim), nullptr);
+        // Honour swipe-driven animation hint, otherwise instant load.
+        if (id(nav_anim) != 0) {
+          lv_scr_load_anim(target,
+                           (lv_scr_load_anim_t) id(nav_anim),
+                           (uint32_t) id(nav_anim_ms),
+                           0, false);
+        } else {
+          lv_disp_load_scr(target);
+        }
+      }
+      // The VA idle animation is stopped before page switches. Start the
+      // idle animation loop immediately when VA idle becomes the visible
+      // page, instead of waiting for the template binary_sensor refresh.
+      if (target == id(idle_page)->obj) {
+        if (!id(ai_animation_loop).is_running()) id(ai_animation_loop).execute();
+      } else if (id(ai_animation_loop).is_running()) {
+        id(ai_animation_loop).stop();
+      }
+      // Always consume the hint, even if no page change happened.
+      id(nav_anim) = 0;
+      id(nav_anim_ms) = 0;
+
+      // Hide top layer status bar on replying/thinking pages (text overlap)
+      bool show_status = (target != id(replying_page)->obj && target != id(thinking_page)->obj);
+      if (show_status) {
+        lv_obj_clear_flag(id(top_clock_label), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(id(top_battery_label), LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(id(top_clock_label), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(id(top_battery_label), LV_OBJ_FLAG_HIDDEN);
+      }
+  _v1_draw_tail_1:
+  - if:
+      condition:
+        binary_sensor.is_on: is_idle_screen
+      then:
+      - script.execute: update_idle_labels
+  _v1_draw_tail_2:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(current_mode) == 1 && ${ 'id(phone).is_idle()' if _fw_voip else 'true' }
+                 && !id(init_in_progress);
+      then:
+      - script.execute: update_call_idle_labels
+  _v1_draw_tail_3:
+  - script.execute: update_timer_state
+  _v1_timer_geometry_0: |
+    lv_obj_set_height(id(timer_overlay), ym[13]);
+  _v1_timer_geometry_1: |
+    lv_obj_set_width(id(timer_overlay), ym[2]);  // full width = h (square display)
+  _v1_timer_geometry_2: |
+    lv_obj_set_height(id(timer_bar), ym[13] - 4);
+  _v1_timer_geometry_3: lv_obj_set_width(id(timer_bar), ym[2] - 4);
+  _v1_render_0:
+  - script.execute: runtime_project_ui_phase
+  _v1_render_1:
+  - script.execute: backlight_timer
+  _v1_render_2:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(ui_state) == ${ui_state_va_listening};
+      then:
+      - text_sensor.template.publish:
+          id: text_request
+          state: '...'
+      - text_sensor.template.publish:
+          id: text_response
+          state: '...'
+      - script.stop: reply_pagination_timer
+  _v1_render_3:
+  - if:
+      condition:
+        lambda: !lambda |-
+          return id(ui_state) == ${ui_state_idle} && id(current_mode) == 1
+                 && ${ 'id(phone).is_idle()' if _fw_voip else 'true' };
+      then:
+      - script.execute: update_call_idle_labels
+  _v1_render_4:
+  - script.execute: draw_display
+packages:
+  phase: !include '../phase.yaml'
+  settings_navigation: !include '../../../lvgl/lvgl_settings_navigation.yaml'
+  settings_volume: !include '../../../lvgl/lvgl_settings_sync_volumes.yaml'
+  settings_mute: !include '../../../lvgl/lvgl_settings_sync_mute.yaml'
+  settings_aec: !include '../../../lvgl/lvgl_settings_sync_aec.yaml'
+  phone: ${ _v1_phone if _fw_voip else {} }
+  timers: ${ _v1_timers if _fw_timers else {} }
+  artwork: ${ _v1_artwork if _fw_sendspin else {} }
+  settings_voice: ${ _v1_settings_voice if _fw_wake_word else {} }
+  player: ${ _v1_player if _fw_playback else {} }
+  content: !include '../round_content.yaml'
+binary_sensor:
+- id: !extend 'usb_connected'
+  on_press:
+  - script.execute: backlight_timer
+  on_release:
+  - script.execute: backlight_timer
+- platform: template
+  id: is_idle_screen
+  lambda: !lambda |-
+    return id(current_mode) == 0 &&
+           id(voice_assistant_phase) == ${voice_assist_idle_phase_id} &&
+           !id(init_in_progress);
+switch:
+- id: !extend 'mute'
+  on_turn_off:
+  - script.execute: draw_display
+touchscreen:
+- id: !extend 'touch'
+  on_touch:
+  - script.execute: backlight_timer
+  - if:
+      condition:
+        runtime_controller.is_active:
+          id: runtime
+          activity: timer_ringing
+      then:
+      - runtime_controller.event:
+          id: runtime
+          event: timer_stopped

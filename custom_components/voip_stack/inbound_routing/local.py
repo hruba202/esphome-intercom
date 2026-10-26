@@ -16,7 +16,6 @@ from ..endpoint_session import TerminationInitiator
 from ..fsm import CallState, TerminalReason
 from ..groups import GROUP_TYPE_CONFERENCE, GROUP_TYPE_RING
 from ..media_ports import RtpPortReservation, take_delayed_offer_ports
-from ..phone_endpoint import EndpointKind
 from ..router import RouteAction
 from ..core.sdp import build_answer_directional
 from ..sip_listener import SipInviteResult

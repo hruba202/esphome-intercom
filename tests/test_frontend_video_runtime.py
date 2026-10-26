@@ -248,7 +248,12 @@ assert.equal(noCanvas._stats.rendered, 0);
 assert.equal(noCanvas._stats.dropped, 1);
 assert.equal(noCanvas._stats.dropped_no_canvas, 1);
 noCanvas._stats.rendered = 1;
-assert.equal(noCanvas.visible, true);
+// Historical diagnostics must not reveal a newly created receiver before
+// it renders its own first frame after renegotiation.
+noCanvas._cleanupReceiver();
+noCanvas._canReceive = true;
+assert.equal(noCanvas.visible, false);
+
 const wrapped = new Video();
 wrapped._clockRate = 90000;
 assert.deepEqual(
@@ -803,6 +808,9 @@ context.requestAnimationFrame = (callback) => {{
   return 7;
 }};
 const rendered = new Video();
+rendered._active = true;
+rendered._canReceive = true;
+assert.equal(rendered.visible, false);
 let draws = 0;
 let firstClosed = 0;
 let secondClosed = 0;
@@ -822,6 +830,29 @@ assert.equal(draws, 1);
 assert.equal(secondClosed, 1);
 assert.equal(rendered._stats.rendered, 1);
 assert.equal(rendered._stats.dropped_render_coalesce, 1);
+assert.equal(rendered.visible, true);
+rendered._cleanupReceiver();
+assert.equal(rendered.visible, false);
+rendered._canReceive = true;
+assert.equal(rendered.visible, false);
+rendered._queueDecodedFrame({{
+  timestamp: 3, displayWidth: 1, displayHeight: 1, close() {{}},
+}});
+renderCallback();
+assert.equal(rendered.visible, true);
+assert.equal(rendered._stats.rendered, 2);
+// A newly mounted card has an empty canvas even within the same call.
+rendered.setCanvas({{ getContext: () => ({{ drawImage() {{ draws++; }} }}) }});
+assert.equal(rendered.visible, false);
+rendered._queueDecodedFrame({{
+  timestamp: 4, displayWidth: 1, displayHeight: 1, close() {{}},
+}});
+renderCallback();
+assert.equal(rendered.visible, true);
+rendered.setCanvas(rendered._canvas);
+assert.equal(rendered.visible, true);
+
+
 
 context.Worker = undefined;
 const decoderOwner = new Video();

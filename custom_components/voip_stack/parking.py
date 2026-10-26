@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 import logging
 from typing import ClassVar
 
+from .session_cleanup import async_wait_for_cleanup
 from .call_deadlines import CallDeadline
 from .call_projection import publish_bridge_projection
 from .endpoint_lifecycle import call_registry
@@ -42,7 +43,7 @@ def get_parking_lot(hass):
     owner = runtime.sip
     settings = parking_settings(hass)
     if owner is None or not owner.active or not settings.get("enabled"):
-        raise ParkingError("Call parking is disabled")
+        raise ParkingError("Configure non-conflicting parking access and slot numbers in VoIP Stack settings")
     lot = owner.component("parking")
     if lot is None:
         def changed():
@@ -254,12 +255,16 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
             or endpoint_id not in session.endpoint_claims):
         raise ParkingError("Select an established call owned by this phone")
     active = runtime.media.sessions_for("audio").get((session.call_id, endpoint_id))
-    descriptor = registry.resource_for(session.call_id, "softphone_media")
-    if active is None or active.handoff_transport is None or descriptor is None:
-        raise ParkingError("The phone audio connection is not ready")
-    if descriptor.get("video_direction", "inactive") != "inactive" and descriptor.get("video_format"):
-        raise ParkingError("Parking requires an audio-only call")
+    descriptor = registry.resource_for(session.call_id, "softphone_media") or {}
     client = registry.source_sip_client_for(session.call_id) or registry.sip_client_for(session.call_id)
+    video = runtime.media.sessions_for("video").get((session.call_id, endpoint_id))
+    if video is not None or (
+            descriptor.get("video_direction", "inactive") != "inactive" and descriptor.get("video_format")):
+        raise ParkingError("Parking requires an audio-only call")
+    if client is not None and client.dialog is not None and client.dialog.video_format is not None:
+        raise ParkingError("Parking requires an audio-only call")
+    if active is None or active.handoff_transport is None:
+        raise ParkingError("The phone audio connection is not ready")
     server, _ = _inbound_server(runtime, session.call_id)
     source = server.invite_for_call(session.call_id) if server is not None else None
     retained = next((item for item in session.endpoint_claims if item != endpoint_id), "")
@@ -275,7 +280,11 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
     settings = parking_settings(hass)
     parked = lot.reserve(session, slot=slot, parker=endpoint_id,
         return_destination=str(settings.get("return_destination") or endpoint_id))
-    reservation = descriptor.get("rtp_reservation")
+    # Direct outgoing calls keep their reservation on the SIP client rather
+    # than an inbound media descriptor. Transfer that ownership with the RTP
+    # transport; unpooled audio sockets use the existing adoption primitive.
+    client_reservation = getattr(client, "media_reservation", None)
+    reservation = descriptor.get("rtp_reservation") or client_reservation
     acquired = reservation is None
     try:
         if acquired:
@@ -294,6 +303,13 @@ async def park_browser_sip_call(hass, call_id, endpoint_id, *, slot=""):
         if acquired and reservation is not None:
             reservation.release()
         raise
+    if client_reservation is not None and reservation is client_reservation:
+        client.media_reservation = None
+        for name in ("video_rtp_socket", "video_rtcp_socket"):
+            sock = getattr(client, name, None)
+            setattr(client, name, None)
+            if sock is not None:
+                sock.close()
     registry.take_media(session.call_id)
     release_video_media_reservation(descriptor)
     media.release_reservation_on_stop = False
@@ -561,8 +577,8 @@ async def prepare_parking_pickup(hass, invite, slot, local_ip):
     return SipInviteResult(200, "OK", answer_sdp=answer, commit=commit, rollback=rollback)
 
 
-async def pickup_browser_call(call, endpoint, slot):
-    """An explicit pickup reuses the ordinary browser forwarding and answer path."""
+async def pickup_phone_call(call, endpoint, slot):
+    """Recover a slot through ordinary routing, answering browser legs locally."""
     from homeassistant.core import ServiceCall
     from .softphone_answer import async_answer_browser_call
     from .softphone_commands import async_resolve_browser_call_command
@@ -583,7 +599,21 @@ async def pickup_browser_call(call, endpoint, slot):
         await registry.forward_call(call_id=session.call_id, destination=endpoint.name, on_failure="resume")
         task = registry.task_for(session.call_id, "forward")
         if task is not None:
-            await task
+            try:
+                async with asyncio.timeout(float(call.data.get("answer_timeout", 30))):
+                    await asyncio.shield(task)
+            except BaseException:
+                if not task.done():
+                    task.cancel()
+                await async_wait_for_cleanup(asyncio.gather(task, return_exceptions=True))
+                raise
+        if not endpoint.kind.is_softphone:
+            if not session.live or session.state != "in_call" or session.metadata.get("dest_endpoint_id") != endpoint.endpoint_id:
+                raise ParkingError("The selected phone did not answer the pickup")
+            if claim.current:
+                claim.commit()
+            publish_bridge_projection(hass, session, event_type="picked_up", route_kind="parking_pickup")
+            return session
         if not claim.current or session.owner == "parking":
             raise ParkingError("The selected phone could not accept the parked call")
         answer = ServiceCall(hass, "voip_stack", "answer", {
@@ -599,6 +629,8 @@ async def pickup_browser_call(call, endpoint, slot):
         claim.commit()
         registry.release_resource(session.call_id, f"parking:{session.call_id}", value=application)
         await application.close("picked_up")
+        publish_bridge_projection(hass, session, event_type="picked_up", route_kind="parking_pickup")
+        return session
     except BaseException:
         claim.rollback()
         if session.live and session.owner == "ha_softphone" and session.state == "ringing":
@@ -610,6 +642,10 @@ async def pickup_browser_call(call, endpoint, slot):
                                     dest_endpoint_id="", target_endpoint_id="", ring_endpoint_ids=())
             await application.resume()
         raise
+
+
+async def pickup_browser_call(call, endpoint, slot):
+    return await pickup_phone_call(call, endpoint, slot)
 
 
 async def async_park_call(call):

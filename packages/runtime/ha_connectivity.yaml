@@ -1,51 +1,7 @@
-# Full-profile HA presence. WiFi state is subscribed
-# directly by runtime_controller; API presence keeps one filtered bridge until
-# ESPHome exposes a native client listener that can coexist with user triggers.
-
-api:
-  on_client_connected:
-    - script.execute:
-        id: runtime_update_ha_presence
-        client_info: !lambda 'return client_info;'
-        connected: true
-  on_client_disconnected:
-    - script.execute:
-        id: runtime_update_ha_presence
-        client_info: !lambda 'return client_info;'
-        connected: false
-
-script:
-  # Both directions share one classification rule. An open log connection must
-  # neither keep HA online nor hide the final HA client's disconnect.
-  - id: runtime_update_ha_presence
-    parameters:
-      client_info: string
-      connected: bool
-    then:
-      - lambda: |-
-          if (client_info.empty() ||
-              client_info.rfind("ESPHome Logs", 0) == 0 ||
-              client_info.rfind("ESPHome Dashboard", 0) == 0 ||
-              client_info.rfind("ESPHome Web", 0) == 0) {
-            return;
-          }
-          if (connected) {
-            id(g_ha_api_clients)++;
-            id(runtime_reconcile_ha_presence).stop();
-            id(runtime).event("ha_connected");
-          } else {
-            if (id(g_ha_api_clients) > 0) id(g_ha_api_clients)--;
-            id(runtime_reconcile_ha_presence).execute();
-          }
-
-  - id: runtime_reconcile_ha_presence
-    mode: restart
-    then:
-      - delay: 250ms
-      - if:
-          condition:
-            lambda: 'return id(g_ha_api_clients) == 0;'
-          then:
-            - runtime_controller.event:
-                id: runtime
-                event: ha_disconnected
+# The native adapter preserves the filtered client count and reconnect grace.
+api: {}
+runtime_controller:
+  observe:
+    api: true
+  state_outputs:
+    api_clients: g_ha_api_clients

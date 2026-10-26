@@ -18,15 +18,12 @@ switch:
           format: "Mic mute ON"
       - voice_assistant.stop:
       - microphone.mute: ${mic_id}
-      - runtime_controller.event:
-          id: runtime
-          event: mic_muted
     on_turn_off:
       - logger.log:
           level: INFO
           tag: mute
           format: "Mic mute OFF"
       - microphone.unmute: ${mic_id}
-      - runtime_controller.event:
-          id: runtime
-          event: mic_unmuted
+runtime_controller:
+  observe:
+    microphone_mute: mute

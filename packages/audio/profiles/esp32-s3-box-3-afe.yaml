@@ -1,0 +1,83 @@
+# Physical audio/backend configuration; local GMF selection is explicit.
+esp_audio_stack:
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 48000
+  output_sample_rate: 16000
+  processor_id: afe_processor
+  aec_reference: previous_frame
+  rx_slot_mode: stereo
+  rx_mic_slots:
+  - left
+  - right
+  buffers_in_psram: true
+  codec:
+    i2c_id: internal_i2c
+    input:
+      type: es7210
+      address: 64
+      mic_selected: 3
+      gain_db: 30.0
+    output:
+      type: es8311
+      address: 24
+      use_mclk: true
+      no_dac_ref: true
+esp_afe:
+  id: afe_processor
+  type: fd
+  mode: low_cost
+  mic_num: 2
+  se_enabled: true
+  aec_enabled: true
+  ns_enabled: false
+  agc_enabled: false
+  vad_enabled: true
+  aec_filter_length: 4
+  memory_alloc_mode: more_psram
+  task_core: 1
+  task_priority: 5
+  feed_task_core: 0
+  fetch_task_core: 1
+  feed_buf_in_psram: true
+  feed_ring_in_psram: true
+  fetch_ring_in_psram: true
+microphone:
+- platform: esp_audio_stack
+  id: mic_main
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 48000
+  bits_per_sample: 16
+  timeout: 1s
+switch:
+- platform: gpio
+  name: Speaker Enable
+  id: speaker_enable
+  pin:
+    number: GPIO46
+    ignore_strapping_warning: true
+  restore_mode: RESTORE_DEFAULT_ON
+  entity_category: config
+sensor:
+- platform: esp_audio_stack
+  std_slot_levels:
+  - name: Microphone Left Level
+    slot: left
+  - name: Microphone Right Level
+    slot: right
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_afe
+packages:
+  mute: !include '../../features/shared/microphone_mute.yaml'
+  speaker_mute: !include '../../voip/speaker_mute_runtime.yaml'
+  controls: !include '../../esp_audio_stack/controls.yaml'
+  processor_controls: !include '../../esp_afe/dual_mic_entities.yaml'
+  gmf_source: !include '../gmf_source.yaml'

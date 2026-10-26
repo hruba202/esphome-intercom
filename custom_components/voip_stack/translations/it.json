@@ -14,9 +14,7 @@
           "media_capture": "Registra audio privato per la diagnostica",
           "experimental_sip_video": "Abilita video SIP per il softphone Home Assistant",
           "sip_registrar_enabled": "Abilita account softphone SIP locali",
-          "trunk_enabled": "Abilita trunk SIP opzionale",
-          "voicemail_enabled": "Abilita segreteria telefonica",
-          "parking_enabled": "Abilita parcheggio chiamate"
+          "trunk_enabled": "Abilita trunk SIP opzionale"
         },
         "data_description": {
           "sip_port": "Porta di ascolto dell'endpoint SIP HA. HA accetta signaling SIP sia su UDP sia su TCP su questa porta.",
@@ -77,7 +75,8 @@
           "trunk_dtmf_terminator": "Terminatore DTMF",
           "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso",
           "trunk_audio_codecs": "Codec audio consentiti",
-          "trunk_video_codecs": "Codec video consentiti"
+          "trunk_video_codecs": "Codec video consentiti",
+          "trunk_outbound_media_address": "Indirizzo IPv4 media per le chiamate uscenti"
         },
         "data_description": {
           "trunk_transport": "Transport SIP usato da HA verso il provider.",
@@ -96,7 +95,8 @@
           "trunk_dtmf_terminator": "Terminatore opzionale, per esempio #. Vuoto significa che decide timeout o match esatto con una extension in rubrica.",
           "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
           "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
-          "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali."
+          "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali.",
+          "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l'indirizzo del provider. Vuoto: usa l'indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
         }
       },
       "trunk_mode": {
@@ -137,6 +137,15 @@
           "hold_media": "Audio di attesa",
           "clear_hold_media": "Rimuovi l'audio di attesa salvato"
         }
+      },
+      "reconfigure": {
+        "title": "Impostazioni VoIP Stack",
+        "description": "Scegli le impostazioni da configurare. Le funzioni PBX sono disponibili; configura le risorse quando servono.",
+        "menu_options": {
+          "user": "Impostazioni generali",
+          "parking": "Parcheggio chiamate",
+          "voicemail": "Voce della segreteria"
+        }
       }
     },
     "error": {
@@ -154,7 +163,9 @@
       "parking_configuration_invalid": "Scegli codici distinti e tempi tra 1 e 3600 secondi.",
       "parking_route_conflict": "Un codice del parcheggio è già usato da un telefono, contatto, interno Assist o gruppo.",
       "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio.",
-      "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata."
+      "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata.",
+      "trunk_media_address_invalid": "Inserisci un indirizzo IPv4 unicast raggiungibile, oppure lascia vuoto.",
+      "parking_slots_in_use": "Recupera o termina le chiamate negli slot da rimuovere prima di modificare la lista."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack riconfigurato correttamente.",
@@ -190,13 +201,14 @@
             "video_enabled": "Abilita video",
             "auto_answer": "Risposta automatica",
             "send_video": "Invia video",
-            "voicemail_enabled": "Abilita la segreteria per questo telefono"
+            "voicemail_enabled": "Abilita casella vocale"
           },
           "data_description": {
             "name": "Nome obbligatorio usato da card, rubrica e instradamento.",
             "extension": "Interno componibile opzionale e univoco. Il telefono logico resta chiamabile anche senza card browser collegata.",
             "auto_answer": "Risponde automaticamente quando un browser collegato dispone del permesso microfono.",
-            "send_video": "Invia per impostazione predefinita la videocamera del browser quando il video è negoziato e il permesso è disponibile."
+            "send_video": "Invia per impostazione predefinita la videocamera del browser quando il video è negoziato e il permesso è disponibile.",
+            "voicemail_enabled": "Disabilitando questa casella elimini definitivamente messaggi, file, PIN e impostazioni della casella. Riabilitandola crei una casella vuota."
           }
         },
         "sip_account": {
@@ -215,7 +227,10 @@
             "video_enabled": "Consenti negoziazione video",
             "offline_policy": "Quando non registrato",
             "offline_forward_target": "Destinazione inoltro",
-            "voicemail_enabled": "Abilita la segreteria per questo telefono"
+            "voicemail_enabled": "Abilita casella vocale"
+          },
+          "data_description": {
+            "voicemail_enabled": "Disabilitando questa casella elimini definitivamente messaggi, file, PIN e impostazioni della casella. Riabilitandola crei una casella vuota."
           }
         },
         "reconfigure": {
@@ -227,7 +242,8 @@
         "phone_username_invalid": "Usa solo lettere, numeri, punti, trattini bassi o trattini.",
         "phone_password_required": "La password SIP è obbligatoria.",
         "phone_forward_target_required": "La destinazione è obbligatoria con la policy Inoltra.",
-        "phone_alias_conflict": "Nome, interno o username è già usato da un altro telefono."
+        "phone_alias_conflict": "Nome, interno o username è già usato da un altro telefono.",
+        "mailbox_removal_failed": "Impossibile eliminare la casella. Ripristina l'accesso alla cartella dei media e riprova."
       },
       "abort": {
         "reconfigure_successful": "Telefono riconfigurato.",
@@ -315,7 +331,8 @@
             "trunk_dtmf_terminator": "Terminatore DTMF",
             "trunk_allowed_ips": "Indirizzi IP autorizzati in ingresso",
             "trunk_audio_codecs": "Codec audio consentiti",
-            "trunk_video_codecs": "Codec video consentiti"
+            "trunk_video_codecs": "Codec video consentiti",
+            "trunk_outbound_media_address": "Indirizzo IPv4 media per le chiamate uscenti"
           },
           "data_description": {
             "trunk_transport": "Transport SIP usato da HA verso il provider.",
@@ -334,7 +351,8 @@
             "trunk_dtmf_terminator": "Terminatore opzionale, per esempio #. Vuoto significa che decide timeout o match esatto con una extension in rubrica.",
             "trunk_allowed_ips": "Inserisci separatamente ogni IP sorgente o rete CIDR autorizzati. Possono differire dal server in uscita. Obbligatori senza registrazione.",
             "trunk_audio_codecs": "Codec consentiti nelle chiamate in ingresso e in uscita su questo trunk. Mantieni i valori iniziali se il PBX/provider non indica una lista specifica. Seleziona almeno un codec. Serve un codec comune; i toni DTMF vengono negoziati separatamente. Non modifica gli altri trunk o i telefoni locali.",
-            "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali."
+            "trunk_video_codecs": "Codec video consentiti su questo trunk. Svuota la lista per avere solo audio. La selezione non abilita video o transcodifica: il telefono e il percorso multimediale devono supportarli. I profili H.264 vengono negoziati automaticamente. In caso di dubbio mantieni i valori iniziali.",
+            "trunk_outbound_media_address": "Opzionale. Indirizzo di Home Assistant raggiungibile da questo PBX per audio e video delle chiamate uscenti. Dietro NAT usa il tuo IP pubblico e mantieni le porte RTP/RTCP raggiungibili con gli stessi numeri di porta. Non inserire l'indirizzo del provider. Vuoto: usa l'indirizzo HA esistente. Non modifica le chiamate LAN o la registrazione SIP."
           }
         }
       },
@@ -350,7 +368,8 @@
         "trunk_registration_failed": "Registrazione fallita. Controlla server, trasporto e credenziali. La configurazione salvata non è stata modificata.",
         "trunk_validation_failed": "Controlla la connessione e le reti ammesse in ingresso. I trunk statici con lo stesso trasporto devono avere reti sorgenti non sovrapposte.",
         "trunk_codecs_invalid": "Seleziona codec supportati e mantieni almeno un codec audio.",
-        "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata."
+        "trunk_target_required": "Seleziona un telefono destinatario o inserisci una destinazione del piano di chiamata.",
+        "trunk_media_address_invalid": "Inserisci un indirizzo IPv4 unicast raggiungibile, oppure lascia vuoto."
       },
       "abort": {
         "reconfigure_successful": "Configurazione del trunk aggiornata."
@@ -429,6 +448,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Libero",
+        "unavailable": "Non disponibile",
+        "calling": "Sta chiamando",
+        "ringing": "Sta squillando",
+        "in_call": "In conversazione",
+        "held": "In attesa"
+      }
     }
   },
   "system_health": {
@@ -463,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Interni telefonici duplicati",
       "description": "Queste destinazioni usano lo stesso interno: {conflicts}. Assegna un interno diverso a ogni telefono, contatto o endpoint Assist. Le chiamate a un interno ambiguo vengono rifiutate; nomi e indirizzi SIP espliciti restano disponibili. Per un telefono ESPHome, modifica l'interno sul dispositivo. La segnalazione scompare quando la rubrica non contiene conflitti."
+    },
+    "parking_configuration": {
+      "title": "Controlla la configurazione del parcheggio",
+      "description": "Scegli accesso e slot validi che non siano in conflitto con telefoni, contatti o gruppi. Le destinazioni esistenti restano invariate."
+    },
+    "mailbox_route_conflict": {
+      "title": "Conflitto con i codici della segreteria",
+      "description": "Un telefono, contatto o gruppo usa un indirizzo della segreteria. Rinomina la destinazione in conflitto; le rotte esistenti restano invariate."
     }
   },
   "exceptions": {
@@ -835,6 +872,36 @@
           "description": "Filtro telefono facoltativo. Lascia vuoto per tutte le caselle."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Stato del telefono cambiato",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "from": {
+          "name": "Da"
+        },
+        "to": {
+          "name": "A"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Casella vocale del telefono cambiata",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Chiamata recuperata",
+      "fields": {
+        "destination": {
+          "name": "Destinazione"
+        }
+      }
     }
   },
   "conditions": {
@@ -875,6 +942,74 @@
         "digits": {
           "name": "Cifre attese",
           "description": "Vuoto: qualsiasi sequenza ricevuta."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Il telefono è nello stato",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "state": {
+          "name": "Stato"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Il telefono ha una chiamata in squillo",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Il telefono ha messaggi vocali",
+      "fields": {
+        "phone": {
+          "name": "Telefono"
+        },
+        "unread_only": {
+          "name": "Solo messaggi non ascoltati"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Leggi stato del telefono",
+      "description": "Leggi stato, chiamate e contatori della casella vocale del telefono selezionato.",
+      "fields": {
+        "device_id": {
+          "name": "Telefono"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Recupera chiamata",
+      "description": "Recupera sul telefono selezionato una chiamata che squilla o è parcheggiata.",
+      "fields": {
+        "device_id": {
+          "name": "Telefono che recupera"
+        },
+        "target_device_id": {
+          "name": "Telefono che squilla"
+        },
+        "slot": {
+          "name": "Posto di parcheggio"
+        },
+        "answer_timeout": {
+          "name": "Attesa della risposta"
+        },
+        "call_id": {
+          "name": "ID chiamata"
+        },
+        "expected_generation": {
+          "name": "Generazione della chiamata"
+        },
+        "leg_id": {
+          "name": "Ramo della chiamata"
         }
       }
     }

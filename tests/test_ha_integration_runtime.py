@@ -223,7 +223,17 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     from custom_components.voip_stack import call_transfer
     from custom_components.voip_stack.sip_client import SipTransferResult
 
-    phones = SimpleNamespace(resolve_source=AsyncMock())
+    from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
+    from custom_components.voip_stack import endpoint_termination
+    from custom_components.voip_stack.endpoint_session import TerminationInitiator
+
+    registry = SipEndpointRuntime(allow_dark_sessions=True)
+    registry.upsert("active-call", state="in_call", owner="bridge", endpoint_id="phone-endpoint")
+    phones = SimpleNamespace(resolve_source=AsyncMock(
+        return_value=SimpleNamespace(endpoint_id="phone-endpoint")))
+    terminate = AsyncMock()
+    monkeypatch.setattr(endpoint_termination, "EndpointTerminationHandler",
+                        lambda _hass: SimpleNamespace(terminate_reason=terminate))
     monkeypatch.setattr(
         voip_stack,
         "_runtime_data",
@@ -234,7 +244,7 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     )
     monkeypatch.setattr(
         voip_stack, "_call_registry",
-        lambda _hass: SimpleNamespace(get_session=lambda _call_id: None),
+        lambda _hass: registry,
     )
     monkeypatch.setattr(call_transfer, "async_transfer_call", transfer)
 
@@ -261,6 +271,8 @@ async def test_transfer_service_returns_the_refer_subscription_result(
     }
     phones.resolve_source.assert_awaited_once()
     transfer.assert_awaited_once()
+    terminate.assert_awaited_once_with("active-call", "forwarded", TerminationInitiator.ROUTING)
+    await registry.terminate_call_wait("active-call", reason="test_complete")
 
 
 async def test_default_phone_call_state_keeps_its_historical_entity_id(
@@ -702,7 +714,7 @@ async def test_system_health_and_media_capture_repair_are_privacy_safe(
         endpoints=SimpleNamespace(
             endpoints=(
                 SimpleNamespace(
-                    kind=EndpointKind.ESPHOME,
+                    kind=EndpointKind.ESPHOME, sip_uri_user="esp-health", name="ESP health", extension="",
                     availability=EndpointAvailability.AVAILABLE,
                 ),
             )
@@ -1112,7 +1124,7 @@ async def test_retired_native_phones_migrate_without_removing_supported_phones(h
     )
 
     assert await async_migrate_entry(hass, entry)
-    assert entry.version == 6 and entry.minor_version == 3
+    assert entry.version == 6 and entry.minor_version == 4
     assert dict(entry.data) == {"sip_port": 5060}
     assert set(entry.subentries) == {children[k].subentry_id for k in ("browser", "sip_account")}
     assert registry.async_get_entity_id("sensor", DOMAIN, "companion") is None

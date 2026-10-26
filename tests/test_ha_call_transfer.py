@@ -83,10 +83,7 @@ async def test_attended_transfer_uses_the_consultation_dialog_identity() -> None
     source.refer = refer  # type: ignore[method-assign]
     runtime = SimpleNamespace(
         sip=SimpleNamespace(
-            sip_clients_snapshot=lambda: {
-                "source": source,
-                "consult": consultation,
-            },
+            sip_client_for={"source": source, "consult": consultation}.get,
         ),
         endpoints=SimpleNamespace(resolve=lambda _value: None),
     )
@@ -135,6 +132,7 @@ async def test_transfer_service_closes_only_the_successful_current_call(
 
     session = SimpleNamespace(generation=7)
     registry = SimpleNamespace(
+        resolve_session_id=lambda call_id: call_id,
         get_session=lambda _call_id: session,
         is_generation_current=lambda _call_id, generation: current and generation == 7,
     )
@@ -164,7 +162,7 @@ async def test_automation_transfer_targets_ha_listener_not_remote_phone(destinat
     source = _established("source", "remote", "bedroom")
     source.refer = AsyncMock(return_value=SipTransferResult(True, 200, "completed"))
     runtime = SimpleNamespace(
-        sip=SimpleNamespace(sip_clients_snapshot=lambda: {"source": source}),
+        sip=SimpleNamespace(sip_client_for={"source": source}.get),
         endpoints=SimpleNamespace(resolve=lambda _: None),
         phonebook_sensor=SimpleNamespace(extra_state_attributes={"roster_json": json.dumps([
             {"id": "HA", "address": "192.0.2.1", "port": 5070,
@@ -205,3 +203,25 @@ def test_automation_transfer_without_reachable_ha_address_fails_explicitly():
     )
     with pytest.raises(sip.SipError, match="Home Assistant SIP address is unavailable"):
         call_transfer._blind_target(runtime, "sip:bedroom@192.0.2.20", "Wakeup")
+
+
+@pytest.mark.parametrize("destination", ["Room speaker", "321"])
+def test_transfer_uses_address_contact_route_not_current_peer(destination):
+    import json
+    runtime = SimpleNamespace(
+        endpoints=SimpleNamespace(resolve=lambda _: None),
+        phonebook_sensor=SimpleNamespace(extra_state_attributes={"roster_json": json.dumps([
+            {"id": "room-speaker", "name": "Room speaker", "address": "192.0.2.30",
+             "port": 5070, "extension": "321", "metadata": {"sip_transport": "udp"}},
+        ])}),
+    )
+    target = call_transfer._blind_target(runtime, "sip:old@192.0.2.20:5060", destination)
+    assert target.uri == "sip:room-speaker@192.0.2.30:5070;transport=udp"
+
+
+def test_attended_transfer_addresses_the_known_gruu_instance():
+    consultation = _established("consult", "remote", "desk")
+    consultation.dialog.remote_target_uri = "sip:desk@pbx.example;gr=instance-a"
+    target = call_transfer._attended_target(consultation)
+    assert target.uri == "sip:desk@pbx.example;gr=instance-a"
+    assert target.replaces.call_id == "consult"

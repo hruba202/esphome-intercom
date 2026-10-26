@@ -1,0 +1,6 @@
+# P4 H264 profile. Other video codec components are never selected.
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  base: !include 'waveshare-p4-phone-base.yaml'
+  video: !include '${ ''../voip/p4_video_h264.yaml'' if ''voip'' in firmware_features and ''display'' in firmware_features
+    and ''video'' in firmware_features else ''../features/shared/absent.yaml'' }'

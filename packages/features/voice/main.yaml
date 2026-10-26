@@ -1,0 +1,9 @@
+packages:
+  runtime: !include 'runtime.yaml'
+  globals: !include '../../runtime/voice_globals.yaml'
+  events: !include '../../voice_assistant/runtime_events.yaml'
+  commands: !include '../../voice_assistant/local_commands.yaml'
+switch:
+- id: !extend 'mute'
+  on_turn_on:
+  - voice_assistant.stop: null

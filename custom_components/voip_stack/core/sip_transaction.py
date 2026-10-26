@@ -71,7 +71,7 @@ class SessionTimerDriver:
         while deadline := self.deadline:
             await asyncio.sleep(max(0.0, deadline - self.now()))
             outcome = await self.advance()
-            if outcome != "refreshed":
+            if outcome not in {"refreshed", "waiting"}:
                 return outcome
         return "disabled"
 
@@ -115,6 +115,9 @@ def same_request_transaction(
         and previous_key[0] == previous.method
         and key[2]
         and key == previous_key
+        and current.header("Call-ID") == previous.header("Call-ID")
+        and sip.extract_tag(current.header("From")) == sip.extract_tag(previous.header("From"))
+        and sip.extract_tag(current.header("To")) == sip.extract_tag(previous.header("To"))
     )
 
 

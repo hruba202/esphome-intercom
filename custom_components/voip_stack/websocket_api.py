@@ -251,6 +251,11 @@ def _fire_call_event(
     )
     call_id = str(event.get("call_id") or "").strip()
     registry = call_registry(hass)
+    session = registry.get_session(registry.resolve_session_id(call_id))
+    publisher = registry.component("state_publisher")
+    if session is not None and publisher is not None and scope in {"session", "sip_bridge"}:
+        publisher.acknowledge(session, "phone" if scope == "session" else "sip_bridge",
+                              str(event.get("endpoint_id") or "") if scope == "session" else "")
     forwardable_state = event["state"] in {
         "route_requested",
         CallState.CONNECTING.value,
@@ -1017,7 +1022,8 @@ def _ha_softphone_state(hass: HomeAssistant, endpoint_id: str) -> dict[str, Any]
         "session_device_id": store.get("session_device_id", ""),
         "dnd": _ha_softphone_dnd(hass, endpoint_id),
         "voicemail": dict(store.get("voicemail") or {"enabled": False, "new": 0, "old": 0, "total": 0}),
-        "parking": {"enabled": bool(parking.get("enabled"))},
+        "parking": {"enabled": bool(parking.get("enabled")),
+                    "unavailable_reason": parking.get("unavailable_reason", "")},
         "recording": {"active": recording_active,
                       "finishing": recording is not None and recording.stopped.is_set(),
                       "owned": recording_active and recording.endpoint.endpoint_id == endpoint_id},
@@ -1236,7 +1242,7 @@ def _set_ha_softphone_call_state(
         store["sip_state"] = state
         store["terminal_reason"] = ""
         for key, value in extra.items():
-            if key == "video_failure_reason":
+            if key in {"video_failure_reason", "target_device_id", "target_endpoint_id"}:
                 store[key] = str(value or "")
             elif value not in (None, ""):
                 store[key] = value
@@ -1247,7 +1253,11 @@ def _set_ha_softphone_call_state(
         "session_device_id": session_device_id or "",
     }
     payload.update(canonical)
-    payload.update({k: v for k, v in extra.items() if v not in (None, "")})
+    payload.update({
+        key: str(value or "") if key in {"target_device_id", "target_endpoint_id"} else value
+        for key, value in extra.items()
+        if value not in (None, "") or key in {"target_device_id", "target_endpoint_id"}
+    })
     if terminal and store.get("terminal_reason"):
         payload["terminal_reason"] = store["terminal_reason"]
     if terminal and store.get("last_terminal_dialed_target"):
@@ -1445,7 +1455,9 @@ async def _get_voip_devices(hass: HomeAssistant) -> list[dict[str, Any]]:
         device["endpoint_type"] = EndpointKind.ESPHOME.value
         device["voicemail"] = mailbox_snapshot(hass, endpoint_id)
         from .parking_config import parking_settings
-        device["parking"] = {"enabled": bool(parking_settings(hass).get("enabled"))}
+        parking = parking_settings(hass)
+        device["parking"] = {"enabled": bool(parking.get("enabled")),
+                             "unavailable_reason": parking.get("unavailable_reason", "")}
         device["capabilities"] = sorted(capabilities)
         async_sync_esphome_action_issue(hass, device)
 
@@ -1566,6 +1578,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): WS_TYPE_SUBSCRIBE_CALL_EVENTS,
+        vol.Optional("include_activity", default=False): bool,
         vol.Optional("endpoint_id", default=""): str,
         vol.Optional("device_id", default=""): str,
     }
@@ -1576,7 +1589,7 @@ def websocket_subscribe_call_events(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     msg_id = msg["id"]
     requested_endpoint = str(msg.get("endpoint_id") or "").strip()
     if not requested_endpoint and msg.get("device_id"):
@@ -1609,10 +1622,27 @@ def websocket_subscribe_call_events(
                 return
         connection.send_event(msg_id, {"event_type": CALL_EVENT, "data": event.data})
 
-    connection.subscriptions[msg_id] = hass.bus.async_listen(
-        CALL_EVENT, forward_call_event
-    )
+    from .phone_state import phone_state_observer
+
+    @callback
+    def forward_activity(activity):
+        connection.send_event(msg_id, {"event_type": f"{DOMAIN}.activity", "data": activity})
+
+    listeners = [hass.bus.async_listen(CALL_EVENT, forward_call_event)]
+    observer = None
+    if msg.get("include_activity", False):
+        observer = phone_state_observer(hass)
+        listeners.append(observer.subscribe(forward_activity, kind="activity"))
+
+    @callback
+    def unsubscribe():
+        for listener in listeners:
+            listener()
+
+    connection.subscriptions[msg_id] = unsubscribe
     connection.send_result(msg_id)
+    if observer is not None:
+        forward_activity(observer.activity)
 
 
 @websocket_api.websocket_command(
@@ -1629,7 +1659,7 @@ def websocket_subscribe_ha_softphone_state(
     msg: Dict[str, Any],
 ) -> None:
     """Stream authoritative HA softphone snapshots."""
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     msg_id = msg["id"]
     try:
         requested_endpoint = _endpoint_id_from_selector(
@@ -1692,7 +1722,7 @@ async def websocket_ha_softphone_state(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     try:
         endpoint_id = _endpoint_id_from_selector(
             hass,
@@ -1733,10 +1763,15 @@ async def websocket_list_devices(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    from .entity_identity import shared_entity_ids
+
+    require_websocket_read(hass, connection)
     connection.send_result(
         msg["id"],
-        {"devices": [*_ha_softphone_devices(hass), *(await _get_voip_devices(hass))]},
+        {
+            "devices": [*_ha_softphone_devices(hass), *(await _get_voip_devices(hass))],
+            "entity_ids": shared_entity_ids(hass),
+        },
     )
 
 
@@ -1749,7 +1784,7 @@ async def websocket_resolve_device(
     connection: websocket_api.ActiveConnection,
     msg: Dict[str, Any],
 ) -> None:
-    require_websocket_read(connection)
+    require_websocket_read(hass, connection)
     device_id = str(msg.get("device_id") or "")
     registry = _endpoint_registry(hass)
     endpoint = registry.by_device_id(device_id) if registry is not None else None

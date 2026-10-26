@@ -6,12 +6,17 @@
 # by voip-only, full-experience, or future media-only reducers.
 # =============================================================================
 
-substitutions:
-  status_led_name: Status LED
-  status_led_pin: GPIO38
-  status_led_num_leds: "7"
-  status_led_rgb_order: RGB
+defaults:
+  status_led_name: '${ status_led_name | default("Status LED") }'
+  status_led_pin: '${ status_led_pin | default("GPIO38") }'
+  status_led_num_leds: '${ status_led_num_leds | default("7") }'
+  status_led_rgb_order: '${ status_led_rgb_order | default("RGB") }'
 
+substitutions:
+  status_led_name: ${status_led_name}
+  status_led_pin: ${status_led_pin}
+  status_led_num_leds: ${status_led_num_leds}
+  status_led_rgb_order: ${status_led_rgb_order}
 light:
   - platform: esp32_rmt_led_strip
     id: status_led

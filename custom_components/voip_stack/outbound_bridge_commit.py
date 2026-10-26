@@ -374,6 +374,12 @@ async def async_commit_outbound_bridge(
             raise RuntimeError(str(getattr(committed, "reason", "answer_not_committed")))
 
         _require_current()
+        registry.observe_leg(invite.call_id, dest_call_id, role="callee",
+                             state=CallState.IN_CALL.value,
+                             endpoint_id=policy.dest_endpoint_id or winner.endpoint_id, generation=generation)
+        registry.observe_leg(invite.call_id, invite.call_id, role=policy.source_role,
+                             state=CallState.IN_CALL.value,
+                             endpoint_id=policy.source_endpoint_id, generation=generation)
         if request_video_keyframe:
             assert relay.video_relay is not None
             session.create_task(
@@ -392,6 +398,9 @@ async def async_commit_outbound_bridge(
         )
         if watcher_ready is not None:
             watcher_ready.set()
+        if winner.pickup:
+            from .call_projection import publish_bridge_projection
+            publish_bridge_projection(hass, session, event_type="picked_up", route_kind="pickup")
         return result
     except BaseException:
         # Claim in the original caller before shielding cleanup. The session

@@ -1,0 +1,7 @@
+# Compatibility name for the shared read-only settings projection.
+packages:
+  settings: !include settings/main.yaml
+script:
+- id: settings_p4_sync_widgets
+  then:
+  - script.execute: settings_sync_widgets

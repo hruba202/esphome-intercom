@@ -1,0 +1,12 @@
+# A single consumer needs resampling, but no mixer or unused mixer input.
+defaults:
+  input_buffer_duration: ${ input_buffer_duration | default("100ms") }
+speaker:
+- platform: resampler
+  id: ${input_id}
+  output_speaker: hw_speaker
+  task_stack_in_psram: true
+  sample_rate: 48000
+  bits_per_sample: 16
+  num_channels: 1
+  buffer_duration: ${input_buffer_duration}

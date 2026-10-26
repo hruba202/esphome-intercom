@@ -88,6 +88,7 @@ class DialCandidate:
     order: int = 0
     endpoint_id: str = ""
     control: bool = False
+    confirm: Callable[[], Awaitable[bool]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +96,79 @@ class ForkResult:
     outcome: DialOutcome
     winner: DialCandidate | None = None
     attempted: tuple[str, ...] = ()
+
+
+@dataclass(slots=True)
+class ExternalForkAnswer:
+    endpoint_id: str
+    selected: asyncio.Future
+    committed: asyncio.Future
+    payload: object | None = None
+
+    @property
+    def accepted(self) -> bool:
+        return (self.selected.done() and not self.selected.cancelled() and self.selected.result()
+                and self.committed.done() and not self.committed.cancelled() and self.committed.result())
+
+    def finish(self, success: bool):
+        if not success and not self.selected.done():
+            self.selected.set_result(False)
+        if not self.committed.done():
+            self.committed.set_result(success)
+
+
+class ForkAnswerGate:
+    """Admit one prepared external answer through the existing fork arbiter."""
+
+    def __init__(self, *, attempts=None, browser_legs=None, invite=None, on_leg_state=None):
+        self.attempts = attempts if attempts is not None else []
+        self.browser_legs = browser_legs if browser_legs is not None else []
+        self.invite = invite
+        self.on_leg_state = on_leg_state
+        self.pending = asyncio.Queue(maxsize=1)
+        self.current = None
+        self.closed = False
+
+    @property
+    def endpoint_id(self):
+        return self.current.endpoint_id if self.current is not None else ""
+
+    def submit(self, endpoint_id):
+        if self.closed or self.pending.full() or (self.current is not None and not self.current.committed.done()):
+            raise RuntimeError("The ringing fork is unavailable for pickup")
+        loop = asyncio.get_running_loop()
+        answer = ExternalForkAnswer(endpoint_id, loop.create_future(), loop.create_future())
+        self.pending.put_nowait(answer)
+        return answer
+
+    async def dial(self):
+        self.current = await self.pending.get()
+        return DialOutcome(DialDisposition.ANSWERED)
+
+    async def confirm(self):
+        answer = self.current
+        if answer is None:
+            return False
+        if answer.selected.done() and (answer.selected.cancelled() or not answer.selected.result()):
+            return False
+        if answer.committed.done() and (answer.committed.cancelled() or not answer.committed.result()):
+            return False
+        if not answer.selected.done():
+            answer.selected.set_result(True)
+        if answer.committed.done():
+            return bool(answer.committed.result())
+        return await asyncio.shield(answer.committed)
+
+    async def reject(self, _mode):
+        if self.current is not None:
+            self.current.finish(False)
+
+    async def close(self, _reason=""):
+        self.closed = True
+        await self.reject(LegCloseMode.CLOSE)
+        while not self.pending.empty():
+            self.pending.get_nowait().finish(False)
+
 
 
 class DialForkController:
@@ -278,7 +352,10 @@ class DialForkController:
                         return None, control, failures
                 for candidate, outcome in batch:
                     if outcome.answered:
-                        return candidate, outcome, failures
+                        if candidate.confirm is None or await self._confirm_candidate(candidate, deadline):
+                            return candidate, outcome, failures
+                        await self._close_candidates((candidate,), LegCloseMode.CLOSE)
+                        outcome = DialOutcome(DialDisposition.CANCELLED, 487, "Answer preparation failed")
                     failures.append(outcome)
             return None, None, failures
         finally:
@@ -324,7 +401,9 @@ class DialForkController:
             }:
                 return None, outcome, failures
             if outcome.answered:
-                return candidate, outcome, failures
+                if candidate.confirm is None or await self._confirm_candidate(candidate, deadline):
+                    return candidate, outcome, failures
+                outcome = DialOutcome(DialDisposition.CANCELLED, 487, "Answer preparation failed")
             failures.append(outcome)
             await self._close_candidates((candidate,), LegCloseMode.CLOSE)
         return None, None, failures
@@ -410,14 +489,40 @@ class DialForkController:
             await self._close_candidates(all_candidates, LegCloseMode.CANCEL_OR_BYE)
             raise
 
+    async def _confirm_candidate(self, candidate: DialCandidate, deadline: float) -> bool:
+        """Confirm preparation while the source and remaining answerers stay owned."""
+        if candidate.confirm is None:
+            return self.session.owns(self.token)
+        confirmation = asyncio.create_task(candidate.confirm(), name="voip-fork-confirm")
+        termination = asyncio.create_task(self.session.termination_started.wait())
+        try:
+            remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+            done, _ = await asyncio.wait(
+                (confirmation, termination), timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if termination in done or not self.session.owns(self.token):
+                return False
+            if confirmation not in done or confirmation.cancelled():
+                return False
+            try:
+                return bool(confirmation.result())
+            except Exception:
+                _LOGGER.debug("PBX candidate confirmation failed", exc_info=True)
+                return False
+        finally:
+            for task in (confirmation, termination):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(confirmation, termination, return_exceptions=True)
+
     async def run(self, commit_winner: WinnerCommit) -> ForkResult:
         """Run branches and route-control waiters under one arbitration point."""
 
+        self.session.ensure_live(self.token)
         controls = tuple(candidate for candidate in self.candidates if candidate.control)
         branches = tuple(candidate for candidate in self.candidates if not candidate.control)
         if not controls:
-            return await self._run_candidates(commit_winner)
-        if not branches:
             return await self._run_candidates(commit_winner)
 
         branch_controller = DialForkController(
@@ -448,9 +553,24 @@ class DialForkController:
         )
         pending_controls = set(control_tasks)
         branch_result: ForkResult | None = None
+        control_failures: list[DialOutcome] = []
+
+        branches_stopped = False
+        closed_controls: set[DialCandidate] = set()
+
+        async def _close_controls(candidates=controls, mode=LegCloseMode.CLOSE) -> None:
+            remaining = tuple(candidate for candidate in candidates if candidate not in closed_controls)
+            closed_controls.update(remaining)
+            await self._close_candidates(remaining, mode)
 
         async def _stop_branches() -> None:
+            nonlocal branches_stopped
+            if branches_stopped:
+                return
+            branches_stopped = True
             if branch_task.done():
+                if branch_task.cancelled():
+                    return
                 branch_result = branch_task.result()
                 if branch_result.winner is not None:
                     await branch_controller._close_candidates(
@@ -461,17 +581,39 @@ class DialForkController:
             branch_task.cancel()
             await asyncio.gather(branch_task, return_exceptions=True)
 
+        def _ready_priority_control() -> DialOutcome | None:
+            # Recheck after every await before committing a prepared answer.
+            # Reading a completed task does not execute the route action again.
+            ready = []
+            for task in control_tasks:
+                if task.done() and not task.cancelled():
+                    try:
+                        ready.append(task.result())
+                    except Exception:
+                        continue
+            return next((outcome for disposition in (
+                DialDisposition.SOURCE_CANCELLED, DialDisposition.REROUTE
+            ) for outcome in ready if outcome.disposition is disposition), None)
+
+        async def _finish_control(outcome: DialOutcome, candidates=controls) -> ForkResult:
+            await _stop_branches()
+            await _close_controls(candidates)
+            return ForkResult(outcome, attempted=attempted)
+
+        termination = asyncio.create_task(self.session.termination_started.wait())
         try:
             while pending_controls:
+                if not self.session.owns(self.token):
+                    await _stop_branches()
+                    await _close_controls()
+                    return ForkResult(DialOutcome(DialDisposition.CANCELLED, 487), attempted=attempted)
                 if branch_result is None and branch_task.done():
                     branch_result = branch_task.result()
-                    if branch_result.winner is not None:
-                        break
                 timeout = max(0.0, deadline - loop.time())
-                if timeout <= 0:
+                if timeout <= 0 and not any(task.done() for task in pending_controls):
                     break
-                waiters: set[asyncio.Task] = set(pending_controls)
-                if branch_result is None:
+                waiters: set[asyncio.Task] = {*pending_controls, termination}
+                if branch_result is None or branch_result.winner is not None:
                     waiters.add(branch_task)
                 done, pending = await asyncio.wait(
                     waiters,
@@ -479,8 +621,12 @@ class DialForkController:
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 pending_controls = {
-                    task for task in pending if task is not branch_task
+                    task for task in pending if task is not branch_task and task is not termination
                 }
+                if termination in done:
+                    await _stop_branches()
+                    await _close_controls()
+                    return ForkResult(DialOutcome(DialDisposition.CANCELLED, 487), attempted=attempted)
                 if branch_task in done:
                     branch_result = branch_task.result()
                 completed_controls = [
@@ -498,29 +644,10 @@ class DialForkController:
                         continue
                     except Exception:
                         _LOGGER.debug("PBX route-control candidate failed", exc_info=True)
-                control = next(
-                    (
-                        (candidate, outcome)
-                        for disposition in (
-                            DialDisposition.SOURCE_CANCELLED,
-                            DialDisposition.REROUTE,
-                        )
-                        for candidate, outcome in control_results
-                        if outcome.disposition is disposition
-                    ),
-                    None,
-                )
+                control = _ready_priority_control()
                 if control is not None:
-                    _control_candidate, control_outcome = control
-                    await _stop_branches()
-                    await self._close_candidates(
-                        controls,
-                        LegCloseMode.CLOSE,
-                    )
-                    return ForkResult(
-                        control_outcome,
-                        attempted=attempted,
-                    )
+                    return await _finish_control(control)
+                control_failures.extend(outcome for _, outcome in control_results if not outcome.answered)
                 answered_control = next(
                     (
                         (candidate, outcome)
@@ -531,23 +658,31 @@ class DialForkController:
                 )
                 if answered_control is not None:
                     winner, winner_outcome = answered_control
+                    if winner.confirm is not None:
+                        confirmed = await self._confirm_candidate(winner, deadline)
+                        if not confirmed:
+                            await self._close_candidates((winner,), LegCloseMode.CLOSE)
+                            for completed in tuple(control_tasks):
+                                if control_tasks[completed] is winner and completed.done():
+                                    control_tasks.pop(completed)
+                            retry = asyncio.create_task(winner.dial(), name=f"voip-dial-fork-control-{winner.candidate_id}")
+                            control_tasks[retry] = winner
+                            pending_controls.add(retry)
+                            continue
+                    control = _ready_priority_control()
+                    if control is not None:
+                        return await _finish_control(control)
                     await _stop_branches()
-                    await self._close_candidates(
-                        (
-                            candidate
-                            for candidate in controls
-                            if candidate is not winner
-                        ),
-                        LegCloseMode.CLOSE,
-                    )
+                    await _close_controls(candidate for candidate in controls if candidate is not winner)
+                    control = _ready_priority_control()
+                    if control is not None:
+                        return await _finish_control(control)
+
                     if not self.session.owns(self.token) or not commit_winner(
                         winner,
                         winner_outcome,
                     ):
-                        await self._close_candidates(
-                            (winner,),
-                            LegCloseMode.CLOSE,
-                        )
+                        await _close_controls((winner,))
                         return ForkResult(
                             DialOutcome(
                                 DialDisposition.CANCELLED,
@@ -564,15 +699,22 @@ class DialForkController:
                 if branch_result is not None and branch_result.winner is not None:
                     break
             result = branch_result or await branch_task
-            await self._close_candidates(controls, LegCloseMode.CLOSE)
-            if result.winner is not None and not commit_winner(
+            if not branches:
+                result = ForkResult(self._reduce_failures(
+                    control_failures or [DialOutcome(DialDisposition.TIMEOUT, 408)]
+                ), attempted=attempted)
+            control = _ready_priority_control()
+            if control is not None:
+                return await _finish_control(control)
+            await _close_controls()
+            control = _ready_priority_control()
+            if control is not None:
+                return await _finish_control(control)
+            if result.winner is not None and (not self.session.owns(self.token) or not commit_winner(
                 result.winner,
                 result.outcome,
-            ):
-                await branch_controller._close_candidates(
-                    (result.winner,),
-                    LegCloseMode.BYE,
-                )
+            )):
+                await _stop_branches()
                 return ForkResult(
                     DialOutcome(
                         DialDisposition.CANCELLED,
@@ -583,7 +725,7 @@ class DialForkController:
                 )
             return result
         except asyncio.CancelledError:
-            branch_task.cancel()
+            await _stop_branches()
             for task in pending_controls:
                 task.cancel()
             await asyncio.gather(
@@ -591,12 +733,11 @@ class DialForkController:
                 *pending_controls,
                 return_exceptions=True,
             )
-            await self._close_candidates(
-                controls,
-                LegCloseMode.CANCEL_OR_BYE,
-            )
+            await _close_controls(mode=LegCloseMode.CANCEL_OR_BYE)
             raise
         finally:
+            termination.cancel()
+            await asyncio.gather(termination, return_exceptions=True)
             for task in pending_controls:
                 if not task.done():
                     task.cancel()

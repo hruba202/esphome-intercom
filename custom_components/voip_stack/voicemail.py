@@ -125,9 +125,6 @@ class VoicemailCall(LocalCallApplication):
 async def async_send_to_voicemail(call: ServiceCall) -> None:
     """An explicit automation action transfers its call to one enabled mailbox."""
     from .automation_call import resolve_application_action
-    from .voicemail_config import require_voicemail_config
-
-    require_voicemail_config(call.hass)
     endpoint = await selected_mailbox(call, call.data["mailbox"])
     settings = mailbox_settings(call.hass, endpoint.endpoint_id)
     if not settings.get("enabled", False):
@@ -153,7 +150,7 @@ async def start_voicemail_application(hass, session, invite, endpoint, local_ip,
     from .voicemail_config import require_voicemail_config
     from .voicemail_menu import VoicemailMenu
 
-    voice = require_voicemail_config(hass)
+    voice = require_voicemail_config(hass) if mode != "deposit" else {}
     settings = mailbox_settings(hass, endpoint.endpoint_id) if endpoint is not None else {}
     if mode == "deposit" and not settings.get("enabled", False):
         raise ServiceValidationError("Enable voicemail for the selected phone first")
@@ -201,6 +198,13 @@ async def route_voicemail_call(runtime, invite, decision, registry, source_endpo
         return SipInviteResult(403, "Forbidden", to_tag="", decline_reason="unknown_mailbox_caller")
     if mode != "login" and (mailbox is None or not mailbox_settings(runtime.hass, mailbox.endpoint_id).get("enabled", False)):
         return SipInviteResult(480, "Temporarily Unavailable", to_tag="", decline_reason="voicemail_unavailable")
+    if mode != "deposit":
+        from .voicemail_config import require_voicemail_config
+        try:
+            require_voicemail_config(runtime.hass)
+        except ServiceValidationError:
+            return SipInviteResult(503, "Service Unavailable", to_tag="",
+                                   decline_reason="voicemail_voice_unavailable")
     if busy := await _claim_source(hass=runtime.hass, registry=registry, invite=invite,
                                   source_endpoint=source_endpoint, state="ringing", route_kind="voicemail"):
         return busy

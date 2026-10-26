@@ -190,8 +190,10 @@ def bridge_media_updates(monkeypatch):
             *,
             answer_video_format=None,
             answer_video_rtp_port=None,
+            on_committed=None,
         ) -> None:
             self.commit = commit
+            self.on_committed = on_committed
             self.rollback = rollback
             self.answer_video_format = answer_video_format
             self.answer_video_rtp_port = answer_video_rtp_port

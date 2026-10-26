@@ -1,0 +1,8 @@
+# Explicit local-development override. Published firmware uses the component's pin.
+defaults:
+  gmf_ai_audio_source: '${ gmf_ai_audio_source | default("") }'
+  _gmf_local_source:
+    esp_afe:
+      gmf_source: ${gmf_ai_audio_source}
+packages:
+  local_gmf: ${ _gmf_local_source if gmf_ai_audio_source else {} }

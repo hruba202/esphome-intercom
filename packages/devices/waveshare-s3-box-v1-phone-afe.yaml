@@ -1,0 +1,18 @@
+# Complete standalone telephone composition with the shared OTA lifecycle.
+defaults:
+  _phone: !include '../features/voip/devices/waveshare-s3-box-v1-phone-afe.yaml'
+  _phone_ui: !include '../features/presentation/devices/waveshare-s3-box-v1-phone-afe.yaml'
+  _phone_display: !include '../board/waveshare-s3-box-v1-phone-afe-display.yaml'
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  hardware: !include '../board/waveshare-s3-box-v1-phone-afe.yaml'
+  audio: !include '../audio/profiles/waveshare-s3-box-v1-phone-afe.yaml'
+  telephone: ${ _phone if 'voip' in firmware_features else {} }
+  display_hardware: ${ _phone_display if 'voip' in firmware_features and 'display' in firmware_features else {}
+    }
+  display: ${ _phone_ui if 'voip' in firmware_features and 'display' in firmware_features else {} }
+  maintenance: !include '../features/shared/standalone_phone_maintenance.yaml'
+substitutions:
+  firmware_phone_has_display: true
+  firmware_phone_redraw:
+  - script.execute: draw_call_screen

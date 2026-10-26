@@ -18,9 +18,21 @@ from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpo
 from custom_components.voip_stack.store import config_entry
 from custom_components.voip_stack.websocket_api import CALL_EVENT
 
-from .test_automation_originate_ha import lab, simple_sequence, tts_fixture, dial
+
+from .test_automation_originate_ha import lab as lab, simple_sequence, tts_fixture, dial
+from .test_browser_phone_policy_ha import browser_lab as browser_lab, originate
+from .test_trunk_calls_ha import trunks as trunks
 
 pytestmark = pytest.mark.ha
+
+
+@pytest.fixture(autouse=True)
+def configured_tts_provider(monkeypatch):
+    """The suite's injected TTS stream represents its configured test provider."""
+    from types import SimpleNamespace
+    from custom_components.voip_stack import voicemail_config
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda _hass, identity:
+                        SimpleNamespace(available=True) if identity == "tts.test" else None)
 
 
 @pytest.fixture
@@ -227,7 +239,10 @@ def custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
-def mailbox_lab(lab, tmp_path):
+def mailbox_lab(lab, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from custom_components.voip_stack import voicemail_config
+    monkeypatch.setattr(voicemail_config, "voice_engine", lambda *_: SimpleNamespace(available=True))
     lab.hass.config.config_dir = str(tmp_path)
     lab.hass.config.media_dirs = {"local": str(tmp_path / "media")}
     entry = config_entry(lab.hass)
@@ -469,6 +484,12 @@ async def test_native_phone_flow_can_enable_mailbox(mailbox_lab, custom_integrat
     values = {"name": "Study", "extension": "202", "voicemail_enabled": True}
     if kind == "sip_account":
         values.update(username="study", password="test-only")
+        invalid = await lab.hass.config_entries.subentries.async_configure(
+            form["flow_id"], form["data_schema"]({**values, "username": "invalid user"}),
+        )
+        assert invalid["type"] == "form"
+        assert invalid["errors"] == {"username": "phone_username_invalid"}
+        assert not any(item.title == "Study" for item in entry.subentries.values())
     result = await lab.hass.config_entries.subentries.async_configure(form["flow_id"], form["data_schema"](values))
     assert result["type"] == "create_entry"
     created = next(item for item in entry.subentries.values() if item.title == "Study")
@@ -496,7 +517,6 @@ async def test_phone_rename_preserves_private_mailbox_settings(mailbox_lab, cust
     assert updated.data["endpoint_id"] == "kitchen"
 
 
-from .test_browser_phone_policy_ha import browser_lab, originate
 
 
 async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(browser_lab, tmp_path, monkeypatch):
@@ -582,7 +602,6 @@ async def test_no_answer_routes_browser_into_mailbox_without_second_sip_call(bro
         unsubscribe()
 
 
-from .test_trunk_calls_ha import trunks
 
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
@@ -678,7 +697,7 @@ async def test_mailbox_settings_reject_contact_collision_before_persisting(mailb
         await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
             "device_id": "mailbox-device", "enabled": True,
         }, blocking=True)
-    assert mailbox_settings(lab.hass, "kitchen")["enabled"] is False
+    assert mailbox_settings(lab.hass, "kitchen") == {}
 
 
 async def test_enabled_mailbox_reserves_contact_aliases_and_can_be_reconfigured(mailbox_lab):
@@ -737,9 +756,15 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
     monkeypatch.setattr(softphone_originate, "_resolve_target_device", AsyncMock(return_value=None))
     recording = asyncio.Event()
     sessions = []
+    phone_updates = []
+    connected_identity = asyncio.Event()
 
     @callback
     def state(event):
+        if event.data.get("endpoint_id") == source.endpoint_id:
+            phone_updates.append(event.data)
+            if event.data.get("last_sip_event") == "UPDATE":
+                connected_identity.set()
         if event.data.get("event_type") == "answered":
             application = lab.calls.resource_for(event.data["call_id"], "voicemail")
             if application is not None and application.playback is not None:
@@ -761,6 +786,15 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
         assert not any(phone.invites for phone in lab.phones)
         application = lab.calls.resource_for(sessions[0], "voicemail")
         assert application is not None and application.mailbox_id == "kitchen"
+        # A real browser attaches audio only while its own participant is
+        # connected. The playback adapter above must not hide stale calling
+        # state after the mailbox acquires the application owner.
+        participant = application.session.legs[f"browser:{source.endpoint_id}"]
+        assert participant.state == "in_call"
+        assert lab.runtime.softphones[source.endpoint_id]["state"] == "in_call"
+        assert phone_updates[-1]["state"] == "in_call"
+        await asyncio.wait_for(connected_identity.wait(), 3)
+        assert lab.runtime.softphones[source.endpoint_id]["peer_name"] == "Kitchen"
         for session in tuple(lab.calls.sessions.values()):
             if session.live:
                 await lab.calls.request_termination(session.call_id, TerminationIntent("test_hangup"))
@@ -770,7 +804,8 @@ async def test_browser_dials_same_mailbox_destination_as_sip_phone(trunks, tmp_p
 
 
 @pytest.mark.parametrize("conflict", [None, "*97", "mailbox.other", "*60101"])
-async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch, conflict):
+@pytest.mark.parametrize("provider_default", ["en", "ar_JO"])
+async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_lab, custom_integrations, monkeypatch, conflict, provider_default):
     from types import SimpleNamespace
     from custom_components.voip_stack import voicemail_config as config_module
 
@@ -788,16 +823,17 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
         "voip_stack", context={"source": "reconfigure", "entry_id": entry.entry_id},
     )
     form = await lab.hass.config_entries.flow.async_configure(
-        form["flow_id"], form["data_schema"]({"voicemail_enabled": True}),
+        form["flow_id"], {"next_step_id": "voicemail"},
     )
     assert form["step_id"] == "voicemail" and not entry.data.get("voicemail")
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.missing"})
     assert form["errors"] == {"tts_entity_id": "voicemail_tts_unavailable"}
     monkeypatch.setattr(config_module, "voice_engine", lambda _hass, identity:
-                        SimpleNamespace(available=True, supported_languages=["en", "it"], default_language="en")
+                        SimpleNamespace(available=True, supported_languages=["ar_JO", "en", "it"], default_language=provider_default)
                         if identity == "tts.test" else None)
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.test"})
     assert form["step_id"] == "voicemail_language"
+    assert form["data_schema"]({})["language"] in {"en", "it"}
     from homeassistant.data_entry_flow import InvalidData
     with pytest.raises(InvalidData):
         await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "xx"})
@@ -810,7 +846,7 @@ async def test_global_voicemail_configuration_requires_tts_and_language(mailbox_
         lab.hass.config_entries.async_remove_subentry(entry, contact.subentry_id)
         result = await lab.hass.config_entries.flow.async_configure(result["flow_id"], {"language": "it"})
     assert result["type"] == "abort"
-    assert entry.data["voicemail"] == {"enabled": True, "tts_entity_id": "tts.test", "language": "it"}
+    assert entry.data["voicemail"] == {"tts_entity_id": "tts.test", "language": "it"}
 
 
 @pytest.mark.parametrize("language,expected", [
@@ -847,14 +883,14 @@ async def test_voicemail_voice_selection_uses_ha_catalog_and_persists(mailbox_la
     monkeypatch.setattr(config_module, "voice_engine", lambda *_args: engine)
     form = await lab.hass.config_entries.flow.async_init(
         "voip_stack", context={"source": "reconfigure", "entry_id": entry.entry_id})
-    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], form["data_schema"]({"voicemail_enabled": True}))
+    form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"next_step_id": "voicemail"})
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"tts_entity_id": "tts.test"})
     form = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"language": "it"})
     assert form["step_id"] == "voicemail_voice" and not entry.data.get("voicemail")
     result = await lab.hass.config_entries.flow.async_configure(form["flow_id"], {"voice": "raffa_reference"})
     assert result["type"] == "abort"
     assert entry.data["voicemail"] == {
-        "enabled": True, "tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"}
+        "tts_entity_id": "tts.test", "language": "it", "voice": "raffa_reference"}
 
 
 async def test_voicemail_menu_passes_selected_voice_to_native_tts(mailbox_lab, monkeypatch):
@@ -888,7 +924,7 @@ async def test_voicemail_menu_passes_selected_voice_to_native_tts(mailbox_lab, m
 
 
 @pytest.mark.parametrize("address", ["*97", "*98", "mailbox", "mailbox.Other", "voicemail.Other", "*60101"])
-async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbox_lab, address):
+async def test_mailbox_addresses_are_reserved_but_do_not_steal_existing_routes(mailbox_lab, address):
     from custom_components.voip_stack.mailbox import resolve_mailbox_route
     from custom_components.voip_stack.phonebook_services import _validate_contact_namespace
     from custom_components.voip_stack.roster import RosterEntry
@@ -900,7 +936,8 @@ async def test_mailbox_addresses_only_take_effect_when_feature_is_enabled(mailbo
     entry = config_entry(lab.hass)
     lab.hass.config_entries.async_update_entry(entry, data={**entry.data, "voicemail": {"enabled": False}})
     assert resolve_mailbox_route(lab.hass, address, [contact]) is None
-    _validate_contact_namespace(lab.hass, [contact])
+    with pytest.raises(ValueError, match="conflicts"):
+        _validate_contact_namespace(lab.hass, [contact])
 
 
 async def test_feature_code_does_not_shadow_plain_numeric_extension(mailbox_lab):
@@ -1058,6 +1095,7 @@ async def test_mwi_uses_existing_subscription_lifecycle_and_mailbox_counts(mailb
     notifications = asyncio.Queue()
     async def send(request, address, result):
         await notifications.put(result.follow_up)
+        return sip.SipMessage(status_code=200, reason="OK")
     def request(target="kitchen", *, tag="", expires=300, cseq=1):
         return sip.parse_message(sip.build_request("SUBSCRIBE", f"sip:{target}@127.0.0.1:5060", [
             ("From", "<sip:kitchen@127.0.0.1>;tag=caller"),
@@ -1075,6 +1113,9 @@ async def test_mwi_uses_existing_subscription_lifecycle_and_mailbox_counts(mailb
         assert b"Messages-Waiting: no\r\n" in first.follow_up.body
         assert b"Voice-Message: 0/0 (0/0)\r\n" in first.follow_up.body
         assert b"Message-Account: sip:mailbox.kitchen@127.0.0.1:5060\r\n" in first.follow_up.body
+        first.follow_up_scheduler()
+        initial_notify = await asyncio.wait_for(notifications.get(), 2)
+        assert initial_notify.cseq == first.follow_up.cseq
         archive = await get_archive(lab.hass)
         writer = await archive.begin("kitchen", caller="Door")
         assert writer.offer(b"\x01\x00" * 320, AudioFormat(16000, frame_ms=20))
@@ -1227,3 +1268,81 @@ async def test_permanent_esphome_device_removal_purges_mailbox(mailbox_lab):
         assert "esp-test" not in entry.data["esphome_mailboxes"]
     finally:
         remove()
+
+
+@pytest.mark.parametrize("via_flow", [False, True])
+async def test_disabling_mailbox_deletes_only_its_messages_and_recreates_empty(
+    mailbox_lab, custom_integrations, via_flow,
+):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.mailbox import mailbox_settings
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    paths = {}
+    for mailbox, kind in (("kitchen", "voicemail"), ("other", "voicemail"), ("kitchen", "recording")):
+        writer = await archive.begin(mailbox, kind=kind)
+        assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+        message = await writer.finish()
+        paths[mailbox, kind] = archive.segment_path(message["id"], mailbox)
+    if via_flow:
+        entry = config_entry(lab.hass)
+        child = next(item for item in entry.subentries.values() if item.data.get("endpoint_id") == "kitchen")
+        lab.hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+        form = await lab.hass.config_entries.subentries.async_init(
+            (entry.entry_id, "phone"), context={"source": "reconfigure", "subentry_id": child.subentry_id},
+        )
+        result = await lab.hass.config_entries.subentries.async_configure(
+            form["flow_id"], {**form["data_schema"]({}), "voicemail_enabled": False},
+        )
+        assert result["type"] == "abort"
+    else:
+        await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
+            "device_id": "mailbox-device", "enabled": False,
+        }, blocking=True)
+    assert mailbox_settings(lab.hass, "kitchen") == {}
+    assert archive.counts("kitchen") == (0, 0)
+    assert not paths["kitchen", "voicemail"].exists()
+    assert paths["other", "voicemail"].exists()
+    assert paths["kitchen", "recording"].exists()
+    await archive.load()
+    assert archive.counts("kitchen") == (0, 0)
+    await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", {
+        "device_id": "mailbox-device", "enabled": True,
+    }, blocking=True)
+    assert mailbox_settings(lab.hass, "kitchen") == {"enabled": True}
+    assert archive.counts("kitchen") == (0, 0)
+
+
+async def test_mailbox_delete_storage_failure_is_retryable(mailbox_lab):
+    from custom_components.voip_stack.core.audio_format import AudioFormat
+    from custom_components.voip_stack.mailbox import mailbox_settings
+    from homeassistant.exceptions import ServiceValidationError
+
+    lab = mailbox_lab
+    archive = await get_archive(lab.hass)
+    writer = await archive.begin("kitchen")
+    assert writer.offer(bytes(640), AudioFormat(16000, frame_ms=20))
+    message = await writer.finish()
+    path = archive.segment_path(message["id"], "kitchen")
+    original_io = archive.run_io
+
+    async def unavailable(function, *args):
+        if function.__name__ == "remove":
+            raise PermissionError("Media directory unavailable")
+        return await original_io(function, *args)
+
+    archive.run_io = unavailable
+    data = {"device_id": "mailbox-device", "enabled": False}
+    try:
+        with pytest.raises(ServiceValidationError, match="could not be deleted"):
+            await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", data, blocking=True)
+        assert mailbox_settings(lab.hass, "kitchen")["enabled"]
+        assert path.exists()
+        assert archive.counts("kitchen") == (1, 0)
+    finally:
+        archive.run_io = original_io
+    await lab.hass.services.async_call("voip_stack", "set_voicemail_settings", data, blocking=True)
+    assert not path.exists()
+    assert mailbox_settings(lab.hass, "kitchen") == {}
+    assert archive.counts("kitchen") == (0, 0)

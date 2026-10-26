@@ -51,6 +51,7 @@ export class VoipStackVideo extends EventTarget {
     this._endpointId = "default";
     this._active = false;
     this._canReceive = false;
+    this._receiverHasFrame = false;
     this._canSend = false;
     this._canvas = null;
     this._decoder = null;
@@ -488,7 +489,7 @@ export class VoipStackVideo extends EventTarget {
     // SDP only tells us that the peer may send video. Some PBXs advertise a
     // recvonly/sendrecv video line even for an audio-first call and never send
     // a frame. Keep the audio UI compact until an actual frame is rendered.
-    return this._active && this._canReceive && this._stats.rendered > 0;
+    return this._active && this._canReceive && this._receiverHasFrame;
   }
 
   get stats() {
@@ -573,7 +574,9 @@ export class VoipStackVideo extends EventTarget {
   }
 
   setCanvas(canvas) {
-    this._canvas = canvas || null;
+    const next = canvas || null;
+    if (next !== this._canvas) this._receiverHasFrame = false;
+    this._canvas = next;
   }
 
   _emit() {
@@ -1563,7 +1566,8 @@ export class VoipStackVideo extends EventTarget {
       }
       this._lastRenderedAt = renderedAt;
       this._lastRenderedTimestamp = timestamp;
-      const firstRenderedFrame = this._stats.rendered === 0;
+      const firstRenderedFrame = !this._receiverHasFrame;
+      this._receiverHasFrame = true;
       this._stats.rendered++;
       if (firstRenderedFrame) this._emit();
     });
@@ -1685,6 +1689,7 @@ export class VoipStackVideo extends EventTarget {
   }
 
   _cleanupReceiver() {
+    this._receiverHasFrame = false;
     const worker = this._decoderWorker;
     this._decoderWorker = null;
     if (worker) {

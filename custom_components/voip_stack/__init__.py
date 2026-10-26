@@ -155,6 +155,16 @@ async def async_migrate_entry(
         from .trunk_config import migrate_legacy_trunk
         migrate_legacy_trunk(hass, config_entry)
         hass.config_entries.async_update_entry(config_entry, minor_version=3)
+    if config_entry.version == 6 and config_entry.minor_version < 4:
+        data = dict(config_entry.data)
+        for feature in ("parking", "voicemail"):
+            if feature in data:
+                settings = dict(data[feature])
+                settings.pop("enabled", None)
+                data[feature] = settings
+        data.pop("parking_enabled", None)
+        data.pop("voicemail_enabled", None)
+        hass.config_entries.async_update_entry(config_entry, data=data, minor_version=4)
     return True
 
 
@@ -450,7 +460,8 @@ async def _handle_sip_forward_service(call: ServiceCall) -> None:
             on_failure=call.data.get("on_failure", "resume"),
             trunk_id=str(call.data.get("trunk_id") or ""),
             expected_state=call.data.get("expected_state", ""),
-            expected_sequence=int(call.data.get("expected_sequence") or 0))
+            expected_sequence=int(call.data.get("expected_sequence") or 0),
+            control_endpoint_id=phone.endpoint_id if phone is not None and call.data.get("expected_state") else "")
 
 
 async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
@@ -465,21 +476,29 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
             translation_key="phone_unavailable",
             translation_placeholders={"phone": "VoIP Stack"},
         )
-    await runtime.phones.resolve_source(call)
+    phone = await runtime.phones.resolve_source(call)
+    registry = _call_registry(call.hass)
     request = CallTransferRequest(
-        call_id=str(call.data.get("call_id") or "").strip(),
+        call_id=registry.resolve_session_id(str(call.data.get("call_id") or "").strip()),
         destination=str(call.data.get("destination") or "").strip(),
         replaces_call_id=str(call.data.get("replaces_call_id") or "").strip(),
+        endpoint_id=phone.endpoint_id,
     )
     if not request.destination and not request.replaces_call_id:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="transfer_destination_required",
         )
-    registry = _call_registry(call.hass)
     source_session = registry.get_session(request.call_id)
+    if call.data.get("device_id"):
+        from .call_scope import call_belongs_to_endpoint
+
+        if not call_belongs_to_endpoint(registry, request.call_id, phone.endpoint_id):
+            raise ServiceValidationError("The selected phone does not own this call")
+        if source_session is None or not source_session.live or source_session.state != "in_call":
+            raise ServiceValidationError("Transfer requires an established call")
     try:
-        result = await async_transfer_call(runtime, request)
+        result = await async_transfer_call(runtime, request, hass=call.hass)
     except (ValueError, RuntimeError) as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
@@ -487,6 +506,7 @@ async def _handle_sip_transfer_service(call: ServiceCall) -> dict[str, object]:
         ) from err
     if (
         result.accepted
+        and not result.retained_call
         and source_session is not None
         and registry.is_generation_current(request.call_id, source_session.generation)
     ):
@@ -533,6 +553,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     from .voicemail import async_send_to_voicemail
     from .mailbox_actions import async_transcribe_voicemail, async_get_voicemail
     from .parking import async_park_call
+    from .phone_state import async_get_phone_state
+    from .call_pickup import async_pickup_call
     from .call_recording import async_start_recording, async_stop_recording, async_get_recording, async_delete_recording
 
     await async_register_services(
@@ -561,6 +583,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "wait_unanswered": async_wait_unanswered,
             "transfer": _handle_sip_transfer_service,
             "park": async_park_call,
+            "get_phone_state": async_get_phone_state,
+            "pickup": async_pickup_call,
             "start_recording": async_start_recording,
             "stop_recording": async_stop_recording,
             "get_recording": async_get_recording,

@@ -1022,6 +1022,147 @@ class SipRegistrarTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(registration.outbound)
         self.assertNotIn("Require", dict(result.headers))
 
+    async def test_outbound_supported_instance_without_reg_id_is_ordinary_contact(
+        self,
+    ) -> None:
+        for transport in ("UDP", "TCP"):
+            with self.subTest(transport=transport):
+                # Linphone advertises Supported: outbound and sends +sip.instance for
+                # GRUU without reg-id. RFC 5626 treats that as a non-outbound binding.
+                registrar = sip_registrar.SipRegistrar(
+                    enabled=True,
+                    accounts=[sip_registrar.SipAccount("Phone", "Phone", "secret")],
+                    local_ip="192.168.1.10",
+                    local_sip_port=5060,
+                )
+                instance = "urn:uuid:12345678-1234-5678-1234-567812345678"
+                request = self._authorized_register(
+                    registrar,
+                    username="Phone",
+                    password="secret",
+                    call_id="linphone-gruu",
+                    cseq=1,
+                    contacts=[
+                        f'<sip:Phone@192.0.2.50:40000;transport={transport.lower()}>;expires=600;'
+                        f'+sip.instance="<{instance}>"'
+                    ],
+                    host="192.0.2.50",
+                    port=40000,
+                    transport=transport,
+                    supported="outbound",
+                )
+
+                result = await registrar.handle_register(
+                    request,
+                    ("192.0.2.50", 40000),
+                    transport,
+                )
+
+                self.assertEqual(result.status, 200)
+                registration = registrar.registered_contacts("Phone")[0]
+                self.assertFalse(registration.outbound)
+                self.assertNotIn("Require", dict(result.headers))
+
+    async def test_outbound_reg_id_without_instance_is_rejected(self) -> None:
+        registrar = sip_registrar.SipRegistrar(
+            enabled=True,
+            accounts=[sip_registrar.SipAccount("Phone", "Phone", "secret")],
+            local_ip="192.168.1.10",
+            local_sip_port=5060,
+        )
+        request = self._authorized_register(
+            registrar,
+            username="Phone",
+            password="secret",
+            call_id="reg-id-only",
+            cseq=1,
+            contacts=["<sip:Phone@192.0.2.50:40000;transport=tcp>;expires=120;reg-id=1"],
+            host="192.0.2.50",
+            port=40000,
+            transport="TCP",
+            supported="outbound",
+        )
+
+        result = await registrar.handle_register(
+            request,
+            ("192.0.2.50", 40000),
+            "TCP",
+        )
+
+        self.assertEqual(result.status, 400)
+        self.assertEqual(tuple(registrar.registered_contacts("Phone")), ())
+
+    async def test_outbound_capability_without_reg_id_preserves_gruu(self) -> None:
+        for transport in ("UDP", "TCP"):
+            with self.subTest(transport=transport):
+                registrar = sip_registrar.SipRegistrar(
+                    enabled=True,
+                    accounts=[sip_registrar.SipAccount("Phone", "Phone", "secret")],
+                    local_ip="192.168.1.10",
+                    local_sip_port=5060,
+                )
+                instance = "urn:uuid:12345678-1234-5678-1234-567812345678"
+                request = self._authorized_register(
+                    registrar,
+                    username="Phone",
+                    password="secret",
+                    call_id="linphone-gruu-outbound-capability",
+                    cseq=1,
+                    contacts=[
+                        f'<sip:Phone@192.0.2.50:40000;transport={transport.lower()}>;expires=600;'
+                        f'+sip.instance="<{instance}>"'
+                    ],
+                    host="192.0.2.50",
+                    port=40000,
+                    transport=transport,
+                    supported="outbound, gruu",
+                )
+                result = await registrar.handle_register(
+                    request, ("192.0.2.50", 40000), transport
+                )
+                self.assertEqual(result.status, 200)
+                binding = registrar.registered_contacts("Phone")[0]
+                self.assertFalse(binding.outbound)
+                self.assertEqual(binding.instance_id, instance)
+                self.assertNotIn("Require", dict(result.headers))
+                self.assertNotIn("Flow-Timer", dict(result.headers))
+                self.assertIn(';pub-gruu="', dict(result.headers)["Contact"])
+                self.assertEqual(
+                    registrar.resolve_gruu(sip.parse_sip_uri(binding.public_gruu)),
+                    (binding,),
+                )
+
+    async def test_invalid_outbound_reg_id_with_instance_remains_rejected(self) -> None:
+        for reg_id in ("0", "-1", "2147483648", "invalid", "1.0"):
+            with self.subTest(reg_id=reg_id):
+                registrar = sip_registrar.SipRegistrar(
+                    enabled=True,
+                    accounts=[sip_registrar.SipAccount("Phone", "Phone", "secret")],
+                    local_ip="192.168.1.10",
+                    local_sip_port=5060,
+                )
+                request = self._authorized_register(
+                    registrar,
+                    username="Phone",
+                    password="secret",
+                    call_id="invalid-outbound-reg-id",
+                    cseq=1,
+                    contacts=[
+                        '<sip:Phone@192.0.2.50:40000>;expires=120;'
+                        '+sip.instance="<urn:uuid:12345678-1234-5678-1234-567812345678>"'
+                        f';reg-id={reg_id}'
+                    ],
+                    host="192.0.2.50",
+                    port=40000,
+                    transport="UDP",
+                    supported="outbound",
+                )
+                result = await registrar.handle_register(
+                    request, ("192.0.2.50", 40000), "UDP"
+                )
+                self.assertEqual(result.status, 400)
+                self.assertEqual(tuple(registrar.registered_contacts("Phone")), ())
+
     async def test_instance_parameter_without_outbound_remains_an_ordinary_contact(
         self,
     ) -> None:
@@ -1284,3 +1425,40 @@ class SipRegistrarTest(unittest.IsolatedAsyncioTestCase):
             [binding.snapshot() for binding in registrar.registrations.values()],
             before,
         )
+
+    async def test_gruu_targets_instance_and_preserves_temporary_tokens_until_expiry(self):
+        registrar = sip_registrar.SipRegistrar(enabled=True,
+            accounts=[sip_registrar.SipAccount("Phone", "Phone", "secret")],
+            local_ip="192.168.1.10", local_sip_port=5060)
+        instances = ("urn:uuid:12345678-1234-5678-1234-567812345678",
+                     "urn:uuid:87654321-4321-8765-4321-876543218765")
+        old_temporary = ""
+        for cseq, instance, port in ((1, instances[0], 40000), (2, instances[0], 40000), (1, instances[1], 40001)):
+            request = self._authorized_register(registrar, username="Phone", password="secret",
+                call_id=f"gruu-{instance}", cseq=cseq,
+                contacts=[f'<sip:Phone@192.0.2.50:{port}>;expires=120;+sip.instance="<{instance}>"'],
+                host="192.0.2.50", port=port, transport="UDP", supported="gruu")
+            response = await registrar.handle_register(request, ("192.0.2.50", port), "UDP")
+            self.assertEqual(response.status, 200)
+            binding = next(item for item in registrar.registered_contacts("Phone") if item.instance_id == instance)
+            self.assertIn(";gr=", binding.public_gruu)
+            self.assertIn(';pub-gruu="', dict(response.headers)["Contact"])
+            self.assertEqual(registrar.resolve_gruu(sip.parse_sip_uri(binding.public_gruu)), (binding,))
+            target = sip.parse_sip_uri(binding.public_gruu)
+            self.assertEqual(registrar.local_gruu_target(target), sip.parse_sip_uri(binding.contact_uri))
+            from dataclasses import replace
+            self.assertIsNone(registrar.local_gruu_target(replace(target, host="other.example.test")))
+            self.assertIsNone(registrar.local_gruu_target(replace(target, port=5070)))
+            self.assertEqual(registrar.resolve_gruu(sip.parse_sip_uri(binding.temporary_gruu)), (binding,))
+            if cseq == 1 and instance == instances[0]:
+                old_temporary = binding.temporary_gruu
+            if cseq == 2:
+                self.assertNotEqual(old_temporary, binding.temporary_gruu)
+                self.assertEqual(registrar.resolve_gruu(sip.parse_sip_uri(old_temporary)), (binding,))
+        self.assertEqual(len(registrar.registered_contacts("Phone")), 2)
+        addressed = registrar.resolve_gruu(sip.parse_sip_uri(old_temporary))
+        self.assertEqual(len(addressed), 1)
+        self.assertEqual(addressed[0].instance_id, instances[0])
+        addressed[0].expires_at = 0
+        self.assertEqual(registrar.resolve_gruu(sip.parse_sip_uri(old_temporary)), ())
+        self.assertEqual(len(registrar.registered_contacts("Phone")), 1)

@@ -68,6 +68,11 @@ class VoipStackCallEvent(EventEntity):
             name=entry.title or "VoIP Stack",
         )
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Preserve subscriptions when Home Assistant renames this entity."""
+        super().async_entity_id_changed(old_entity_id)
+
     async def async_added_to_hass(self) -> None:
         """Subscribe after HA has assigned the entity."""
         await super().async_added_to_hass()
@@ -108,11 +113,22 @@ class PhoneEndpointCallEvent(EventEntity):
         self._attr_unique_id = f"phone_endpoint_{endpoint.endpoint_id}_call_event"
         self._attr_device_info = endpoint_device_info(endpoint)
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
         self.async_on_remove(self.hass.bus.async_listen(CALL_EVENT, self._on_call_event))
         self.async_on_remove(self.hass.bus.async_listen(SIP_DTMF_EVENT, self._on_dtmf_event))
 

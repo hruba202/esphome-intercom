@@ -45,6 +45,11 @@ def _registry():
     return pbx_runtime.SipEndpointRuntime(allow_dark_sessions=True)
 
 
+def _observed_event_fields(registry, call_id, state):
+    registry.observe_external_state(call_id, state)
+    return registry.event_fields(call_id, state)
+
+
 class _EndpointRegistryStub:
     def __init__(self) -> None:
         self.active: dict[str, str] = {}
@@ -73,7 +78,7 @@ class _EndpointRegistryStub:
 class CallRegistryEventContextTest(unittest.TestCase):
     def test_physical_observation_is_adopted_by_materialised_call(self) -> None:
         registry = _registry()
-        registry.event_fields("physical:esp", "calling")
+        _observed_event_fields(registry, "physical:esp", "calling")
         registry.upsert("sip-call", state="connecting")
 
         assert registry.adopt_event_observation("physical:esp", "sip-call") is True
@@ -379,9 +384,9 @@ class CallRegistryEventContextTest(unittest.TestCase):
     def test_sequence_advances_only_for_canonical_state_changes(self) -> None:
         registry = _registry()
 
-        first = registry.event_fields("call-1", "ringing")
-        duplicate = registry.event_fields("call-1", "ringing")
-        answered = registry.event_fields("call-1", "in_call")
+        first = _observed_event_fields(registry, "call-1", "ringing")
+        duplicate = _observed_event_fields(registry, "call-1", "ringing")
+        answered = _observed_event_fields(registry, "call-1", "in_call")
 
         self.assertEqual(first["sequence"], 1)
         self.assertEqual(first["previous_state"], "")
@@ -393,20 +398,20 @@ class CallRegistryEventContextTest(unittest.TestCase):
         registry = _registry()
         session = registry.upsert("call-1", state="ringing")
 
-        registry.event_fields("call-1", "ringing")
+        _observed_event_fields(registry, "call-1", "ringing")
 
         self.assertIs(registry.event_context("call-1"), session.event_context)
 
     def test_upsert_promotes_event_observation_to_authoritative_call(self) -> None:
         registry = _registry()
-        registry.event_fields("call-1", "route_requested")
+        _observed_event_fields(registry, "call-1", "route_requested")
 
         session = registry.upsert(
             "call-1",
             state="ringing",
             owner="ha_softphone",
         )
-        registry.event_fields("call-1", "cancelled")
+        _observed_event_fields(registry, "call-1", "cancelled")
 
         self.assertIs(registry.sessions["call-1"], session)
         self.assertNotIn("event_only", session.metadata)
@@ -414,10 +419,10 @@ class CallRegistryEventContextTest(unittest.TestCase):
     def test_external_event_lifecycle_retires_without_phantom_active_call(self) -> None:
         registry = _registry()
 
-        first = registry.event_fields("physical:esp", "ringing")
-        terminal = registry.event_fields("physical:esp", "idle")
+        first = _observed_event_fields(registry, "physical:esp", "ringing")
+        terminal = _observed_event_fields(registry, "physical:esp", "idle")
         self.assertEqual(registry.active_count(), 0)
-        second = registry.event_fields("physical:esp", "ringing")
+        second = _observed_event_fields(registry, "physical:esp", "ringing")
 
         self.assertEqual(registry.active_count(), 0)
         self.assertGreater(second["generation"], first["generation"])
@@ -431,8 +436,8 @@ class CallRegistryEventContextTest(unittest.TestCase):
             "custom_components.voip_stack.call_registry.time.monotonic",
             side_effect=(100.0, 145.4),
         ):
-            registry.event_fields("call-1", "in_call")
-            ended = registry.event_fields("call-1", "idle")
+            _observed_event_fields(registry, "call-1", "in_call")
+            ended = _observed_event_fields(registry, "call-1", "idle")
 
         self.assertEqual(ended["duration_seconds"], 45)
 
@@ -445,12 +450,12 @@ class CallRegistryEventContextTest(unittest.TestCase):
             "custom_components.voip_stack.call_registry.time.monotonic",
             side_effect=(100.0, 145.4, 200.0, 207.2),
         ):
-            registry.event_fields("physical:esp", "in_call")
-            first = registry.event_fields("physical:esp", "idle")
-            duplicate = registry.event_fields("physical:esp", "idle")
-            registry.event_fields("physical:esp", "ringing")
-            registry.event_fields("physical:esp", "in_call")
-            second = registry.event_fields("physical:esp", "idle")
+            _observed_event_fields(registry, "physical:esp", "in_call")
+            first = _observed_event_fields(registry, "physical:esp", "idle")
+            duplicate = _observed_event_fields(registry, "physical:esp", "idle")
+            _observed_event_fields(registry, "physical:esp", "ringing")
+            _observed_event_fields(registry, "physical:esp", "in_call")
+            second = _observed_event_fields(registry, "physical:esp", "idle")
 
         self.assertEqual(first["duration_seconds"], 45)
         self.assertEqual(duplicate["duration_seconds"], 45)
@@ -459,19 +464,19 @@ class CallRegistryEventContextTest(unittest.TestCase):
     def test_terminal_summary_claim_is_once_per_lifecycle(self) -> None:
         registry = _registry()
 
-        registry.event_fields("call-1", "ringing")
+        _observed_event_fields(registry, "call-1", "ringing")
         self.assertTrue(registry.claim_terminal_summary("call-1"))
         self.assertFalse(registry.claim_terminal_summary("call-1"))
-        registry.event_fields("call-1", "idle")
-        registry.event_fields("call-1", "ringing")
+        _observed_event_fields(registry, "call-1", "idle")
+        _observed_event_fields(registry, "call-1", "ringing")
 
         self.assertTrue(registry.claim_terminal_summary("call-1"))
 
     def test_unanswered_terminal_event_has_no_call_duration(self) -> None:
         registry = _registry()
 
-        registry.event_fields("call-1", "ringing")
-        ended = registry.event_fields("call-1", "idle")
+        _observed_event_fields(registry, "call-1", "ringing")
+        ended = _observed_event_fields(registry, "call-1", "idle")
 
         self.assertNotIn("duration_seconds", ended)
 
@@ -485,7 +490,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
             origin="trunk",
         )
 
-        fields = registry.event_fields("call-1", "connecting")
+        fields = _observed_event_fields(registry, "call-1", "connecting")
 
         self.assertEqual(fields["schema_version"], 2)
         self.assertEqual(fields["generation"], session.generation)
@@ -506,13 +511,13 @@ class CallRegistryEventContextTest(unittest.TestCase):
             origin="trunk",
         )
 
-        fields = registry.event_fields("source", "connecting")
+        fields = _observed_event_fields(registry, "source", "connecting")
         self.assertEqual(fields["ingress"], "trunk")
         self.assertEqual(fields["origin"], "trunk")
 
     def test_route_history_is_bounded_and_returned_with_events(self) -> None:
         registry = _registry()
-        registry.event_fields("call-1", "route_requested")
+        _observed_event_fields(registry, "call-1", "route_requested")
         for index in range(10):
             registry.record_route(
                 "call-1",
@@ -520,7 +525,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
                 destination=str(index),
             )
 
-        event = registry.event_fields("call-1", "connecting")
+        event = _observed_event_fields(registry, "call-1", "connecting")
         self.assertEqual(len(event["route_history"]), 8)
         self.assertEqual(event["route_history"][0]["destination"], "2")
         self.assertEqual(event["route_history"][-1]["destination"], "9")
@@ -533,14 +538,14 @@ class CallRegistryEventContextTest(unittest.TestCase):
             client=object(),
             state="ringing",
         )
-        registry.event_fields("source", "ringing")
+        _observed_event_fields(registry, "source", "ringing")
 
         self.assertIs(
             registry.event_context("destination"),
             registry.event_context("source"),
         )
 
-    def test_event_fields_for_leg_alias_advances_canonical_context(self) -> None:
+    def test_leg_transition_advances_canonical_context_before_publication(self) -> None:
         registry = _registry()
         registry.register_bridge(
             source_call_id="source",
@@ -548,9 +553,10 @@ class CallRegistryEventContextTest(unittest.TestCase):
             client=object(),
             state="ringing",
         )
-        registry.event_fields("source", "ringing")
+        _observed_event_fields(registry, "source", "ringing")
 
-        fields = registry.event_fields("destination", "in_call")
+        registry.transition("source", state="in_call")
+        fields = _observed_event_fields(registry, "destination", "in_call")
 
         self.assertEqual(fields["sequence"], 2)
         self.assertEqual(fields["previous_state"], "ringing")
@@ -568,7 +574,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
             client=object(),
             state="ringing",
         )
-        registry.event_fields("source", "ringing")
+        _observed_event_fields(registry, "source", "ringing")
         self.assertIsNotNone(registry.event_context("destination"))
 
         popped = registry._discard_dark_session(
@@ -602,7 +608,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
         self.assertEqual(redirected.revision, initial + 1)
         self.assertEqual(redirected.owner, "router")
         self.assertEqual(redirected.callee, "Assist")
-        fields = registry.event_fields("call-1", "connecting")
+        fields = _observed_event_fields(registry, "call-1", "connecting")
         self.assertEqual(fields["revision"], redirected.revision)
         self.assertEqual(fields["owner"], "router")
 
@@ -619,7 +625,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
         )
         registry.claim_endpoint("call-1", "hall", role="destination")
 
-        fields = registry.event_fields("call-1", "ringing")
+        fields = _observed_event_fields(registry, "call-1", "ringing")
 
         self.assertEqual(fields["source_endpoint_id"], "front-door")
         self.assertEqual(fields["dest_endpoint_id"], "kitchen")
@@ -813,7 +819,7 @@ class CallRegistryEventContextTest(unittest.TestCase):
     def test_terminal_pop_removes_event_context_and_pending_indexes(self) -> None:
         registry = _registry()
         registry.upsert("call-1", state="ringing", owner="ha_softphone")
-        registry.event_fields("call-1", "ringing")
+        _observed_event_fields(registry, "call-1", "ringing")
         registry.set_pending_invite("call-1", object())
         registry.set_pending_route("call-1", {"future": object()})
 
@@ -1066,3 +1072,160 @@ class AutomationEventTypeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CanonicalCallStateTest(unittest.TestCase):
+    def test_browser_caller_is_answered_when_a_local_application_takes_ownership(self):
+        from custom_components.voip_stack.endpoint_registry import EndpointRegistry
+        from custom_components.voip_stack.phone_endpoint import PhoneEndpoint
+
+        for owner in ('voicemail', 'parking'):
+            with self.subTest(owner=owner):
+                calls = _registry()
+                endpoints = EndpointRegistry()
+                endpoints.register(PhoneEndpoint(
+                    endpoint_id='caller', name='Caller', kind='browser',
+                ))
+                endpoints.register(PhoneEndpoint(
+                    endpoint_id='mailbox-phone', name='Mailbox phone', kind='sip_account',
+                ))
+                calls.bind_endpoint_registry(endpoints)
+                session = calls.upsert(
+                    'application-call', state='calling', owner='ha_softphone',
+                    endpoint_id='caller', source_endpoint_id='caller',
+                    dest_endpoint_id='mailbox-phone',
+                )
+                calls.claim_endpoint(session.call_id, 'caller', role='source')
+                caller_leg = session.legs['browser:caller']
+                token = session.token
+
+                # LocalCallApplication changes the application owner first and
+                # commits its answer later, retaining the original browser leg.
+                calls.transition(session.call_id, owner=owner, route_kind=owner,
+                                 expected_generation=token.generation)
+                self.assertEqual(caller_leg.state, 'calling')
+                calls.transition(session.call_id, state='in_call', owner=owner,
+                                 expected_generation=token.generation)
+
+                self.assertEqual(session.state, 'in_call')
+                self.assertEqual(session.owner, owner)
+                self.assertEqual(session.token, token)
+                self.assertIs(session.legs['browser:caller'], caller_leg)
+                self.assertEqual(caller_leg.state, 'in_call')
+                self.assertEqual(caller_leg.phase.value, 'answered')
+                self.assertEqual(session.endpoint_claims, {'caller': 'source'})
+                self.assertNotIn('browser:mailbox-phone', session.legs)
+                committed = next(leg for leg in session.committed_state.legs
+                                 if leg.leg_id == 'browser:caller')
+                self.assertEqual(committed.state, 'in_call')
+
+    def test_answered_browser_caller_does_not_regress_during_application_reroute(self):
+        calls = _registry()
+        calls.bind_endpoint_registry(_EndpointRegistryStub())
+        session = calls.upsert('retained-application-caller', state='in_call',
+                               owner='ha_softphone', endpoint_id='caller',
+                               source_endpoint_id='caller')
+        calls.claim_endpoint(session.call_id, 'caller', role='source')
+        leg = session.legs['browser:caller']
+        for state in ('connecting', 'calling', 'remote_ringing'):
+            with self.subTest(state=state):
+                calls.transition(session.call_id, state=state, owner='router',
+                                 expected_generation=session.generation)
+                self.assertEqual(session.state, 'in_call')
+                self.assertEqual(leg.state, 'in_call')
+                self.assertEqual(leg.phase.value, 'answered')
+
+    def test_application_answer_does_not_revive_retired_browser_participant(self):
+        for released in (False, True):
+            with self.subTest(released=released):
+                calls = _registry()
+                calls.bind_endpoint_registry(_EndpointRegistryStub())
+                session = calls.upsert('retired-caller', state='calling',
+                                       owner='ha_softphone', endpoint_id='caller',
+                                       source_endpoint_id='caller')
+                calls.claim_endpoint(session.call_id, 'caller', role='source')
+                if released:
+                    calls.release_endpoint_claim(session.call_id, 'caller')
+                else:
+                    calls.observe_leg(session.call_id, 'browser:caller',
+                                      role='ha_softphone', endpoint_id='caller',
+                                      state='cancelled', generation=session.generation)
+                calls.transition(session.call_id, state='in_call', owner='voicemail',
+                                 expected_generation=session.generation)
+                self.assertEqual(session.legs['browser:caller'].state, 'cancelled')
+                self.assertEqual(session.legs['browser:caller'].phase.value, 'closed')
+                self.assertEqual('caller' in session.endpoint_claims, not released)
+
+    def test_application_answer_does_not_create_a_new_browser_leg(self):
+        calls = _registry()
+        calls.bind_endpoint_registry(_EndpointRegistryStub())
+        session = calls.upsert('no-browser-leg', state='calling', owner='router',
+                               endpoint_id='caller', source_endpoint_id='caller')
+        calls.claim_endpoint(session.call_id, 'caller', role='source')
+        self.assertFalse(session.legs)
+        calls.transition(session.call_id, state='in_call', owner='voicemail',
+                         expected_generation=session.generation)
+        self.assertFalse(session.legs)
+
+    def test_publishing_other_endpoint_state_cannot_change_control_context(self):
+        calls = _registry()
+        session = calls.upsert('canonical', state='ringing', owner='ha_softphone')
+        calls.event_fields(session.call_id, 'ringing')
+        before = (session.event_context.state, session.event_context.sequence)
+        calls.event_fields(session.call_id, 'remote_ringing')
+        self.assertEqual((session.event_context.state, session.event_context.sequence), before)
+
+    def test_answer_transition_confirms_selected_browser_leg_without_extra_write(self):
+        calls = _registry()
+        session = calls.upsert('canonical', state='ringing', owner='ha_softphone',
+                               endpoint_id='browser-b', dest_endpoint_id='browser-b')
+        calls.observe_leg(session.call_id, 'browser:browser-b', role='ha_softphone',
+                          endpoint_id='browser-b', state='ringing')
+        calls.observe_leg(session.call_id, 'browser:unrelated', role='ha_softphone',
+                          endpoint_id='unrelated', state='ringing')
+        calls.transition(session.call_id, state='in_call', owner='ha_softphone',
+                         expected_generation=session.generation)
+        self.assertEqual(session.legs['browser:browser-b'].state, 'in_call')
+        self.assertEqual(session.legs['browser:unrelated'].state, 'ringing')
+
+    def test_adoption_never_replaces_materialised_control_context(self):
+        calls = _registry()
+        calls.observe_external_state('physical:esp', 'calling')
+        calls.observe_external_state('physical:esp', 'remote_ringing')
+        session = calls.upsert('sip-call', state='in_call', owner='ha_softphone')
+        original = session.event_context
+        calls.adopt_event_observation('physical:esp', session.call_id)
+        self.assertIs(session.event_context, original)
+        self.assertEqual(session.event_context.state, 'in_call')
+
+    def test_nested_bridge_mutation_emits_one_immutable_result(self):
+        calls = _registry()
+        seen = []
+        calls.subscribe_state(seen.append)
+        calls.register_bridge(source_call_id='source', dest_call_id='destination',
+                              client=object(), state='ringing')
+        self.assertEqual(len(seen), 1)
+        self.assertEqual({leg.leg_id for leg in seen[0].legs}, {'source', 'destination'})
+        original = seen[0]
+        calls.transition('source', state='in_call')
+        self.assertEqual(original.state, 'ringing')
+        count = len(seen)
+        calls.event_fields('source', 'remote_ringing')
+        self.assertEqual(len(seen), count)
+
+    def test_failed_handoff_restores_state_before_observers_run(self):
+        from custom_components.voip_stack.endpoint_session import SessionHandoff
+        calls = _registry()
+        session = calls.upsert('handoff', state='ringing', owner='router', callee='Original')
+        calls.observe_leg(session.call_id, 'destination', role='callee', state='ringing')
+        seen = []
+        calls.subscribe_state(seen.append)
+        with self.assertRaisesRegex(RuntimeError, 'injected'):
+            with SessionHandoff(calls, session):
+                calls.transition(session.call_id, state='in_call', callee='Replacement')
+                calls.observe_leg(session.call_id, 'destination', role='callee', state='in_call')
+                raise RuntimeError('injected')
+        self.assertEqual(session.state, 'ringing')
+        self.assertEqual(session.callee, 'Original')
+        self.assertEqual(session.legs['destination'].state, 'ringing')
+        self.assertEqual(seen, [])

@@ -4,9 +4,223 @@ Follow the entries between your installed version and the version you are
 upgrading to. Each section describes the migration for that release.
 For a fresh installation, use the [deployment guide](DEPLOYMENT_GUIDE.md).
 
+> **ESP firmware migration: start from the current YAML for your exact board.**
+> Device packages, feature composition and display/runtime bindings have changed
+> substantially. Bring your device settings into the new profile instead of
+> stacking the new packages onto an old assembled YAML. Rebuild and upload the
+> firmware to install ESP-side changes; updating HACS only updates Home Assistant.
+> Follow the [device-package migration](#development-firmware-new-device-packages)
+> below.
+
+## Development firmware: native audio providers
+
+**Start from the updated YAML for your exact board when rebuilding this
+preview.** Keep your device identity, credentials, wiring and wanted features.
+The maintained device packages now use official ESPHome 2026.10 audio, mixer,
+resampler, `speaker_source`, Voice Assistant, Micro Wake Word and OTA providers.
+Audio Stack/AEC/AFE and VoIP Stack remain project-owned. FULL profiles also use
+Runtime Controller; standalone VoIP-only profiles use VoIP Stack callbacks.
+
+For a custom configuration:
+
+1. Remove `audio`, `micro_wake_word`, `mixer`, `ota`, `resampler`,
+   `speaker_source` and `voice_assistant` from Git external-component lists
+   pointing to this project or Audio Stack. Keep the actual component blocks;
+   ESPHome supplies those providers. Remove an empty external-source entry.
+2. Remove the retired `audio_http_compat`, `sendspin_compat` and
+   `audio_dsp_iram` component declarations and their external-source entries.
+   Keep native `audio_http`, WAV/MP3/FLAC codecs, Sendspin, microphone and
+   speaker configuration selected by the maintained packages.
+3. Remove `tts_playback_start_timeout`, MWW `task_core`/`ring_buffer_duration`
+   and `task_core`/`task_priority` on `platform: resampler` speakers. These
+   were local options and are absent from the supported official schemas.
+   Task settings on our AFE/Audio Stack components are separate and remain
+   supported. Native scheduling and playback timeout behavior now apply.
+4. Keep package and component revisions coordinated, validate with ESPHome
+   2026.10.0 or newer, compile and upload. Updating HACS does not update the ESP.
+
+Audio processing, microphone downmix/BSS, gain/reference settings, media and
+announcement inputs, call ownership and the shared maintenance scripts remain
+in their existing owners. The AFE GMF vendor pin and P4 display adaptation are
+separate from this audio-provider retirement.
+
+The Box FULL AFE baseline has been exercised with calls, overlapping HTTP
+media/announcements, real HA announcements, ordinary Stop/restart, native
+Sendspin and completed/interrupted OTA. This is bounded functional evidence,
+not a long-uptime result for every supported board. The outstanding Spotpear
+announcement report remains open; preserve its complete logs and exact firmware
+revision if it recurs.
+
+## Development firmware: ESPHome 2026.10 and music pairing
+
+Upgrade the builder to **ESPHome 2026.10.0 or newer** before compiling the current
+device packages or Audio Stack. Support for the 2026.9 core is retired; do not
+combine old and new copies of audio, mixer or speaker-source providers.
+
+Sendspin now uses the protocol library selected by ESPHome 2026.10 (0.9.3).
+Update Music Assistant to **2.10.7 or newer** first. After the firmware upgrade,
+complete **Setup** for each speaker in Music Assistant and use its native PIN
+pairing flow. The device exposes **Sendspin Confirm Pairing**, **Sendspin Cancel
+Pairing** and **Sendspin Pairing Code** through HA. The default native unpaired
+access policy is unchanged; pairing does not require disabling encryption or
+using a shared hardcoded PIN. For paired-server-only access add
+`sendspin: {unpaired_access: false}` to your configuration.
+
+See [the pairing steps](../packages/README.md#pair-sendspin-with-music-assistant).
+A normal reboot retains the native device identity and pairing. Flash erasure
+or a factory reset can require a new pairing; updating HACS alone does not
+replace ESP firmware.
+
+## Development firmware: retired speaker fork
+
+The local `speaker` provider, including its legacy media player, has been
+removed. Maintained profiles use ESPHome's native speaker interface and the
+source-based `speaker_source` player. The Spotpear phone-only ringtone also
+uses the local-file source now, keeping its existing sound, volume and call
+state controls.
+
+For custom YAMLs:
+
+1. Remove `speaker` from any `external_components` entry pointing to this
+   repository. Keep other components in that entry, or remove the entry if
+   its component list becomes empty. Keep the actual `speaker:` hardware,
+   mixer and resampler configuration.
+2. Remove the fork-only `pause_releases_pipeline` option. ESPHome's native
+   `platform: speaker` media player remains available, but its normal pause
+   behavior keeps the playback pipeline. The removed pause-release behavior
+   is not silently reproduced by the native player.
+3. To adopt the maintained source-based path, start from the current board
+   profile and its player/source packages. Do not only rename the platform:
+   local files are `audio_file` assets played through `audio-file://` URLs,
+   and sources belong to the corresponding player pipeline.
+
+This removes a copied ESPHome component, not ESP Audio Stack or echo
+cancellation. Updating HA alone does not change installed ESP firmware.
+
+## Development firmware: new device packages
+
+**For this firmware update, start again from the current YAML for your exact
+board and carry over your settings.** The shared packages have been reorganized:
+maintained profiles now select one `packages/devices/` entrypoint and one
+`firmware_features` list. Updating a handful of includes in an old FULL YAML can
+leave duplicate players, controls or callbacks alongside the new composition.
+
+This is a firmware configuration migration, separate from updating VoIP Stack
+through HACS. It does not require deleting the HA integration, its phones or
+your working device. This preview uses coordinated `dev` packages and component
+sources. Use its published source references rather than mixing them with `main`.
+
+### Choose FULL or standalone VoIP-only
+
+Start from `yamls/full-experience/` for Assist, wake word, music and telephone
+features coordinated by Runtime Controller. For a standalone telephone, use the
+matching entrypoint under `yamls/voip-only/`. Those profiles use VoIP Stack's
+native callbacks for phone state, optional ringtone, LEDs and display controls.
+They do not include Runtime Controller.
+
+Changing a FULL profile to `firmware_features: [voip]` changes its selected
+features while retaining the FULL architecture. Choose a VoIP-only entrypoint
+when you want the standalone phone architecture.
+
+For generic ESP32-S3 devices with a native DVP JPEG camera:
+
+| Profile | Entrypoint | Application lifecycle |
+| --- | --- | --- |
+| FULL Audio + Video | [`generic-s3-full-aec-camera.yaml`](../yamls/full-experience/single-bus/generic-s3-full-aec-camera.yaml) | Runtime Controller with the selected Assist, media and phone features |
+| VoIP-only + camera | [`generic-s3-voip-camera.yaml`](../yamls/voip-only/single-bus/generic-s3-voip-camera.yaml) | VoIP Stack callbacks, without Runtime Controller |
+
+Both examples expose board memory, microphone/amplifier wiring and camera GPIOs
+through substitutions. The reference wiring is for Freenove FNK0085 N8R8; select
+values for your actual board. S3 supports camera video transmission, without
+rendering the remote video on an S3 display. Supported P4 video profiles retain
+camera transmission and remote-video rendering. Audio is bidirectional when
+the device includes both a microphone and a speaker.
+
+### Migrate a copied device YAML
+
+1. Keep your old YAML and secrets for comparison. Select the current equivalent
+   from the [device catalog](../packages/DEVICE_CATALOG.md), including the correct
+   board revision, AEC/AFE/native backend and, for P4 video, JPEG or H.264 profile.
+2. Transfer your existing device `name`, friendly name, Wi-Fi/network settings,
+   API encryption, OTA authentication and secret references. Keep credentials in
+   your private `secrets.yaml`. Preserve custom GPIOs only where they match your
+   actual wiring; do not copy a different board's pin map.
+3. Edit the new YAML's **existing** `firmware_features` list. Preserve your intended
+   choices, such as no Sendspin or no display. Do not add another list in an
+   overlay: ESPHome concatenates package lists. Feature selection does not
+   change the chosen AFE/AEC/native backend.
+4. Transfer custom settings and automations individually, using substitutions
+   or extensions of the existing IDs. Keep wanted call settings, static contacts,
+   wake-word models, gain/volume preferences and UI customizations. Compare each
+   with the new package before adding it; its equivalent may already be supplied.
+5. Keep **one device package**. Do not copy the old FULL preset, entire player,
+   mixer or repeated voice/call callbacks on top of it. Leaf includes remain for
+   legacy/custom builds with their documented prerequisites, not as additional
+   full presets for a migrated device.
+6. Keep package, component and asset references coordinated. Validate and compile
+   the result with ESPHome, check image size against the actual OTA slot, then
+   install it. A changed partition layout needs an appropriate full serial flash;
+   an ordinary OTA application update does not migrate partitions.
+7. Check the device's selected functions: call in and out, hang up and redial,
+   invoke Assist, play and stop media, and check the display/LED after each action.
+   Test only functions your profile includes, then their intended combinations.
+
+Use only the selectors exposed by the chosen example. If it provides
+`audio_processor`, `mic_mix` or `voip_transport`, edit those substitutions rather
+than adding another audio backend or transport package. Fixed-backend profiles
+retain their stated backend. Spotpear and BOX V2 FULL displays now navigate
+vertically through Assist, Contacts, Keypad and Options, omitting unavailable
+pages and stopping at the ends; the Options body scrolls independently of page
+navigation. The experimental first-generation round layout retains its own
+navigation adapter.
+
+To inspect the resolved configuration with its packages expanded, run:
+
+```sh
+esphome config your-device.yaml
+```
+
+This recommendation does not mean that every existing leaf include was removed.
+It gives a clean starting point for the new composition while preserving your
+device identity and preferences. The [progressive examples](../packages/README.md#work-through-a-full-profile)
+show small feature changes before custom board or runtime work. The Generic
+4 MB Full Lite default still excludes Sendspin; historical build sizes are not
+guarantees for the new libraries.
+
+## 2026.10.3-dev: PBX functions available by default
+
+Global parking and voicemail enable switches have been removed. Reconfigure
+now offers General settings, Call parking and Voicemail voice separately. Basic
+installation needs no TTS provider. Existing custom numbers, timers, media,
+voices, mailbox settings and recordings are preserved. No mailbox is created
+and no forwarding rule is added by the migration. Per-phone mailbox removal
+remains an explicit destructive operation.
+
+This deliberately changes a previous global `enabled: false`: those application
+switches are removed rather than preserved as hidden disable flags. Application
+availability does not create mailboxes or start call recording. Review feature
+codes and each phone's resource/routing settings when migrating an installation
+that previously disabled parking or voicemail globally.
+
+Parking defaults to access 700 and slots 701-720. Previously disabled feature
+codes become available where they do not conflict with existing destinations.
+Conflicting routes are preserved and reported in Repairs; correct the feature
+configuration or the conflicting destination before using those codes. Existing
+automation service names and entity identities are unchanged.
+
+## 2026.10.3-dev: disabling a phone's mailbox deletes it
+
+**Enable mailbox** now controls whether that phone has a mailbox. Explicitly
+turning it off from the card, phone configuration or `set_voicemail_settings`
+action permanently deletes its messages, files, PIN and mailbox settings.
+Turning it on again creates an empty mailbox. Omitted action fields keep their
+current values. Updating, restarting or taking a phone offline does not delete
+mailboxes, including mailboxes disabled by an older build. Separate conversation
+recordings and other phones' mailboxes are preserved.
+
 ## PBX development branch: separate SIP trunk entries
 
-The updated `v2026.10.3-dev` preview changes where trunks are configured.
+The updated `v2026.11.0-dev` preview changes where trunks are configured.
 Older builds with the same version label used the former single-trunk flow.
 
 Previously, a single trunk was configured in the main VoIP Stack setup or
@@ -113,9 +327,10 @@ firmware version numbers.
   removed; shared official callbacks provide those integrations.
 - `runtime/ha_connectivity.yaml` no longer exposes diagnostic API actions. Add
   `diagnostics/runtime.yaml` explicitly when needed.
-- `media_player/playback_compat.yaml` no longer loads the Sendspin-specific adapter.
-  Custom inline Sendspin configurations must also include
-  `media_player/sendspin_compat.yaml`, or use `media_player/sendspin.yaml`.
+- Sendspin now uses the official ESPHome provider. Custom inline Sendspin
+  configurations need no compatibility adapter; use `media_player/sendspin.yaml`
+  for the shared configuration. The legacy `media_player/sendspin_compat.yaml`
+  include remains harmless but can be removed.
 - HTTP playback, local-file announcements and Sendspin can be selected separately.
   Existing full media presets still compose the complete feature set.
 - Shared LVGL projection owns the voice phase and restores the mode preceding a
@@ -183,9 +398,9 @@ lists that point to this repository. Both now come from ESPHome. Keep
 for the Spotpear display, set `psram_dma: true` on the `mipi_spi` display itself.
 
 Include `packages/audio/http_media_codecs.yaml` for HTTP playback. It selects
-MP3/WAV codecs and the small `audio_http_compat` adapter that preserves WAV
-recognition for `audio/vnd.wave` responses. The retired `audio_http` directory
-is no longer an external component source.
+MP3/WAV codecs. Current development packages use the official HTTP source
+and decoder behavior; the former `audio_http_compat` adapter is retired.
+The retired `audio_http` directory is no longer an external component source.
 
 ## 2026.9.0: upgrade checklist
 
@@ -639,9 +854,10 @@ committed snapshot.
 Voice Assistant response state is now tied to TTS/media-player announcement
 lifecycle callbacks through `runtime_controller`. Slow local TTS backends can
 exceed ESPHome's historical 2-second playback-start watchdog, especially XTTS
-running locally. This release temporarily ships a project-local
-`voice_assistant` fork that exposes `tts_playback_start_timeout`; maintained
-full profiles set it to `10s` through the full voice/runtime packages.
+running locally. Older development snapshots supplied a configurable local
+watchdog. Current profiles use the official Voice Assistant provider and
+its native behavior; remove the obsolete `tts_playback_start_timeout` option
+when following the native-provider migration above.
 
 Sendspin is included in maintained full-experience profiles as a Music Assistant
 media source. It is not required for normal HA media, TTS, timer sounds,

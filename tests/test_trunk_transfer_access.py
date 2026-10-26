@@ -31,7 +31,7 @@ def _runtime(*, blocked=True, remote="sip:desk@192.0.2.20", entries=None):
         sip=SimpleNamespace(
             get_session=lambda _call_id: session,
             component=lambda _name: None,
-            sip_clients_snapshot=lambda: {"call": client},
+            sip_client_for=lambda call_id: client if call_id == "call" else None,
         ),
         endpoints=SimpleNamespace(resolve=lambda _value: None),
         phonebook_sensor=SimpleNamespace(
@@ -99,12 +99,12 @@ async def test_permission_is_read_again_for_later_transfer():
 async def test_attended_transfer_to_trunk_keeps_both_dialogs_when_denied():
     runtime, source = _runtime()
     consultation = Mock(spec=SipCallClient)
-    consultation.dialog = SimpleNamespace(remote_uri="sip:441234567890@provider.example")
+    consultation.dialog = SimpleNamespace(remote_uri="sip:441234567890@provider.example", remote_target_uri="sip:441234567890@provider.example")
     consultation.dialog_ids = SimpleNamespace(
         call_id="consultation", remote_tag="remote", local_tag="local"
     )
     consultation.refer = AsyncMock()
-    runtime.sip.sip_clients_snapshot = lambda: {"call": source, "consultation": consultation}
+    runtime.sip.sip_client_for = {"call": source, "consultation": consultation}.get
     result = await call_transfer.async_transfer_call(
         runtime, call_transfer.CallTransferRequest("call", "", "consultation")
     )
@@ -117,7 +117,7 @@ async def test_attended_transfer_to_trunk_keeps_both_dialogs_when_denied():
 
 async def test_inbound_listener_does_not_send_forbidden_refer():
     runtime, _client = _runtime()
-    runtime.sip.sip_clients_snapshot = lambda: {}
+    runtime.sip.sip_client_for = lambda _call_id: None
     server = SimpleNamespace(
         remote_uri_for_call=lambda _call_id: "sip:desk@192.0.2.20",
         local_ip="192.0.2.1", local_sip_port=5060,

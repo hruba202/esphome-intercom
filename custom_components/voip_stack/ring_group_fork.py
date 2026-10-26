@@ -49,6 +49,7 @@ def build_ring_group_fork(
     browser_legs: list[BrowserLeg],
     preflight_failures: list[PreflightFailure],
     on_ringing: Callable[[], None] | None = None,
+    on_leg_state: Callable[[OutboundLeg, str], None] | None = None,
 ) -> tuple[
     list[DialCandidate],
     dict[str, ForkPayload],
@@ -105,23 +106,6 @@ def build_ring_group_fork(
             "browser": True,
         }
 
-    async def _wait_caller_cancel() -> tuple[str, dict]:
-        try:
-            decision = await asyncio.wait_for(
-                route_future,
-                timeout=RING_GROUP_TIMEOUT_S,
-            )
-        except asyncio.TimeoutError:
-            return "timeout", {
-                "member": "__caller__",
-                "caller_control": True,
-            }
-        action = str((decision or {}).get("action") or "").strip().lower()
-        return (
-            "cancelled" if action == "cancel" else "ignored",
-            {"member": "__caller__", "caller_control": True},
-        )
-
     fork_candidates: list[DialCandidate] = []
     for candidate_id, endpoint_id, disposition, tier, order in preflight_failures:
 
@@ -156,6 +140,8 @@ def build_ring_group_fork(
             nonlocal ringing_published
             client = outbound.client
             uri = outbound.uri
+            if on_leg_state is not None:
+                on_leg_state(outbound, "calling")
             result = await client.invite(
                 target=uri.user or outbound.member,
                 target_display_name=outbound.member,
@@ -165,6 +151,8 @@ def build_ring_group_fork(
                 timeout=8.0,
             )
             if result == "ringing":
+                if on_leg_state is not None:
+                    on_leg_state(outbound, "remote_ringing")
                 if on_ringing is not None and not ringing_published:
                     ringing_published = True
                     on_ringing()
@@ -177,17 +165,21 @@ def build_ring_group_fork(
                     500,
                     "protocol_error",
                 )
+            if on_leg_state is not None:
+                on_leg_state(outbound, result)
             return _outcome(result)
 
         async def _close_sip(
             mode: LegCloseMode,
             outbound: OutboundLeg = attempt,
         ) -> None:
-            await async_close_outbound_leg(
-                outbound,
-                bye_or_cancel=mode
-                in {LegCloseMode.CANCEL_OR_BYE, LegCloseMode.BYE},
-            )
+            try:
+                await async_close_outbound_leg(
+                    outbound, bye_or_cancel=mode in {LegCloseMode.CANCEL_OR_BYE, LegCloseMode.BYE},
+                )
+            finally:
+                if on_leg_state is not None:
+                    on_leg_state(outbound, "closed")
 
         fork_candidates.append(
             DialCandidate(
@@ -209,7 +201,7 @@ def build_ring_group_fork(
         wait_control = _wait_browser
     else:
         control_candidate_id = "caller:route-control"
-        wait_control = _wait_caller_cancel
+        wait_control = _wait_browser
 
     async def _dial_control() -> DialOutcome:
         result, selected = await wait_control()
@@ -236,3 +228,76 @@ def build_ring_group_fork(
         )
     )
     return fork_candidates, candidate_payloads, browser_decision
+
+
+def group_leg_observer(hass, registry, session):
+    """Project fork branches through the authoritative call session."""
+    from .call_projection import publish_bridge_projection
+
+    token = session.token
+
+    def observe(outbound, state):
+        if not session.owns(token):
+            return
+        identity = outbound.client.dialog_ids.call_id
+        if state == "closed":
+            registry.remove_leg(token.call_id, identity)
+            return
+        registry.add_leg(
+            token.call_id,
+            identity,
+            role="callee",
+            state=state,
+            endpoint_id=outbound.endpoint_id,
+        )
+        registry.observe_leg(
+            token.call_id,
+            identity,
+            role="callee",
+            state=state,
+            endpoint_id=outbound.endpoint_id,
+            dialog=outbound.client,
+            generation=token.generation,
+        )
+        publish_bridge_projection(hass, session, event_type="state_changed")
+
+    return observe
+
+
+async def run_owned_ring_group_fork(
+    session,
+    candidates,
+    payloads,
+    *,
+    invite,
+    attempts,
+    browser_legs,
+    on_leg_state,
+    commit_winner,
+    **policy,
+):
+    """Keep external pickup and ordinary answers under one fork arbiter."""
+    from .dial_fork import DialForkController, ForkAnswerGate
+
+    gate = ForkAnswerGate(
+        attempts=attempts,
+        browser_legs=browser_legs,
+        invite=invite,
+        on_leg_state=on_leg_state,
+    )
+    candidate = DialCandidate(
+        "external:pickup", gate.dial, gate.reject, control=True, confirm=gate.confirm
+    )
+    candidates.append(candidate)
+    payloads[candidate.candidate_id] = gate
+    resource = f"fork_answer:{session.call_id}"
+    session.add_resource(resource, gate, gate.close)
+    try:
+        result = await DialForkController(session, candidates, **policy).run(
+            commit_winner
+        )
+        return result, gate
+    finally:
+        await gate.close()
+        if session.live:
+            session.release_resource(resource, value=gate)

@@ -649,3 +649,18 @@ def test_endpoint_reconfigure_refreshes_device_and_entity(monkeypatch) -> None:
         manager.entities["kitchen"].endpoint.availability
         is phone_endpoint.EndpointAvailability.OFFLINE
     )
+
+
+def test_relink_entity_replaces_only_its_own_id_and_preserves_call() -> None:
+    registry = endpoint_registry.EndpointRegistry()
+    registry.register(_endpoint(entity_ids=frozenset({"sensor.before", "switch.sibling"}), active_call_id="live"))
+    events = []
+    registry.subscribe(events.append)
+    endpoint_device.async_link_endpoint_entity(registry, "kitchen", "sensor.after", "sensor.before")
+    endpoint_device.async_link_endpoint_entity(registry, "kitchen", "sensor.after", "sensor.before")
+    assert len(events) == 1
+    assert registry.by_entity_id("sensor.before") is None
+    assert registry.by_entity_id("sensor.after").active_call_id == "live"
+    assert registry.by_entity_id("switch.sibling").endpoint_id == "kitchen"
+    endpoint_device.async_link_endpoint_entity(registry, "missing", "sensor.after", "sensor.before")
+    assert len(events) == 1

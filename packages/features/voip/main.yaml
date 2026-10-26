@@ -1,0 +1,38 @@
+api:
+  custom_services: true
+defaults:
+  _fw_mixed_voip_input: !include '../../audio/mixer_voip_input.yaml'
+  _fw_direct_voip_input: !include
+    file: ../shared/direct_input.yaml
+    vars:
+      input_id: voip_speaker_input
+      input_buffer_duration: 128ms
+packages:
+  input: ${ _fw_mixed_voip_input if _fw_mixed else _fw_direct_voip_input }
+  buttons: !include '../../voip/call_buttons.yaml'
+  settings: !include '../../voip/call_settings.yaml'
+  transport: !include '../../voip/transport.yaml'
+  callbacks: !include '../../voip/full_runtime_callbacks.yaml'
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+voip_stack:
+  network_socket_headroom: 8
+runtime_controller:
+  observe:
+    voip_stack: null
+script:
+- id: ui_call_started
+  parameters:
+    peer: string
+  then: []
+- id: ui_call_dest_ringing
+  parameters:
+    peer: string
+  then: []
+- id: ui_call_ended
+  parameters:
+    peer: string
+    reason: string
+  then: []

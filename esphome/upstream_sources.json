@@ -1,0 +1,67 @@
+{
+  "repository": "esphome/esphome",
+  "revision": "2d0e3faa3d1282d1ec6928d4e76b62db3d37434c",
+  "components": {
+    "mipi_dsi": {
+      "local_repository": "esphome-intercom",
+      "adaptations": [
+        "Qualified panel settling intervals",
+        "Serialized transfer completion and error ownership",
+        "Diagnostic framebuffer access",
+        "Stable bulk drawing and code-generation APIs"
+      ],
+      "public_proposal": false
+    }
+  },
+  "dependencies": {
+    "gmf_ai_audio": {
+      "upstream_revision": "255fb531ddc97ff5e1e113dad97c88f70d6297be",
+      "adaptations": [
+        "ESP-SR 2.6.0 dependency constraint"
+      ],
+      "public_proposal": false,
+      "runtime_contract": "Official AFE manager callbacks. No element pipeline or custom element-output callback is used by the wrapper."
+    }
+  },
+  "build_baseline": {
+    "esphome": "2026.10.0",
+    "esp_idf": "5.5.6",
+    "sendspin": "0.9.3",
+    "audio_libs": "4.0.1",
+    "micro_decoder": "0.4.0"
+  },
+  "native_components": [
+    "audio",
+    "audio_file",
+    "audio_http",
+    "media_source",
+    "microphone",
+    "micro_wake_word",
+    "mixer",
+    "ota",
+    "resampler",
+    "sendspin",
+    "speaker",
+    "speaker_source",
+    "voice_assistant"
+  ],
+  "native_provider_baseline": {
+    "distribution": "esphome",
+    "version": "2026.10.0",
+    "source_policy": "Use the installed official ESPHome providers without local source overrides or vendor source replacement helpers."
+  },
+  "retired_local_providers": [
+    "audio",
+    "micro_wake_word",
+    "mixer",
+    "ota",
+    "resampler",
+    "speaker_source",
+    "voice_assistant"
+  ],
+  "retired_adapters": [
+    "audio_dsp_iram",
+    "audio_http_compat",
+    "sendspin_compat"
+  ]
+}

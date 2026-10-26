@@ -3,14 +3,12 @@ import asyncio
 from contextlib import aclosing
 import io
 import math
-from pathlib import Path
 import struct
 import wave
-from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
-from homeassistant.components import ffmpeg, media_source
+from homeassistant.components import ffmpeg
 from homeassistant.core import Context
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.script import Script, async_validate_actions_config
@@ -19,7 +17,9 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.voip_stack.announcement_media import async_audio_stream
 from custom_components.voip_stack.core import rtp
-from .test_automation_originate_ha import lab, dial, sequence
+
+from .test_automation_originate_ha import lab as lab, dial, sequence
+from .test_automation_call import application as application, service
 
 pytestmark = pytest.mark.ha
 
@@ -90,7 +90,8 @@ async def test_file_after_answer_then_bye_and_redial(lab, media_file, delayed, i
 
 async def test_url_and_mp3_use_real_decoder(hass, media_file, aiohttp_server, tmp_path, socket_enabled):
     wav, _ = wav_audio()
-    src = tmp_path/'input.wav'; src.write_bytes(wav)
+    src = tmp_path/'input.wav'
+    src.write_bytes(wav)
     out = tmp_path/'input.mp3'
     process = await asyncio.create_subprocess_exec('/usr/bin/ffmpeg', '-v', 'error', '-i', str(src), str(out))
     assert await process.wait() == 0
@@ -109,9 +110,12 @@ async def test_url_and_mp3_use_real_decoder(hass, media_file, aiohttp_server, tm
 @pytest.mark.parametrize('failure', ['missing', 'invalid', 'scheme'])
 async def test_bad_media_terminates_outgoing_and_allows_retry(lab, media_file, tmp_path, failure):
     media_id, _ = media_file
-    if failure == 'missing': media_id = media_id.replace('notice.wav','missing.wav')
-    if failure == 'invalid': (tmp_path/'notice.wav').write_bytes(b'not audio')
-    if failure == 'scheme': media_id = 'file:///etc/passwd'
+    if failure == 'missing':
+        media_id = media_id.replace('notice.wav','missing.wav')
+    if failure == 'invalid':
+        (tmp_path/'notice.wav').write_bytes(b'not audio')
+    if failure == 'scheme':
+        media_id = 'file:///etc/passwd'
     context = Context()
     result = await dial(lab, context)
     with pytest.raises(ServiceValidationError):
@@ -134,7 +138,8 @@ async def test_browser_call_cannot_use_file_playback(lab, media_file):
 
 
 async def test_wrong_controller_and_generation_cannot_play(lab, media_file):
-    context = Context(); result = await dial(lab, context)
+    context = Context()
+    result = await dial(lab, context)
     for caller, generation in ((Context(),result['generation']), (context,result['generation']+1)):
         with pytest.raises(ServiceValidationError):
             await lab.hass.services.async_call('voip_stack','play_media', {
@@ -154,7 +159,8 @@ async def test_interrupted_playback_reaps_decoder_and_call(lab, media_file, tmp_
         processes.append(process)
         return process
     monkeypatch.setattr(asyncio, 'create_subprocess_exec', create)
-    context = Context(); result = await dial(lab, context)
+    context = Context()
+    result = await dial(lab, context)
     task = asyncio.create_task(lab.hass.services.async_call('voip_stack', 'play_media', {
         'call_id':result['call_id'], 'expected_generation':result['generation'],
         'timeout': 1 if ending == 'timeout' else 10,
@@ -163,9 +169,12 @@ async def test_interrupted_playback_reaps_decoder_and_call(lab, media_file, tmp_
     async with asyncio.timeout(3):
         while True:
             raw, _ = await lab.phones[0].audio.get()
-            if any(rtp.parse_packet(raw).payload): break
-    if ending == 'remote': lab.phones[0].remote_hangup()
-    if ending == 'cancel': task.cancel()
+            if any(rtp.parse_packet(raw).payload):
+                break
+    if ending == 'remote':
+        lab.phones[0].remote_hangup()
+    if ending == 'cancel':
+        task.cancel()
     await asyncio.wait_for(asyncio.gather(task,return_exceptions=True),3)
     await lab.hass.async_block_till_done()
     assert processes and all(p.returncode is not None for p in processes)
@@ -175,7 +184,6 @@ async def test_interrupted_playback_reaps_decoder_and_call(lab, media_file, tmp_
     await dial(lab,Context())
 
 
-from .test_automation_call import application, service
 
 
 async def test_incoming_automation_uses_same_file_path(application, media_file):
@@ -218,7 +226,8 @@ async def test_http_error_or_stalled_download_releases_decoder(lab, media_file, 
         processes.append(proc)
         return proc
     monkeypatch.setattr(asyncio,'create_subprocess_exec',create)
-    context = Context(); result = await dial(lab,context)
+    context = Context()
+    result = await dial(lab,context)
     try:
         with pytest.raises(ServiceValidationError):
             await lab.hass.services.async_call('voip_stack','play_media', {

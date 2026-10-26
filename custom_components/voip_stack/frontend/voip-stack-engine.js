@@ -51,6 +51,12 @@ const TERMINAL_CALL_EVENT_TYPES = new Set([
   "failed",
 ]);
 
+class AudioSetupSupersededError extends Error {
+  constructor() {
+    super("Audio setup superseded");
+  }
+}
+
 function settleWithin(promise, timeoutMs = MEDIA_CLEANUP_TIMEOUT_MS) {
   let timer;
   const schedule = globalThis.setTimeout || globalThis.window?.setTimeout;
@@ -159,6 +165,7 @@ class VoipStackEngine extends EventTarget {
     this._callSubscribers = new Set();
     this._softphoneSubscribers = new Set();
     this._lastEvents = new Map();
+    this._lastActivityEvent = null;
     this._lastSoftphoneState = null;
     this._softphoneSubscriberSelectors = new Map();
     this._lastSoftphoneStates = new Map();
@@ -256,13 +263,25 @@ class VoipStackEngine extends EventTarget {
     }, BUS_SUBSCRIBE_RETRY_MS);
   }
 
+  _wantsBusSubscription() {
+    return this._callSubscribers.size > 0 || this.active || this._ownedSoftphoneCalls.size > 0;
+  }
+
   _ensureBusSubscriptions(conn) {
-    if (this._busConnection !== conn) return;
-    if (!this._busUnsub && !this._busSubscribePending) {
+    if (!conn || this._busConnection !== conn) return;
+    const wanted = this._wantsBusSubscription();
+    if (!wanted) {
+      if (this._busUnsub) this._busUnsub();
+      this._busUnsub = null;
+      if (this._busSubscribeRetryTimer) clearTimeout(this._busSubscribeRetryTimer);
+      this._busSubscribeRetryTimer = null;
+      this._lastActivityEvent = null;
+    }
+    if (wanted && !this._busUnsub && !this._busSubscribePending) {
       this._busSubscribePending = true;
-      conn.subscribeMessage((event) => this._onBusEvent(event), { type: WS_SUBSCRIBE_CALL_EVENTS })
+      conn.subscribeMessage((event) => this._onBusEvent(event), { type: WS_SUBSCRIBE_CALL_EVENTS, include_activity: true })
       .then((unsub) => {
-        if (this._busConnection === conn) this._busUnsub = unsub;
+        if (this._busConnection === conn && this._wantsBusSubscription()) this._busUnsub = unsub;
         else unsub();
       })
       .catch((err) => {
@@ -679,7 +698,7 @@ class VoipStackEngine extends EventTarget {
   }
 
   get videoVisible() {
-    return Boolean(this._video?.visible);
+    return Boolean(this._callId && this._video?.callId === this._callId && this._video.visible);
   }
 
   setVideoCanvas(canvas) {
@@ -1091,6 +1110,7 @@ class VoipStackEngine extends EventTarget {
   }
 
   _emit() {
+    this._ensureBusSubscriptions(this._busConnection);
     this.dispatchEvent(new CustomEvent("state", {
       detail: {
         state: this._state,
@@ -1114,6 +1134,13 @@ class VoipStackEngine extends EventTarget {
   }
 
   _onBusEvent(event) {
+    if (event?.event_type === "voip_stack.activity") {
+      this._lastActivityEvent = event;
+      for (const cb of this._callSubscribers) {
+        try { cb(event); } catch (err) { console.error("voip-stack-engine activity", err); }
+      }
+      return;
+    }
     const data = event?.data;
     if (!data) return;
     const eventType = String(data.type || "").toLowerCase();
@@ -1157,10 +1184,17 @@ class VoipStackEngine extends EventTarget {
 
   subscribeCallEvents(cb) {
     this._callSubscribers.add(cb);
+    this._ensureBusSubscriptions(this._busConnection);
+    if (this._lastActivityEvent) {
+      try { cb(this._lastActivityEvent); } catch (err) { console.error("voip-stack-engine replay", err); }
+    }
     for (const event of this._lastEvents.values()) {
       try { cb(event); } catch (err) { console.error("voip-stack-engine replay", err); }
     }
-    return () => this._callSubscribers.delete(cb);
+    return () => {
+      this._callSubscribers.delete(cb);
+      this._ensureBusSubscriptions(this._busConnection);
+    };
   }
 
   _onSoftphoneState(state, subscriptionSelector = null) {
@@ -1592,10 +1626,10 @@ class VoipStackEngine extends EventTarget {
         setupGeneration !== this._audioSetupGeneration ||
         this._callId !== expectedCallId
       ) {
-        throw new Error("Audio setup superseded");
+        throw new AudioSetupSupersededError();
       }
       if (attachKey && this._sessionAttachKey !== attachKey) {
-        throw new Error("Audio setup superseded");
+        throw new AudioSetupSupersededError();
       }
     };
 
@@ -1750,7 +1784,7 @@ class VoipStackEngine extends EventTarget {
         { ...negotiated, audio_direction: direction },
       );
     } catch (err) {
-      if (String(err?.message || err).includes("superseded")) return;
+      if (err instanceof AudioSetupSupersededError) return;
       console.warn("voip-stack-engine: audio media update failed", err);
       this.dispatchEvent(new CustomEvent("error", {
         detail: `Audio media update failed: ${err?.message || String(err)}`,
@@ -1838,6 +1872,8 @@ class VoipStackEngine extends EventTarget {
       }
       return true;
     } catch (err) {
+      // A retired setup cannot terminate the replacement sharing its Call-ID.
+      if (err instanceof AudioSetupSupersededError) return false;
       if (attachKey && this._sessionAttachKey !== attachKey) {
         return false;
       }

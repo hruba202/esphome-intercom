@@ -1,0 +1,14 @@
+# Spotpear presentation composed from shared behavior and board layout.
+packages:
+  runtime: !include '../round_runtime.yaml'
+  layout: !include '../layouts/round_240.yaml'
+binary_sensor:
+- id: !extend 'usb_connected'
+  on_press:
+  - script.execute: backlight_timer
+  on_release:
+  - script.execute: backlight_timer
+
+defaults:
+  _settings_afe: true
+  _settings_single_mic: true

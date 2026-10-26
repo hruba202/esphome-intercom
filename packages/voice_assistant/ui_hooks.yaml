@@ -1,4 +1,6 @@
 # Optional board extensions for voice content. No display dependency.
+packages:
+  content_state: !include ../features/shared/content_state.yaml
 script:
   - id: ui_tts_started
     parameters:

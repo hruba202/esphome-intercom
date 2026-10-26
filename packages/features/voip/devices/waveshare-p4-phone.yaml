@@ -1,0 +1,62 @@
+# Complete audio telephone binding for either P4 video codec, or audio-only use.
+api:
+  custom_services: true
+voip_stack:
+  use_ha_as_first_contact: true
+  id: phone
+  task_stacks_in_psram: false
+  audio_task_stacks_in_psram: false
+  buffers_in_psram: false
+  audio:
+    tx:
+      sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+    tx_formats:
+    - sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 16
+    rx:
+      sample_rate: 48000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+    rx_formats:
+    - sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 10
+    - sample_rate: 32000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 16
+    - sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 16
+    - sample_rate: 16000
+      pcm_format: s16le
+      channels: 1
+      frame_ms: 32
+  microphone: mic_main
+  speaker: voip_speaker_input
+  ringing_timeout: 30s
+  delete_contact_missing_from:
+    updates_number: 1
+speaker:
+- platform: resampler
+  id: voip_speaker_input
+  output_speaker: hw_speaker
+  bits_per_sample: 16
+  task_stack_in_psram: false
+  buffer_duration: 128ms
+external_components:
+- source: ${voip_stack_components_source}
+  components:
+  - voip_stack
+packages:
+  entities: !include '../../../voip/entities_full_duplex.yaml'
+  settings: !include '../../../voip/call_settings.yaml'
+  transport: !include '../../../voip/transport.yaml'

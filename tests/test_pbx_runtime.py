@@ -100,11 +100,12 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def test_sip_consultation_retains_each_claim_until_its_own_cleanup(self):
         endpoints_module = _load_module("endpoint_registry")
         phones_module = _load_module("phone_endpoint")
-        for first_closed in ("original", "consultation"):
-            with self.subTest(first_closed=first_closed):
+        for kind, first_closed in ((kind, first_closed) for kind in ("sip_account", "esphome")
+                                  for first_closed in ("original", "consultation")):
+            with self.subTest(kind=kind, first_closed=first_closed):
                 endpoints = endpoints_module.EndpointRegistry()
                 endpoints.register(phones_module.PhoneEndpoint(
-                    endpoint_id="desk", name="Desk", kind="sip_account",
+                    endpoint_id="desk", name="Desk", kind=kind,
                 ))
                 runtime = SipEndpointRuntime()
                 runtime.activate()
@@ -128,10 +129,10 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 await runtime.shutdown()
                 self.assertFalse(runtime.endpoint_claims_snapshot())
 
-    async def test_consultation_does_not_allow_busy_browser_esp_or_unanswered_sip(self):
+    async def test_consultation_does_not_allow_busy_browser_or_unanswered_native_phone(self):
         endpoints_module = _load_module("endpoint_registry")
         phones_module = _load_module("phone_endpoint")
-        for kind, state in (("browser", "in_call"), ("esphome", "in_call"), ("sip_account", "ringing")):
+        for kind, state in (("browser", "in_call"), ("esphome", "ringing"), ("sip_account", "ringing")):
             with self.subTest(kind=kind, state=state):
                 endpoints = endpoints_module.EndpointRegistry()
                 endpoints.register(phones_module.PhoneEndpoint(endpoint_id="phone", name="Phone", kind=kind))
@@ -231,6 +232,7 @@ class SipEndpointRuntimeTest(unittest.IsolatedAsyncioTestCase):
         runtime = SipEndpointRuntime()
         runtime.activate()
         session = runtime.create_session("call-1")
+        runtime.transition("call-1", state="in_call")
         runtime.event_fields("call-1", "in_call")
         runtime.record_route("call-1", action="forward", destination="Casa")
 

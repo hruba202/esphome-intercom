@@ -1,0 +1,4 @@
+# Complete BOX-3 sensor dock: its bus, presence and environmental sensors.
+packages:
+  bus: !include 'sensor_bus_afe.yaml'
+  entities: !include 'sensor_entities.yaml'

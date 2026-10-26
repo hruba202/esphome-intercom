@@ -12,7 +12,6 @@ from ..endpoint_session import EndpointCallSession
 from ..fsm import TerminalReason
 from ..phone_endpoint import (
     EndpointAvailability,
-    EndpointKind,
     PhoneEndpoint,
 )
 from ..router import RouteAction, RouteReason

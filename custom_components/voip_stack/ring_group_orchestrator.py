@@ -22,7 +22,6 @@ from .call_scope import (
 from .const import CONF_VIDEO_TRANSCODING
 from .dial_fork import (
     DialDisposition,
-    DialForkController,
     terminal_reason as fork_terminal_reason,
 )
 from .dial_plan import RingPolicy
@@ -63,7 +62,7 @@ from .group_candidates import (
     GroupCandidates,
     async_prepare_group_candidates,
 )
-from .ring_group_fork import build_ring_group_fork
+from .ring_group_fork import build_ring_group_fork, group_leg_observer, run_owned_ring_group_fork
 from .route_abort import (
     RouteAbortContext,
     RouteAbortIntent,
@@ -324,6 +323,8 @@ async def run_ring_group_call(
         )
         return
 
+    leg_state = group_leg_observer(hass, registry, session)
+
     (
         fork_candidates,
         candidate_payloads,
@@ -334,6 +335,7 @@ async def run_ring_group_call(
         attempts=attempts,
         browser_legs=browser_legs,
         preflight_failures=preflight_failures,
+        on_leg_state=leg_state,
     )
 
     async def _abort_stale_ring_group() -> bool:
@@ -363,16 +365,17 @@ async def run_ring_group_call(
         if authoritative_session is None:
             await _rollback_route(TerminalReason.CANCELLED.value, settle=False)
             return
-        fork_result = await DialForkController(
-            authoritative_session,
-            fork_candidates,
-            strategy=ring_policy.strategy,
-            tier_strategies=ring_policy.tier_strategies,
-            overall_timeout=ring_policy.overall_timeout,
-            step_timeout=ring_policy.step_timeout,
-        ).run(lambda _candidate, _dial_outcome: _call_is_current())
+        fork_result, pickup_gate = await run_owned_ring_group_fork(
+            authoritative_session, fork_candidates, candidate_payloads,
+            invite=invite, attempts=attempts, browser_legs=browser_legs, on_leg_state=leg_state,
+            commit_winner=lambda _candidate, _dial_outcome: _call_is_current(),
+            strategy=ring_policy.strategy, tier_strategies=ring_policy.tier_strategies,
+            overall_timeout=ring_policy.overall_timeout, step_timeout=ring_policy.step_timeout,
+        )
         if fork_result.winner is not None:
             winner = candidate_payloads.get(fork_result.winner.candidate_id)
+            if winner is pickup_gate and pickup_gate.current.payload is not None:
+                winner = pickup_gate.current.payload
             browser_winner = isinstance(winner, BrowserLeg)
         elif fork_result.outcome.disposition is DialDisposition.REROUTE:
             reroute_decision = dict(browser_decision)
@@ -402,6 +405,11 @@ async def run_ring_group_call(
             )
             handoff = route.get("forward_handoff")
             if handoff is not None and not handoff.done():
+                if not ha_origin:
+                    # The forwarding owner still needs the unanswered source
+                    # after the group's pending route has been retired.
+                    registry.set_pending_invite(invite.call_id, invite)
+                    authoritative_session.artifacts.caller_invite = invite
                 handoff.set_result(dict(reroute_decision))
             return
         if winner is not None:
@@ -423,6 +431,9 @@ async def run_ring_group_call(
                 else ""
             ),
         )
+        if winner is pickup_gate:
+            _take_pending_route(hass, invite.call_id)
+            return
         if winner is None:
             _take_pending_route(hass, invite.call_id)
             status_code, sip_reason, terminal_reason, public_state = (
@@ -498,6 +509,8 @@ async def run_ring_group_call(
                     winner_media_client_id,
                     enable_video_send=bool(browser_decision.get("send_video", False)),
                 )
+                if winner.pickup:
+                    publish_bridge_projection(hass, session, event_type="picked_up", route_kind="pickup")
                 return
             local_rtp_port = _allocate_sip_rtp_port(hass)
             answer = build_answer_directional(
@@ -581,6 +594,8 @@ async def run_ring_group_call(
                 last_sip_event="SIP_RESPONSE",
                 route_kind=GROUP_TYPE_RING,
             )
+            if winner.pickup:
+                publish_bridge_projection(hass, session, event_type="picked_up", route_kind="pickup")
             return
         _take_pending_route(hass, invite.call_id)
         if not isinstance(winner, OutboundLeg):

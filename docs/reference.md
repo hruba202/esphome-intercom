@@ -107,7 +107,7 @@ JPEG or H.264 package instead of mixing parts from both profiles.
   `voip_stack.set_mic_gain_db` (`gain_db`), and
   `voip_stack.publish_entity_states`.
 
-With ESPHome 2026.9.0 or newer and `api: custom_services: true`, `voip_stack`
+With ESPHome 2026.10.0 or newer and `api: custom_services: true`, `voip_stack`
 automatically supplies its HA discovery and native call-control interface.
 No VoIP HA package is required. Use `ha_integration: false` for standalone SIP
 with unrelated API features. Full profiles retain separate runtime connectivity
@@ -205,6 +205,8 @@ permission are independent.
 - `voip_stack.hangup`
 - `voip_stack.forward`
 - `voip_stack.transfer`
+- `voip_stack.pickup`: recover a ringing call or parking slot on a selected phone.
+- `voip_stack.get_phone_state`: read phone, call and mailbox state into an action response.
 - `voip_stack.route`
 - `voip_stack.select_inbound_destination`
 - `voip_stack.set_deadline`
@@ -301,6 +303,7 @@ through **Add SIP trunk** on its integration page:
 | `sip_port` | HA SIP listener port. HA accepts SIP signaling over both UDP and TCP on this port. |
 | `rtp_port` | Base HA RTP UDP port used by HA softphone media and relays. |
 | `advertise_host` | Optional Contact/SDP host override for routed, VPN, LXC, Docker or multihomed installs. |
+| `trunk_outbound_media_address` | Optional per-trunk IPv4 address announced for audio/video in calls originated through that trunk. Leave empty to retain the HA address. Requires reachable, unchanged RTP/RTCP ports; does not change incoming calls or LAN destinations. |
 | `assist_intents` | Optional Assist intents for call, answer, decline and hangup. See [voice commands and customizable responses](ASSIST_INTENTS.md). |
 | `assist_endpoint_enabled` | Publish a native HA Assist pipeline as a callable phonebook destination. Disabled by default. |
 | `assist_extension` | Explicit 1-8 digit extension for the Assist destination. No extension is assumed or reserved. |
@@ -498,9 +501,9 @@ for complete automation examples.
 See [mailbox configuration](SERVICES.md#voip_stackset_voicemail_settings) and
 [call handoff](SERVICES.md#voip_stacksend_to_voicemail) for limits and the current
 implementation boundary. SIP mailbox access and MWI use the common PBX call
-and subscription owners. The dedicated message-list controls are still being
-completed; the existing HA softphone dialpad can already dial *97 and send the
-same DTMF menu commands as a conventional SIP phone.
+and subscription owners. The HA phone card lists received messages and offers
+playback and deletion. Its dialpad can also dial *97 and send the same DTMF
+menu commands as a conventional SIP phone.
 
 
 ## Park an established call
@@ -509,8 +512,8 @@ same DTMF menu commands as a conventional SIP phone.
 selects the phone, `slot` optionally selects a configured parking slot, and
 `call_id` / `expected_generation` can identify a specific current call. The
 optional action response contains `slot`, `call_id` and `generation`.
-The selected phone must own the call. Parking must be enabled in the integration
-configuration. Retrieve the caller through the normal call action or SIP dialer
+The selected phone must own the call. Parking is available by default; configure
+its numbers and resolve any reported dial-plan conflicts. Retrieve the caller through the normal call action or SIP dialer
 using the slot number. See [Call parking](CALL_PARKING.md) for configuration,
 examples and the current development verification boundary.
 

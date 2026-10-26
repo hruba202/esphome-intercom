@@ -142,7 +142,18 @@ async def route_invite(
                 decline_reason=TerminalReason.MEDIA_INCOMPATIBLE.value,
             )
         invite = replace(invite, send_format=selected.send, recv_format=selected.recv)
-    registered_entries = _registered_roster_entries(hass)
+    application = _call_registry(hass).component("sip_application")
+    gruu = dict(invite.request_uri.params).get("gr")
+    local_instance = application is not None and gruu and gruu == application.gruu_id
+    instance_contacts = (registrar.resolve_gruu(invite.request_uri)
+                         if not local_instance and any(key.casefold() == "gr" for key, _value in invite.request_uri.params) else None)
+    if instance_contacts is not None:
+        if not instance_contacts:
+            return SipInviteResult(404, "Not Found")
+        invite = replace(invite, target_route=instance_contacts[0].username)
+        registered_entries = registrar.registered_roster_entries(instance_uri=invite.request_uri)
+    else:
+        registered_entries = _registered_roster_entries(hass)
     roster_entries = _roster_from_peers(hass, peers, registered_entries)
     registered_source = registrar.registration_matches_source(
         caller_identity,

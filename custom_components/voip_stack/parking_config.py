@@ -11,12 +11,22 @@ def parking_settings(hass):
     from .store import config_entry
 
     entry = config_entry(hass)
-    return normalize_parking_config(dict(entry.data.get("parking", {}))) if entry is not None else {"enabled": False}
+    if entry is None:
+        return {"enabled": False, "unavailable_reason": "not_ready"}
+    try:
+        settings = normalize_parking_config(entry.data.get("parking", {}))
+    except (TypeError, ValueError):
+        return {"enabled": False, "unavailable_reason": "invalid_configuration"}
+    from .config_validation import entry_route_mappings
+    mappings = entry_route_mappings(entry, entry.data, include_features=False)
+    conflict = parking_namespace_conflicts(settings, mappings)
+    return {**settings, "enabled": not conflict,
+            "unavailable_reason": "route_conflict" if conflict else ""}
 
 
 def normalize_parking_config(value):
-    if not isinstance(value, dict) or not value.get("enabled", False):
-        return {"enabled": False}
+    if not isinstance(value, dict):
+        raise ValueError("Invalid parking configuration")
     access = str(value.get("access") or "700").strip()
     slots = tuple(str(item).strip() for item in value.get("slots", DEFAULT_SLOTS))
     if (not _ADDRESS.fullmatch(access) or not slots or len(slots) > 100
@@ -25,7 +35,7 @@ def normalize_parking_config(value):
             or {access.casefold(), "park"} & {slot.casefold() for slot in slots}
             or any(value.casefold().startswith("*8") for value in (access, *slots))):
         raise ValueError("Choose a parking access code and up to 100 distinct slots")
-    result = {"enabled": True, "access": access, "slots": list(slots)}
+    result = {"access": access, "slots": list(slots)}
     for name, default in (("timeout", 180), ("return_timeout", 30)):
         number = value.get(name, default)
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not 1 <= number <= 3600:
@@ -40,7 +50,7 @@ def normalize_parking_config(value):
 
 
 def parse_parking_address(settings, target):
-    if not settings.get("enabled"):
+    if settings.get("enabled") is False:
         return None
     raw = str(target or "").strip().casefold()
     if "@" in raw or raw.startswith(("sip:", "sips:")):
@@ -61,7 +71,10 @@ def parse_parking_address(settings, target):
 
 def parking_namespace_conflicts(settings, mappings):
     from .config_validation import ROUTE_ALIAS_FIELDS, mapping_group_values
+    from .mailbox_address import parse_mailbox_address
 
+    if any(parse_mailbox_address(value) is not None for value in (settings["access"], *settings["slots"])):
+        return True
     return any(parse_parking_address(settings, value) is not None
                for item in mappings
                for value in (*(item.get(field) for field in ROUTE_ALIAS_FIELDS), *mapping_group_values(item)))

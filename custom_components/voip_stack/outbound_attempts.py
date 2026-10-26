@@ -28,6 +28,7 @@ class OutboundLeg:
     video_relay: SipVideoRtpRelay | None = None
     video_failure_reason: str = ""
     trunk_id: str = ""
+    pickup: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,7 @@ class BrowserLeg:
     endpoint_id: str
     name: str
     device_id: str
+    pickup: bool = False
 
 
 async def async_apply_outbound_video_answer(

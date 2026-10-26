@@ -82,9 +82,18 @@ async def async_audio_stream(hass: HomeAssistant, media_id: str) -> AsyncGenerat
         if await process.wait() != 0 or not produced:
             raise HomeAssistantError("Media could not be decoded as audio")
     finally:
-        writer.cancel()
-        if process.returncode is None:
-            with suppress(ProcessLookupError):
-                process.kill()
-        await asyncio.gather(writer, return_exceptions=True)
-        await process.wait()
+        from .session_cleanup import async_wait_for_cleanup
+
+        async def cleanup():
+            writer.cancel()
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+            await asyncio.gather(writer, return_exceptions=True)
+            # A paused stdout pipe can keep wait() pending after the child exits.
+            # Drain bounded chunks before reaping; no playback consumer remains.
+            while await process.stdout.read(4096):
+                pass
+            await process.wait()
+
+        await async_wait_for_cleanup(asyncio.create_task(cleanup(), name="voip-announcement-cleanup"))

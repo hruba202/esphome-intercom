@@ -1,19 +1,36 @@
-# ESPHome MIPI DSI fork upstream record
+# Upstream alignment
 
-Upstream baseline: ESPHome `dev` commit
-`5f6a910e2d6e41d3716668a66e5dff8cca25f2ea`, component path
-`esphome/components/mipi_dsi`.
+Source baseline: ESPHome `dev` commit `2d0e3faa3d1282d1ec6928d4e76b62db3d37434c`,
+component `esphome/components/mipi_dsi`. Checked on 2026-10-19.
+The machine-readable reference is `esphome/upstream_sources.json`.
 
-The local fork preserves the validated P4 panel models and initialization,
-exposes the immutable framebuffer to the narrow video adapter, and serializes
-display submissions so LVGL and direct video cannot consume each other's DMA
-completion event. Optional video diagnostics remain compile-time gated.
+## Remaining adaptations
 
-Checked with:
+Upstream panel definitions, flash-resident initialization tables, pixel-format
+handling, clipping, rotation and dirty-region updates are retained.
 
-```bash
-git diff --no-index ../esphome-pr-work/esphome/components/mipi_dsi esphome/components/mipi_dsi
-```
+The remaining functional adaptations are the qualified settling delays,
+serialized submit/completion ownership, failure handling before waiting for a
+DMA callback, and framebuffer access used only by the diagnostic capture tool.
+The old periodic flush counters have been removed.
 
-Re-run the comparison after every ESPHome update and keep unrelated upstream
-model definitions intact.
+The retained driver waits are 120 ms after SLEEP_OUT and 20 ms after DISPLAY_ON.
+The generated sequence adds its own waits; for the maintained JD9365 profile
+these make 130 ms and 30 ms respectively. This preserves the previous panel
+behavior; it is not a newly qualified universal timing policy for every panel.
+
+One bulk-drawing implementation serves the old public signature and the current
+Display compatibility bridge. Stable code generation uses a PROGMEM array when
+shared_progmem_array is unavailable. The clipping predicate is the same as
+upstream, inlined for older cores without is_point_clipped().
+
+Compilation and host transfer tests do not qualify physical colors, orientation,
+LVGL/video concurrency or cold initialization. Repeat those on the P4 before a
+firmware promotion; no device was flashed during this consolidation.
+
+## Export the source difference
+
+Use `scripts/export_fork_diff.py` from the project root with an ESPHome checkout
+containing the recorded commit. The export includes functional changes and
+stable-core compatibility adapters; separate the latter before an upstream PR.
+Existing licenses and upstream authorship remain applicable.

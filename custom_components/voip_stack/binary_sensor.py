@@ -120,11 +120,22 @@ class PhoneEndpointConnectivityBinarySensor(BinarySensorEntity):
         self._attr_is_on = self._connected(endpoint)
         self._attr_extra_state_attributes = endpoint_public_attributes(endpoint)
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
 
     @staticmethod
     def _connected(endpoint) -> bool:

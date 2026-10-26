@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from .core import sip, sip_transfer
@@ -21,21 +22,21 @@ class CallTransferRequest:
     call_id: str
     destination: str
     replaces_call_id: str = ""
+    endpoint_id: str = ""
 
 
 def _client_for_call(runtime: VoipStackRuntime, call_id: str) -> SipCallClient | None:
     calls = runtime.sip
     if calls is None:
         return None
-    clients = calls.sip_clients_snapshot()
-    if client := clients.get(call_id):
+    if client := calls.sip_client_for(call_id):
         return client if isinstance(client, SipCallClient) else None
     session = calls.get_session(call_id)
     if session is None:
         return None
     destination = str(session.metadata.get("bridge_dest_call_id") or "")
-    if destination and isinstance(clients.get(destination), SipCallClient):
-        return clients[destination]
+    if destination and isinstance(client := calls.sip_client_for(destination), SipCallClient):
+        return client
     candidates = tuple(
         leg.dialog
         for leg in session.legs.values()
@@ -72,21 +73,18 @@ def _blind_target(
         if not entry.enabled:
             raise sip.SipError("transfer destination is disabled")
         target = entry.extension or entry.id
-        uri = ha_uri_for(target, entries)
-        if not uri:
-            # A REFER asks the remote phone to dial again. Its own SIP host
-            # cannot execute an HA automation; use the shared HA listener.
-            config = runtime.transport_config
-            server = runtime.sip.component("udp_listener") if runtime.sip is not None else None
-            host = str(config.get("advertise_host") or getattr(server, "local_ip", "") or "").strip()
-            if not host or host in {"0.0.0.0", "::"}:
-                raise sip.SipError("Home Assistant SIP address is unavailable for transfer")
-            port = int(config.get("sip_port") or getattr(server, "local_sip_port", 5060))
-            uri = ha_uri_for(target, entries, str(sip.SipUri("HA", host, port)))
-        return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(uri)))
+        return _local_transfer_target(runtime, target, entries)
+    if entry is not None and entry.address:
+        route = resolve_ha_router(raw, entries)
+        if route.action is RouteAction.REJECT:
+            raise sip.SipError("transfer destination is unavailable")
+        if route.sip_uri:
+            return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(route.sip_uri)))
     if entry is not None and entry.sip_uri:
         return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(entry.sip_uri)))
     endpoint = runtime.endpoints.resolve(raw)
+    if endpoint is not None and (endpoint.kind.is_softphone or endpoint.kind == "sip_account"):
+        return _local_transfer_target(runtime, _endpoint_user(endpoint, raw), entries)
     if not remote_uri:
         raise sip.SipError("call dialog is unavailable")
     remote = sip.parse_sip_uri(remote_uri)
@@ -96,6 +94,20 @@ def _blind_target(
     return sip_transfer.SipReferTarget(
         str(sip.SipUri(user, remote.host, remote.port, remote.params))
     )
+
+
+def _local_transfer_target(runtime, target, entries):
+    """Address a local extension through the PBX that owns its dial plan."""
+    uri = ha_uri_for(target, entries)
+    if not uri:
+        config = runtime.transport_config
+        server = runtime.sip.component("udp_listener") if runtime.sip is not None else None
+        host = str(config.get("advertise_host") or getattr(server, "local_ip", "") or "")
+        if not host or host in {"0.0.0.0", "::"}:
+            raise sip.SipError("Home Assistant SIP address is unavailable for transfer")
+        port = int(config.get("sip_port") or getattr(server, "local_sip_port", 5060))
+        uri = ha_uri_for(target, entries, str(sip.SipUri("HA", host, port)))
+    return sip_transfer.SipReferTarget(str(sip.parse_sip_uri(uri)))
 
 
 def _inbound_server(runtime: VoipStackRuntime, call_id: str):
@@ -118,8 +130,13 @@ def _attended_target(
     dialog = consultation.dialog
     if dialog is None or not consultation.dialog_ids.remote_tag:
         raise sip.SipError("replacement dialog is unavailable")
+    target_uri = dialog.remote_uri
+    if dialog.remote_target_uri:
+        contact = sip.parse_sip_uri(dialog.remote_target_uri)
+        if any(key.casefold() == "gr" for key, _value in contact.params):
+            target_uri = str(contact)
     return sip_transfer.SipReferTarget(
-        dialog.remote_uri,
+        target_uri,
         sip_transfer.SipReplaces(
             consultation.dialog_ids.call_id,
             to_tag=consultation.dialog_ids.remote_tag,
@@ -177,17 +194,111 @@ def _external_transfer_denied(runtime, call_id, target, remote_uri, local_uri=""
     return True
 
 
+async def _transfer_local_source(
+    hass, runtime, session, current, retained, destination
+):
+    """Route the existing browser source through the ordinary forward owner."""
+    from .local_softphone_runtime import PendingLocalSource
+    from .runtime_data import sip_endpoint_manager
+    from .session_cleanup import async_wait_for_cleanup
+
+    registry = runtime.sip
+    manager = sip_endpoint_manager(hass)
+    if manager is None or registry.forward_call is None or current.video_active:
+        return SipTransferResult(False, 488, "local_transfer_unavailable")
+    previous = registry.resource_for(session.call_id, "browser_source")
+    if previous is not None and not previous.committed:
+        return SipTransferResult(False, 491, "transfer_in_progress")
+    source = PendingLocalSource(
+        hass,
+        current,
+        manager.local_ip,
+        int(runtime.transport_config["sip_port"]),
+        retained_endpoint_id=retained,
+    )
+    if previous is not None:
+        registry.release_resource(
+            session.call_id, f"browser_source:{session.call_id}", value=previous
+        )
+    registry.own_resource(
+        session.call_id, f"browser_source:{session.call_id}", source, None
+    )
+    registry.set_pending_invite(session.call_id, source.invite)
+    task = None
+    try:
+        async with asyncio.timeout(30):
+            await registry.forward_call(
+                call_id=session.call_id,
+                destination=destination,
+                on_failure="resume",
+                expected_state="in_call",
+            )
+            task = registry.task_for(session.call_id, "forward")
+            if task is not None:
+                await asyncio.shield(task)
+        success = source.committed and session.live and session.state == "in_call"
+        return SipTransferResult(
+            success,
+            200 if success else 480,
+            "completed" if success else "transfer_failed",
+            retained_call=success,
+        )
+    except BaseException:
+        if task is not None and not task.done() and not source.committed:
+            task.cancel()
+            await async_wait_for_cleanup(asyncio.gather(task, return_exceptions=True))
+        raise
+    finally:
+        if not source.committed and session.live:
+            source.resume()
+            registry.release_resource(session.call_id, f"browser_source:{session.call_id}", value=source)
+
+
 async def async_transfer_call(
     runtime: VoipStackRuntime,
     request: CallTransferRequest,
+    *, hass=None,
 ) -> SipTransferResult:
     """Transfer one established call without creating another lifecycle owner."""
 
-    client = _client_for_call(runtime, request.call_id)
+    session = runtime.sip.get_session(request.call_id) if hass is not None and runtime.sip is not None else None
+    if session is not None and session.owner == "local_bridge" and hass is not None:
+        from .local_softphone_runtime import local_softphone_bridge
+        from .pbx_routing import browser_endpoint_can_ring
+
+        bridge = local_softphone_bridge(hass)
+        current = bridge.get_call(session.call_id) if bridge is not None else None
+        target = runtime.endpoints.resolve(request.destination)
+        if current is None or request.endpoint_id not in {current.caller_endpoint_id, current.callee_endpoint_id}:
+            return SipTransferResult(False, 403, "call_not_owned")
+        if request.replaces_call_id:
+            return SipTransferResult(False, 488, "local_transfer_unavailable")
+        if target is not None and (target.dnd or target.active_call_id):
+            return SipTransferResult(False, 486, "busy")
+        retained = current.callee_endpoint_id if request.endpoint_id == current.caller_endpoint_id else current.caller_endpoint_id
+        if target is None or not target.kind.is_softphone:
+            return await _transfer_local_source(hass, runtime, session, current, retained, request.destination)
+        if not browser_endpoint_can_ring(target):
+            return SipTransferResult(False, 480, "unavailable")
+        bridge.redirect_ringing(session.call_id, target.endpoint_id, retained_endpoint_id=retained)
+        return SipTransferResult(True, 200, "completed", retained_call=True)
+
+    # REFER goes to the peer being retained, not necessarily the outgoing leg.
+    # The callee can transfer the original caller just as the caller can
+    # transfer the callee. The existing source owner covers UAC and UAS legs.
+    from_callee = bool(
+        session is not None
+        and request.endpoint_id
+        and request.endpoint_id == session.metadata.get("dest_endpoint_id")
+    )
+    client = (
+        runtime.sip.source_sip_client_for(session.call_id)
+        if from_callee else _client_for_call(runtime, request.call_id)
+    )
     server, remote_uri = (
         (None, client.dialog.remote_uri)
         if client is not None and client.dialog is not None
-        else _inbound_server(runtime, request.call_id)
+        else _inbound_server(runtime, session.call_id if from_callee else request.call_id)
     )
     if not remote_uri:
         return SipTransferResult(False, 0, "call_not_found")

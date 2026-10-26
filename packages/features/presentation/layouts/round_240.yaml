@@ -1,0 +1,1357 @@
+# Spotpear 240-pixel layout and geometry-dependent helpers.
+font:
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 300
+  id: font_response
+  size: 15
+  glyphsets:
+  - ${font_glyphsets}
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 300
+  id: font_timer
+  size: 30
+  glyphs: '0123456789:'
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 600
+  id: font_clock
+  size: 20
+  glyphs: 0123456789:%
+  extras:
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+    glyphs:
+    - 󰁹
+    - 󰂎
+    - 󰁺
+    - 󰁻
+    - 󰁼
+    - 󰁽
+    - 󰁾
+    - 󰁿
+    - 󰂀
+    - 󰂁
+    - 󰂂
+    - 󰕓
+    - 󰢟
+    - 󰢜
+    - 󰂆
+    - 󰂇
+    - 󰂈
+    - 󰢝
+    - 󰂉
+    - 󰢞
+    - 󰂊
+    - 󰂋
+    - 󰢿
+    - 󰢼
+    - 󰢽
+    - 󰢾
+    - 󰟐
+    - 󱗐
+- file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+  id: call_icons
+  size: 42
+  glyphs:
+  - 󰏲
+  - 󰏵
+  - 󰜱
+  - 󰜴
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 700
+  id: font_title
+  size: 24
+  glyphsets:
+  - GF_Latin_Core
+  extras:
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+    glyphs:
+    - 󰁮
+    - 󰛋
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 500
+  id: font_state
+  size: 28
+  glyphs: ' ACDEGILNR'
+- file:
+    type: gfonts
+    family: ${font_family}
+    weight: 400
+  id: font_info
+  size: 20
+  glyphsets:
+  - GF_Latin_Core
+- file:
+    type: gfonts
+    family: Roboto Mono
+    weight: 400
+  id: font_page_counter
+  size: 14
+  glyphs: 0123456789/
+image:
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error.png
+  id: assistant_gui_error
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/listening.png
+  id: assistant_gui_listening
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/thinking.png
+  id: assistant_gui_thinking
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/timer_finished.png
+  id: assistant_gui_timer_finished
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/loading.png
+  id: assistant_gui_initializing
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_wifi.png
+  id: error_no_wifi
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/error_no_ha.png
+  id: error_no_ha
+  resize: 240x240
+  type: RGB565
+  transparency: alpha_channel
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_00.png
+  id: idle_00
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_01.png
+  id: idle_01
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_02.png
+  id: idle_02
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_03.png
+  id: idle_03
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_04.png
+  id: idle_04
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_05.png
+  id: idle_05
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_06.png
+  id: idle_06
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_07.png
+  id: idle_07
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_08.png
+  id: idle_08
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_09.png
+  id: idle_09
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_10.png
+  id: idle_10
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_11.png
+  id: idle_11
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_12.png
+  id: idle_12
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_13.png
+  id: idle_13
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_14.png
+  id: idle_14
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_15.png
+  id: idle_15
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_16.png
+  id: idle_16
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_17.png
+  id: idle_17
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_18.png
+  id: idle_18
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/idle_19.png
+  id: idle_19
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/happy.png
+  id: mood_happy
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/neutral.png
+  id: mood_neutral
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+- platform: file
+  file: ${assets_base}assets/images/assistant/${ai_avatar}/angry.png
+  id: mood_angry
+  resize: 240x240
+  type: RGB565
+  transparency: opaque
+lvgl:
+  displays:
+  - s3_box_lcd
+  buffer_size: 50%
+  color_depth: 16
+  log_level: WARN
+  on_boot:
+  - script.execute: compute_layout_metrics
+  - script.execute: reposition_widgets
+  top_layer:
+    widgets: ${ (_round_timer_overlay if _round_has_timers else []) + _round_top_status }
+  pages: ${ _round_page_initializing_page + _round_page_idle_page + _round_page_listening_page + _round_page_thinking_page
+    + _round_page_replying_page + _round_page_error_page + _round_page_muted_page + (_round_timer_page if _round_has_timers
+    else []) + _round_page_no_ha_page + _round_page_no_wifi_page + (_round_phone_pages if _round_has_phone else
+    []) + _round_page_settings_continuous_page }
+script:
+- id: compute_layout_metrics
+  then:
+  - lambda: |-
+      static constexpr size_t kRoundTextRows = 10;
+      lv_disp_t *disp = lv_disp_get_default();
+      if (disp == nullptr) return;
+
+      const int w = lv_disp_get_hor_res(disp);
+      const int h = lv_disp_get_ver_res(disp);
+      if (w <= 0 || h <= 0) return;
+
+      const int r = w / 2;
+      const int cy = h / 2;
+      const int side_margin = w / 40;
+      const int line_h = h / 13;
+      const int line_spacing = h / 60;
+      const int top_pad = h / 24;
+
+      auto &ym = id(y_metrics);
+      ym[0] = 0;
+      ym[1] = h / 2;
+      ym[2] = h;
+      ym[3] = h / 8;
+      ym[4] = h * 7 / 24;
+      ym[5] = h * 5 / 12;
+      ym[6] = h * 13 / 24;
+      ym[7] = h * 5 / 8;
+      ym[8] = h * 37 / 48;
+      ym[9] = h * 5 / 6;
+      ym[10] = h * 41 / 48;
+      ym[11] = h - h / 16;
+      ym[12] = h - 2;
+      ym[13] = h * 3 / 20;
+
+      auto &row_y = id(text_row_y);
+      auto &chord_width = id(chord_widths_cache);
+      for (size_t row = 0; row < kRoundTextRows; row++) {
+        const int y = top_pad + static_cast<int>(row) * (line_h + line_spacing);
+        row_y[row] = y;
+        const int mid_y = y + line_h / 2;
+        const int dy = std::abs(mid_y - cy);
+        int chord_w = 0;
+        if (dy < r) {
+          chord_w = static_cast<int>(
+              2.0f * sqrtf(static_cast<float>(r * r - dy * dy))
+          ) - side_margin * 2;
+          if (chord_w < 0) chord_w = 0;
+        }
+        chord_width[row] = chord_w;
+      }
+- id: reposition_widgets
+  then:
+  - lambda: !lambda |
+      static constexpr size_t kRoundTextRows = 10;
+      const auto &ym = id(y_metrics);
+      const auto &row_y = id(text_row_y);
+      const auto &cw = id(chord_widths_cache);
+
+      lv_obj_t* think[] = {
+        id(think_line_0), id(think_line_1), id(think_line_2), id(think_line_3), id(think_line_4),
+        id(think_line_5), id(think_line_6), id(think_line_7), id(think_line_8), id(think_line_9)
+      };
+      lv_obj_t* reply[] = {
+        id(reply_line_0), id(reply_line_1), id(reply_line_2), id(reply_line_3), id(reply_line_4),
+        id(reply_line_5), id(reply_line_6), id(reply_line_7), id(reply_line_8), id(reply_line_9)
+      };
+      for (size_t i = 0; i < kRoundTextRows; i++) {
+        lv_obj_set_y(think[i], row_y[i]);
+        lv_obj_set_width(think[i], cw[i]);
+        lv_obj_set_y(reply[i], row_y[i]);
+        lv_obj_set_width(reply[i], cw[i]);
+      }
+
+      lv_obj_set_y(id(reply_page_counter), ym[12]);
+      ${ _round_timer_layout if _round_has_timers else '' }
+
+      ${ _round_phone_layout if _round_has_phone else '' }
+- id: update_idle_labels
+  then:
+  - lvgl.label.update:
+      id: top_clock_label
+      text:
+        format: '%02d:%02d'
+        args:
+        - id(my_time).now().hour
+        - id(my_time).now().minute
+  - if:
+      condition:
+      - lambda: return id(battery_percentage).has_state() && !std::isnan(id(battery_percentage).state);
+      then:
+      - lvgl.label.update:
+          id: top_battery_label
+          text: !lambda |-
+            bool charging = id(usb_connected).state;
+            float bat = id(battery_percentage).state;
+            float wifi = ${ 'id(wifi_pct).state' if 'diagnostics' in firmware_features else 'std::max(0.0f, std::min(100.0f, 2.0f * (wifi::global_wifi_component->wifi_rssi() + 100.0f)))' };
+            std::string ret;
+            if (bat < 10) ret = charging ? "\U000F089F" : "\U000F008E";
+            else if (bat < 20) ret = charging ? "\U000F089C" : "\U000F007A";
+            else if (bat < 30) ret = charging ? "\U000F0086" : "\U000F007B";
+            else if (bat < 40) ret = charging ? "\U000F0087" : "\U000F007C";
+            else if (bat < 50) ret = charging ? "\U000F0088" : "\U000F007D";
+            else if (bat < 60) ret = charging ? "\U000F089D" : "\U000F007E";
+            else if (bat < 70) ret = charging ? "\U000F0089" : "\U000F007F";
+            else if (bat < 80) ret = charging ? "\U000F089E" : "\U000F0080";
+            else if (bat < 90) ret = charging ? "\U000F008A" : "\U000F0081";
+            else if (bat < 100) ret = charging ? "\U000F008B" : "\U000F0082";
+            else ret = "\U000F0079";
+            if (wifi < 20) ret += "\U000F08BF";
+            else if (wifi < 55) ret += "\U000F08BC";
+            else if (wifi < 80) ret += "\U000F08BD";
+            else ret += "\U000F08BE";
+            ret += api::global_api_server->is_connected() ? "\U000F07D0" : "\U000F15D0";
+            return ret;
+      else:
+      - lvgl.label.update:
+          id: top_battery_label
+          text: ''
+- id: backlight_timer
+  mode: restart
+  then:
+  - light.turn_on:
+      id: backlight
+      brightness: 100%
+  - delay: 30s
+  - light.turn_on:
+      id: backlight
+      brightness: 60%
+  - delay: 120s
+  - if:
+      condition:
+        binary_sensor.is_on: usb_connected
+      then:
+      - light.turn_on:
+          id: backlight
+          brightness: 20%
+      else:
+      - light.turn_off: backlight
+defaults:
+  _round_page_initializing_page:
+  - id: initializing_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_initializing
+  _round_page_idle_page:
+  - id: idle_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - animimg:
+        id: idle_anim
+        align: CENTER
+        width: 240
+        height: 240
+        src:
+        - idle_00
+        - idle_01
+        - idle_02
+        - idle_03
+        - idle_04
+        - idle_05
+        - idle_06
+        - idle_07
+        - idle_08
+        - idle_09
+        - idle_10
+        - idle_11
+        - idle_12
+        - idle_13
+        - idle_14
+        - idle_15
+        - idle_16
+        - idle_17
+        - idle_18
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_19
+        - idle_18
+        - idle_17
+        - idle_16
+        - idle_15
+        - idle_14
+        - idle_13
+        - idle_12
+        - idle_11
+        - idle_10
+        - idle_09
+        - idle_08
+        - idle_07
+        - idle_06
+        - idle_05
+        - idle_04
+        - idle_03
+        - idle_02
+        - idle_01
+        duration: 6600ms
+        auto_start: false
+  _round_page_listening_page:
+  - id: listening_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 16777215
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_listening
+  _round_page_thinking_page:
+  - id: thinking_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 16777215
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_thinking
+    - label:
+        id: think_line_0
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_1
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_2
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_3
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_4
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_5
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_6
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_7
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_8
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: think_line_9
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_info
+        long_mode: CLIP
+        text_align: CENTER
+  _round_page_replying_page:
+  - id: replying_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    scrollbar_mode: 'off'
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - image:
+        id: mood_bg
+        align: CENTER
+        src: mood_neutral
+    - label:
+        id: reply_line_0
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_1
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_2
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_3
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_4
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_5
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_6
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_7
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_8
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_line_9
+        align: TOP_MID
+        y: 0
+        width: 1
+        text: ''
+        text_color: 16777215
+        text_font: font_response
+        long_mode: CLIP
+        text_align: CENTER
+    - label:
+        id: reply_page_counter
+        align: TOP_MID
+        y: 0
+        text: ''
+        text_color: 8947848
+        text_font: font_page_counter
+        text_align: CENTER
+  _round_page_error_page:
+  - id: error_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_error
+  _round_page_muted_page:
+  - id: muted_page
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    on_swipe_up: ${_round_navigation_up}
+  _round_page_no_ha_page:
+  - id: no_ha_page
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: error_no_ha
+  _round_page_no_wifi_page:
+  - id: no_wifi_page
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    on_swipe_down: ${_round_navigation_down}
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: error_no_wifi
+  _round_page_settings_continuous_page: ${ _settings_page }
+  _round_top_status:
+  - label:
+      id: top_clock_label
+      align: TOP_MID
+      y: 90%
+      text: ''
+      text_color: 16777215
+      text_font: font_clock
+  - label:
+      id: top_battery_label
+      align: TOP_MID
+      y: 82%
+      text: ''
+      text_color: 16777215
+      text_font: font_clock
+  _round_phone_pages:
+  - id: call_idle_page
+    scrollable: false
+    bg_color: 255
+    on_swipe_left:
+    - voip_stack.next_contact: null
+    - script.execute: update_call_idle_labels
+    on_swipe_right:
+    - voip_stack.prev_contact: null
+    - script.execute: update_call_idle_labels
+    on_swipe_up: ${_round_navigation_up}
+    on_swipe_down: ${_round_navigation_down}
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        id: call_idle_status_label
+        align: TOP_MID
+        y: 17%
+        text: IDLE
+        text_color: 65280
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_idle_contacts_label
+        align: TOP_MID
+        y: ${call_contacts_y}
+        text: 󰛋 0
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+    - label:
+        id: call_idle_peer_label
+        align: CENTER
+        text: '-'
+        text_color: 16777215
+        text_font: font_title
+        width: ${call_peer_width}
+        text_align: CENTER
+        long_mode: SCROLL
+    - button:
+        id: call_idle_prev_contact_btn
+        align: CENTER
+        x: -60
+        y: -34
+        width: 60
+        height: 60
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰜱
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.prev_contact: null
+        - script.execute: update_call_idle_labels
+    - button:
+        id: call_idle_next_contact_btn
+        align: CENTER
+        x: 60
+        y: -34
+        width: 60
+        height: 60
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰜴
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.next_contact: null
+        - script.execute: update_call_idle_labels
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏲
+            align: CENTER
+            text_color: 65280
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+  - id: call_ringing_in_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    bg_color: 16711680
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: RINGING
+        text_color: 16776960
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_ringing_in_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_ringing_in_peer_width}
+    - button:
+        floating: true
+        align: LEFT_MID
+        x: ${call_btn_offset}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏲
+            align: CENTER
+            text_color: 65280
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+    - button:
+        floating: true
+        align: RIGHT_MID
+        x: -5
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16777215
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.decline_call: null
+  - id: call_ringing_out_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    bg_color: 16750848
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: CALLING
+        text_color: 0
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_ringing_out_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16711680
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.decline_call: null
+  - id: call_in_call_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    bg_color: 34816
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: TOP_MID
+        y: 17%
+        text: IN CALL
+        text_color: 255
+        text_font: font_state
+        text_align: CENTER
+    - label:
+        id: call_in_call_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - button:
+        floating: true
+        align: CENTER
+        y: ${call_btn_below_center}
+        width: ${call_btn_size}
+        height: ${call_btn_size}
+        bg_opa: TRANSP
+        shadow_opa: TRANSP
+        widgets:
+        - label:
+            text: 󰏵
+            align: CENTER
+            text_color: 16711680
+            text_font: call_icons
+        on_short_click:
+        - voip_stack.call_toggle: null
+  - id: call_ended_page
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    scrollable: false
+    bg_color: 2105376
+    on_click:
+    - lambda: id(call_ended_active) = false;
+    - script.execute: draw_display
+    widgets:
+    - label:
+        align: TOP_MID
+        y: 8%
+        text: ${friendly_name}
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_title_width}
+        long_mode: SCROLL
+    - label:
+        align: CENTER
+        y: -22%
+        text: Call ended
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        width: ${call_ended_text_width}
+    - label:
+        id: call_ended_peer_label
+        align: CENTER
+        text: ''
+        text_color: 16777215
+        text_font: font_title
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_peer_width}
+    - label:
+        align: CENTER
+        y: 13%
+        text: 'Reason:'
+        text_color: 16777215
+        text_font: font_info
+        text_align: CENTER
+        width: ${call_ended_text_width}
+    - label:
+        id: call_ended_reason_label
+        align: CENTER
+        y: 25%
+        text: '-'
+        text_color: 16764006
+        text_font: font_info
+        text_align: CENTER
+        long_mode: SCROLL
+        width: ${call_ended_reason_text_width}
+  - id: call_dialer_page
+    scrollable: false
+    bg_color: 1053468
+    on_swipe_down: ${_round_navigation_down}
+    on_swipe_up: ${_round_navigation_up}
+    widgets:
+    - label:
+        id: call_dial_value_label
+        align: TOP_MID
+        y: 16
+        width: 1
+        height: 26
+        text: Number / extension
+        text_color: 16777215
+        text_font: font_info
+        text_align: CENTER
+        long_mode: SCROLL
+        clickable: true
+        scrollable: false
+        gesture_bubble: true
+        on_short_click:
+        - script.execute: voip_dial_backspace
+        on_long_press:
+        - script.execute: voip_dial_clear
+    - buttonmatrix:
+        id: call_dial_row_123
+        align: TOP_MID
+        y: 46
+        width: 1
+        height: 31
+        bg_opa: TRANSP
+        border_width: 0
+        pad_row: 0
+        pad_column: 5
+        scrollable: false
+        gesture_bubble: true
+        items:
+          bg_color: 2568514
+          text_color: 16777215
+          text_font: font_title
+          radius: 16
+        rows:
+        - buttons:
+          - text: '1'
+          - text: '2'
+          - text: '3'
+        on_click:
+        - script.execute:
+            id: voip_dial_append
+            dial_char: !lambda |-
+              static constexpr char keys[] = "123";
+              return x < 3 ? keys[x] : 0;
+    - buttonmatrix:
+        id: call_dial_row_456
+        align: TOP_MID
+        y: 81
+        width: 1
+        height: 31
+        bg_opa: TRANSP
+        border_width: 0
+        pad_row: 0
+        pad_column: 5
+        scrollable: false
+        gesture_bubble: true
+        items:
+          bg_color: 2568514
+          text_color: 16777215
+          text_font: font_title
+          radius: 16
+        rows:
+        - buttons:
+          - text: '4'
+          - text: '5'
+          - text: '6'
+        on_click:
+        - script.execute:
+            id: voip_dial_append
+            dial_char: !lambda |-
+              static constexpr char keys[] = "456";
+              return x < 3 ? keys[x] : 0;
+    - buttonmatrix:
+        id: call_dial_row_789
+        align: TOP_MID
+        y: 116
+        width: 1
+        height: 31
+        bg_opa: TRANSP
+        border_width: 0
+        pad_row: 0
+        pad_column: 5
+        scrollable: false
+        gesture_bubble: true
+        items:
+          bg_color: 2568514
+          text_color: 16777215
+          text_font: font_title
+          radius: 16
+        rows:
+        - buttons:
+          - text: '7'
+          - text: '8'
+          - text: '9'
+        on_click:
+        - script.execute:
+            id: voip_dial_append
+            dial_char: !lambda |-
+              static constexpr char keys[] = "789";
+              return x < 3 ? keys[x] : 0;
+    - buttonmatrix:
+        id: call_dial_row_del0hash
+        align: TOP_MID
+        y: 151
+        width: 1
+        height: 31
+        bg_opa: TRANSP
+        border_width: 0
+        pad_row: 0
+        pad_column: 5
+        scrollable: false
+        gesture_bubble: true
+        items:
+          bg_color: 2568514
+          text_color: 16777215
+          text_font: font_title
+          radius: 16
+        rows:
+        - buttons:
+          - text: 󰁮
+          - text: '0'
+          - text: '#'
+        on_click:
+        - if:
+            condition:
+              lambda: return x == 0;
+            then:
+            - script.execute: voip_dial_backspace
+            else:
+            - script.execute:
+                id: voip_dial_append
+                dial_char: !lambda |-
+                  if (x == 1) return '0';
+                  if (x == 2) return '#';
+                  return 0;
+    - button:
+        id: call_dial_call_btn
+        align: TOP_MID
+        y: 187
+        width: 1
+        height: 43
+        bg_color: 2278750
+        border_width: 0
+        shadow_opa: TRANSP
+        radius: 22
+        scrollable: false
+        gesture_bubble: true
+        on_short_click:
+        - script.execute: voip_dial_call
+        widgets:
+        - label:
+            align: CENTER
+            text: 󰏲
+            text_color: 16777215
+            text_font: call_icons
+            scrollable: false
+            gesture_bubble: true
+  _round_phone_layout: |-
+    lv_disp_t *disp = lv_disp_get_default();
+    if (disp == nullptr) return;
+    const int w = lv_disp_get_hor_res(disp);
+    const int h = lv_disp_get_ver_res(disp);
+    if (w <= 0 || h <= 0) return;
+
+    const int cy = h / 2;
+    const int radius = std::min(w, h) / 2 - 4;
+    auto width_for_band = [&](int y, int height, int margin) -> int {
+      const int bottom = y + height - 1;
+      const int distance = std::max(std::abs(y - cy), std::abs(bottom - cy));
+      if (distance >= radius) return 1;
+
+      const int radius_sq = radius * radius;
+      const int distance_sq = distance * distance;
+      int half = static_cast<int>(
+          floorf(sqrtf(static_cast<float>(radius_sq - distance_sq)))
+      ) - margin;
+      if (half < 1) half = 1;
+      return half * 2;
+    };
+    auto fit_centered_band = [&](lv_obj_t *obj, int y, int height, int margin) {
+      const int width = width_for_band(y, height, margin);
+      lv_obj_set_size(obj, width, height);
+      lv_obj_align(obj, LV_ALIGN_TOP_MID, 0, y);
+    };
+
+    const int number_y = h * 16 / 240;
+    const int number_h = std::max(24, h * 26 / 240);
+    const int row_h = std::max(29, h * 31 / 240);
+    const int call_y = h * 187 / 240;
+    const int call_h = std::max(40, h * 43 / 240);
+    fit_centered_band(id(call_dial_value_label), number_y, number_h, 6);
+    fit_centered_band(id(call_dial_row_123)->obj, h * 46 / 240, row_h, 6);
+    fit_centered_band(id(call_dial_row_456)->obj, h * 81 / 240, row_h, 6);
+    fit_centered_band(id(call_dial_row_789)->obj, h * 116 / 240, row_h, 6);
+    fit_centered_band(id(call_dial_row_del0hash)->obj, h * 151 / 240, row_h, 6);
+    fit_centered_band(id(call_dial_call_btn), call_y, call_h, 2);
+  _round_timer_page:
+  - id: timer_finished_page
+    bg_color: 0
+    widgets:
+    - image:
+        align: CENTER
+        src: assistant_gui_timer_finished
+  _round_timer_overlay:
+  - obj:
+      id: timer_overlay
+      align: TOP_MID
+      width: 1
+      height: 1
+      bg_color: 16777215
+      border_color: 0
+      border_width: 1
+      hidden: true
+      widgets:
+      - bar:
+          id: timer_bar
+          align: CENTER
+          width: 1
+          height: 1
+          min_value: 0
+          max_value: 100
+          value: 50
+          indicator:
+            bg_color: 2551098
+      - label:
+          id: timer_label
+          align: CENTER
+          text: ''
+          text_color: 0
+          text_font: font_timer
+  _round_timer_layout: |
+    lv_obj_set_height(id(timer_overlay), ym[13]);
+    lv_obj_set_width(id(timer_overlay), ym[2]);
+    lv_obj_set_height(id(timer_bar), ym[13] - 4);
+    lv_obj_set_width(id(timer_bar), ym[2] - 4);

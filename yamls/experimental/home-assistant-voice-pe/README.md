@@ -43,3 +43,13 @@ On a Voice PE, test answer, local hangup, remote hangup, outgoing cancellation
 and an immediate second call. Confirm the release of the button never starts
 Assist during a call; after the call, verify wake word, normal button gestures,
 the volume dial and timers. Report call audio in each direction separately.
+
+## Source snapshot
+
+The official firmware base is pinned to `d4e6fa43d6a1a7d342b7d4d403567e06516719de`,
+the upstream `dev` snapshot used by the composition checks. `voice_pe_base_ref`
+can override that reference for an intentional upstream update. The VoIP overlay
+does not replace XMOS processing, the hardware speaker or the official media
+owner. Removing `voip` from its feature list removes the overlay and its call
+button bindings together. This is still an experimental profile without new
+physical Voice PE qualification.

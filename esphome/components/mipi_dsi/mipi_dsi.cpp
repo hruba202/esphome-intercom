@@ -1,9 +1,10 @@
 #ifdef USE_ESP32_VARIANT_ESP32P4
-#include <algorithm>
 #include <utility>
 #include "mipi_dsi.h"
-#include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
+
+#include <algorithm>
+#include <cstring>
 
 namespace esphome::mipi_dsi {
 
@@ -37,8 +38,8 @@ void MipiDsi::setup() {
       .bus_id = 0,  // index from 0, specify the DSI host to use
       .num_data_lanes =
           this->lanes_,  // Number of data lanes to use, can't set a value that exceeds the chip's capability
-      .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,  // Clock source for the DPHY
-      .lane_bit_rate_mbps = this->lane_bit_rate_,   // Bit rate of the data lanes, in Mbps
+      // phy_clk_src left at 0 to enable runtime auto-select.
+      .lane_bit_rate_mbps = this->lane_bit_rate_,  // Bit rate of the data lanes, in Mbps
   };
   auto err = esp_lcd_new_dsi_bus(&bus_config, &this->bus_handle_);
   if (err != ESP_OK) {
@@ -98,16 +99,6 @@ void MipiDsi::setup() {
     this->smark_failed(LOG_STR("esp_lcd_new_panel_dpi failed"), err);
     return;
   }
-  void *frame_buffer = nullptr;
-  err = esp_lcd_dpi_panel_get_frame_buffer(this->handle_, 1, &frame_buffer);
-  if (err != ESP_OK || frame_buffer == nullptr) {
-    this->smark_failed(LOG_STR("esp_lcd_dpi_panel_get_frame_buffer failed"),
-                       err);
-    return;
-  }
-  this->frame_buffer_ = static_cast<uint8_t *>(frame_buffer);
-  this->frame_buffer_size_ =
-      this->width_ * this->height_ * (3 - this->color_depth_);
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
   err = esp_lcd_dpi_panel_enable_dma2d(this->handle_);
   if (err != ESP_OK) {
@@ -133,20 +124,21 @@ void MipiDsi::setup() {
     return;
   }
   size_t index = 0;
-  auto &vec = this->init_sequence_;
-  while (index != vec.size()) {
-    if (vec.size() - index < 2) {
+  const uint8_t *seq = this->init_sequence_;
+  const size_t len = this->init_sequence_len_;
+  while (index != len) {
+    if (len - index < 2) {
       this->mark_failed(LOG_STR("Malformed init sequence"));
       return;
     }
-    uint8_t cmd = vec[index++];
-    uint8_t x = vec[index++];
+    uint8_t cmd = seq[index++];
+    uint8_t x = seq[index++];
     if (x == DELAY_FLAG) {
       ESP_LOGD(TAG, "Delay %dms", cmd);
       delay(cmd);
     } else {
       uint8_t num_args = x & 0x7F;
-      if (vec.size() - index < num_args) {
+      if (len - index < num_args) {
         this->mark_failed(LOG_STR("Malformed init sequence"));
         return;
       }
@@ -157,7 +149,7 @@ void MipiDsi::setup() {
           delay(duration);
         }
       }
-      const auto *ptr = vec.data() + index;
+      const auto *ptr = seq + index;
 #if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_VERY_VERBOSE
       char hex_buf[format_hex_pretty_size(MIPI_DSI_MAX_CMD_LOG_BYTES)];
 #endif
@@ -169,19 +161,23 @@ void MipiDsi::setup() {
         return;
       }
       index += num_args;
-      // The Waveshare 10.1" JD9365 panel is unstable when DISPLAY_ON follows
-      // SLPOUT too quickly (the visible symptom is three corrupted bands).
-      // MIPI DCS requires the sleep-out settling interval before display-on.
-      if (cmd == SLEEP_OUT) {
+      // Preserve the qualified panel settling intervals until the panel-specific fix lands.
+      if (cmd == SLEEP_OUT)
         delay(120);
-      } else if (cmd == DISPLAY_ON) {
+      else if (cmd == DISPLAY_ON)
         delay(20);
-      }
     }
   }
+  void *frame_buffer = nullptr;
+  err = esp_lcd_dpi_panel_get_frame_buffer(this->handle_, 1, &frame_buffer);
+  if (err != ESP_OK || frame_buffer == nullptr) {
+    this->smark_failed(LOG_STR("Failed to obtain panel framebuffer"), err);
+    return;
+  }
+  this->frame_buffer_ = static_cast<uint8_t *>(frame_buffer);
+  this->frame_buffer_size_ = this->width_ * this->height_ * (3 - this->color_depth_);
   this->io_lock_ = xSemaphoreCreateBinaryStatic(&this->io_lock_storage_);
-  this->submit_mutex_ =
-      xSemaphoreCreateMutexStatic(&this->submit_mutex_storage_);
+  this->submit_mutex_ = xSemaphoreCreateMutexStatic(&this->submit_mutex_storage_);
   if (this->io_lock_ == nullptr || this->submit_mutex_ == nullptr) {
     this->mark_failed(LOG_STR("Failed to create display transfer locks"));
     return;
@@ -203,6 +199,7 @@ void MipiDsi::update() {
   if (this->auto_clear_enabled_) {
     this->clear();
   }
+  this->updating_ = true;
   if (this->show_test_card_) {
     this->test_card();
   } else if (this->page_ != nullptr) {
@@ -212,7 +209,13 @@ void MipiDsi::update() {
   } else {
     this->stop_poller();
   }
-  if (this->buffer_ == nullptr || this->x_low_ > this->x_high_ || this->y_low_ > this->y_high_)
+  this->updating_ = false;
+  this->flush_dirty_();
+}
+
+void MipiDsi::flush_dirty_() {
+  // Inside update() the one flush at its end sends everything
+  if (this->updating_ || this->buffer_ == nullptr || this->x_low_ > this->x_high_ || this->y_low_ > this->y_high_)
     return;
   ESP_LOGV(TAG, "x_low %d, y_low %d, x_high %d, y_high %d", this->x_low_, this->y_low_, this->x_high_, this->y_high_);
   int w = this->x_high_ - this->x_low_ + 1;
@@ -226,52 +229,54 @@ void MipiDsi::update() {
   this->y_high_ = 0;
 }
 
-void MipiDsi::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr, display::ColorOrder order,
-                             display::ColorBitness bitness, bool big_endian, int x_offset, int y_offset, int x_pad) {
+// The legacy entry point also receives modern Display bulk calls through its compatibility bridge.
+// Keep one blitter while using the ESPHome 2026.10 display API.
+void MipiDsi::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
+                           display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
+                           int x_offset, int y_offset, int x_pad) {
+  if (order != display::COLOR_ORDER_RGB) {
+    display::Display::draw_pixels_at(x_start, y_start, w, h, ptr, order, bitness, big_endian, x_offset, y_offset, x_pad);
+    this->mark_dirty_(x_start, y_start, w, h);
+    this->flush_dirty_();
+    return;
+  }
+  this->draw_pixels_compat_(x_start, y_start, w, h, ptr, bitness, big_endian, x_offset, y_offset, x_pad);
+}
+
+void MipiDsi::draw_pixels_compat_(int x_start, int y_start, int w, int h, const uint8_t *ptr,
+                                   display::ColorBitness bitness, bool big_endian, int x_offset, int y_offset,
+                                   int x_pad) {
   if (w <= 0 || h <= 0)
     return;
-  // if color mapping is required, pass the buck.
-  // note that endianness is not considered here - it is assumed to match!
-  if (bitness != this->color_depth_) {
-    display::Display::draw_pixels_at(x_start, y_start, w, h, ptr, order, bitness, big_endian, x_offset, y_offset,
-                                     x_pad);
+  if (bitness != this->color_depth_ || (bitness == display::COLOR_BITNESS_565 && big_endian != this->big_endian_) ||
+      this->rotation_ != display::DISPLAY_ROTATION_0_DEGREES || this->is_clipping()) {
+    display::Display::draw_pixels_at(x_start, y_start, w, h, ptr, display::COLOR_ORDER_RGB, bitness, big_endian, x_offset, y_offset, x_pad);
+    this->mark_dirty_(x_start, y_start, w, h);
+    this->flush_dirty_();
     return;
   }
-#ifdef USE_ESPHOME_VOIP_STACK_VIDEO_DEBUG
-  const uint32_t started_us = micros();
-#endif
+  if (this->buffer_ != nullptr) {
+    // With a buffer the block goes through it, or a flush of the old contents would paint over it
+    const int first_col = std::max(0, -x_start), end_col = std::min(w, static_cast<int>(this->width_) - x_start);
+    const int first_row = std::max(0, -y_start), end_row = std::min(h, static_cast<int>(this->height_) - y_start);
+    if (first_col >= end_col || first_row >= end_row)
+      return;
+    const size_t bytes_per_pixel = 3 - this->color_depth_;
+    const size_t stride = x_offset + w + x_pad;
+    for (int y = first_row; y != end_row; y++) {
+      memcpy(this->buffer_ + ((y_start + y) * this->width_ + x_start + first_col) * bytes_per_pixel,
+             ptr + ((y_offset + y) * stride + x_offset + first_col) * bytes_per_pixel,
+             (end_col - first_col) * bytes_per_pixel);
+    }
+    if (this->updating_) {
+      this->mark_dirty_(x_start + first_col, y_start + first_row, end_col - first_col, end_row - first_row);
+    } else {
+      this->write_to_display_(x_start + first_col, y_start + first_row, end_col - first_col, end_row - first_row, ptr,
+                              x_offset + first_col, y_offset + first_row, x_pad + w - end_col);
+    }
+    return;
+  }
   this->write_to_display_(x_start, y_start, w, h, ptr, x_offset, y_offset, x_pad);
-#ifdef USE_ESPHOME_VOIP_STACK_VIDEO_DEBUG
-  const uint32_t elapsed_us = micros() - started_us;
-  this->debug_flush_calls_++;
-  this->debug_flush_total_us_ += elapsed_us;
-  this->debug_flush_max_us_ =
-      std::max(this->debug_flush_max_us_, elapsed_us);
-  const uint32_t pixels = static_cast<uint32_t>(w) * h;
-  if (pixels > this->debug_flush_largest_pixels_) {
-    this->debug_flush_largest_pixels_ = pixels;
-    this->debug_flush_largest_width_ = w;
-    this->debug_flush_largest_height_ = h;
-  }
-  const uint32_t now = millis();
-  if (now - this->debug_flush_last_log_ms_ >= 5000U) {
-    ESP_LOGI(TAG,
-             "DSI flush: calls=%u avg=%uus max=%uus largest=%ux%u",
-             (unsigned) this->debug_flush_calls_,
-             (unsigned) (this->debug_flush_total_us_ /
-                         std::max<uint32_t>(1, this->debug_flush_calls_)),
-             (unsigned) this->debug_flush_max_us_,
-             (unsigned) this->debug_flush_largest_width_,
-             (unsigned) this->debug_flush_largest_height_);
-    this->debug_flush_calls_ = 0;
-    this->debug_flush_total_us_ = 0;
-    this->debug_flush_max_us_ = 0;
-    this->debug_flush_largest_pixels_ = 0;
-    this->debug_flush_largest_width_ = 0;
-    this->debug_flush_largest_height_ = 0;
-    this->debug_flush_last_log_ms_ = now;
-  }
-#endif
 }
 
 bool MipiDsi::submit_bitmap_(int x_start, int y_start, int x_end, int y_end,
@@ -303,6 +308,7 @@ bool MipiDsi::submit_bitmap_(int x_start, int y_start, int x_end, int y_end,
   xSemaphoreGive(this->submit_mutex_);
   return true;
 }
+
 
 void MipiDsi::write_to_display_(int x_start, int y_start, int w, int h, const uint8_t *ptr, int x_offset, int y_offset,
                                 int x_pad) {
@@ -341,26 +347,38 @@ bool MipiDsi::check_buffer_() {
   return true;
 }
 
+// Widen the dirty box to the drawn rectangle, even where the buffer already held the same values.
+void MipiDsi::mark_dirty_(int x_start, int y_start, int w, int h) {
+  int x1 = x_start, y1 = y_start;
+  int x2 = x_start + w - 1, y2 = y_start + h - 1;
+  this->rotate_(x1, y1);
+  this->rotate_(x2, y2);
+  const int right = static_cast<int>(this->width_) - 1;
+  const int bottom = static_cast<int>(this->height_) - 1;
+  const int left = std::clamp(std::min(x1, x2), 0, right);
+  const int top = std::clamp(std::min(y1, y2), 0, bottom);
+  x2 = std::clamp(std::max(x1, x2), 0, right);
+  y2 = std::clamp(std::max(y1, y2), 0, bottom);
+  // An empty box is low above high, so it is replaced rather than widened
+  if (this->x_low_ > this->x_high_ || this->y_low_ > this->y_high_) {
+    this->x_low_ = left;
+    this->x_high_ = x2;
+    this->y_low_ = top;
+    this->y_high_ = y2;
+    return;
+  }
+  this->x_low_ = std::min<int>(this->x_low_, left);
+  this->x_high_ = std::max<int>(this->x_high_, x2);
+  this->y_low_ = std::min<int>(this->y_low_, top);
+  this->y_high_ = std::max<int>(this->y_high_, y2);
+}
+
 void MipiDsi::draw_pixel_at(int x, int y, Color color) {
-  if (!this->get_clipping().inside(x, y))
+  // Inline the upstream predicate for ESPHome versions without is_point_clipped().
+  if (this->is_clipping() && !this->clipping_rectangle_.back().inside(x, y))
     return;
 
-  switch (this->rotation_) {
-    case display::DISPLAY_ROTATION_0_DEGREES:
-      break;
-    case display::DISPLAY_ROTATION_90_DEGREES:
-      std::swap(x, y);
-      x = this->width_ - x - 1;
-      break;
-    case display::DISPLAY_ROTATION_180_DEGREES:
-      x = this->width_ - x - 1;
-      y = this->height_ - y - 1;
-      break;
-    case display::DISPLAY_ROTATION_270_DEGREES:
-      std::swap(x, y);
-      y = this->height_ - y - 1;
-      break;
-  }
+  this->rotate_(x, y);
   if (x >= this->get_width_internal() || x < 0 || y >= this->get_height_internal() || y < 0) {
     return;
   }
@@ -370,24 +388,17 @@ void MipiDsi::draw_pixel_at(int x, int y, Color color) {
   switch (this->color_depth_) {
     case display::COLOR_BITNESS_565: {
       auto *ptr_16 = reinterpret_cast<uint16_t *>(this->buffer_);
-      uint8_t hi_byte = static_cast<uint8_t>(color.r & 0xF8) | (color.g >> 5);
-      uint8_t lo_byte = static_cast<uint8_t>((color.g & 0x1C) << 3) | (color.b >> 3);
-      uint16_t new_color = lo_byte | (hi_byte << 8);  // little endian
+      const uint16_t new_color = this->to_panel_565_(color);
       if (ptr_16[pos] == new_color)
         return;
       ptr_16[pos] = new_color;
       break;
     }
     case display::COLOR_BITNESS_888:
-      if (this->color_mode_ == display::COLOR_ORDER_BGR) {
-        this->buffer_[pos * 3] = color.b;
-        this->buffer_[pos * 3 + 1] = color.g;
-        this->buffer_[pos * 3 + 2] = color.r;
-      } else {
-        this->buffer_[pos * 3] = color.r;
-        this->buffer_[pos * 3 + 1] = color.g;
-        this->buffer_[pos * 3 + 2] = color.b;
-      }
+      // The panel applies the colour order, so the buffer keeps the standard b,g,r layout
+      this->buffer_[pos * 3] = color.b;
+      this->buffer_[pos * 3 + 1] = color.g;
+      this->buffer_[pos * 3 + 2] = color.r;
       break;
     case display::COLOR_BITNESS_332:
       break;
@@ -415,27 +426,18 @@ void MipiDsi::fill(Color color) {
   switch (this->color_depth_) {
     case display::COLOR_BITNESS_565: {
       auto *ptr_16 = reinterpret_cast<uint16_t *>(this->buffer_);
-      uint8_t hi_byte = static_cast<uint8_t>(color.r & 0xF8) | (color.g >> 5);
-      uint8_t lo_byte = static_cast<uint8_t>((color.g & 0x1C) << 3) | (color.b >> 3);
-      uint16_t new_color = lo_byte | (hi_byte << 8);  // little endian
+      const uint16_t new_color = this->to_panel_565_(color);
       std::fill_n(ptr_16, this->width_ * this->height_, new_color);
       break;
     }
 
     case display::COLOR_BITNESS_888:
-      if (this->color_mode_ == display::COLOR_ORDER_BGR) {
-        for (size_t i = 0; i != this->width_ * this->height_; i++) {
-          this->buffer_[i * 3 + 0] = color.b;
-          this->buffer_[i * 3 + 1] = color.g;
-          this->buffer_[i * 3 + 2] = color.r;
-        }
-      } else {
-        for (size_t i = 0; i != this->width_ * this->height_; i++) {
-          this->buffer_[i * 3 + 0] = color.r;
-          this->buffer_[i * 3 + 1] = color.g;
-          this->buffer_[i * 3 + 2] = color.b;
-        }
+      for (size_t i = 0; i != this->width_ * this->height_; i++) {
+        this->buffer_[i * 3 + 0] = color.b;
+        this->buffer_[i * 3 + 1] = color.g;
+        this->buffer_[i * 3 + 2] = color.r;
       }
+      break;
 
     default:
       break;

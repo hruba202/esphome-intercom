@@ -1,4 +1,12 @@
 const PT_BR = {
+  "Transfer": "Transferir",
+  "Transfer call": "Transferir chamada",
+  "Cancel transfer": "Cancelar transferência",
+  "Transfer failed": "Falha na transferência",
+  "After timeout": "Após o tempo limite",
+  "Mailbox": "Caixa postal",
+  "Forward to": "Encaminhar para",
+  "Disabling the mailbox permanently deletes its messages and settings.": "Desativar a caixa postal exclui permanentemente suas mensagens e configurações.",
   "Finishing recording": "Finalizando gravação",
   "Show recording controls": "Mostrar controles de gravação",
   "Record call": "Gravar chamada",
@@ -139,6 +147,14 @@ const PT_BR = {
 };
 
 const DE = {
+  "Transfer": "Übergeben",
+  "Transfer call": "Anruf übergeben",
+  "Cancel transfer": "Übergabe abbrechen",
+  "Transfer failed": "Übergabe fehlgeschlagen",
+  "After timeout": "Nach Ablauf der Klingelzeit",
+  "Mailbox": "Mailbox",
+  "Forward to": "Weiterleiten an",
+  "Disabling the mailbox permanently deletes its messages and settings.": "Beim Deaktivieren werden Nachrichten und Mailbox-Einstellungen dauerhaft gelöscht.",
   "Finishing recording": "Aufzeichnung wird abgeschlossen",
   "Show recording controls": "Aufzeichnungssteuerung anzeigen",
   "Record call": "Anruf aufzeichnen",

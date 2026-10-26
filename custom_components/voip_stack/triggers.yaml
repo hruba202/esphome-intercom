@@ -96,3 +96,55 @@ call_unanswered:
       required: false
       selector:
         duration: {}
+
+phone_state_changed:
+  fields:
+    phone:
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+    from:
+      selector:
+        select:
+          options:
+          - idle
+          - unavailable
+          - calling
+          - ringing
+          - in_call
+          - held
+          translation_key: phone_state
+    to:
+      selector:
+        select:
+          options:
+          - idle
+          - unavailable
+          - calling
+          - ringing
+          - in_call
+          - held
+          translation_key: phone_state
+mailbox_changed:
+  fields:
+    phone:
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+call_picked_up:
+  fields:
+    destination:
+      selector:
+        text: {}

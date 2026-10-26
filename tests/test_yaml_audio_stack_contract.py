@@ -20,21 +20,21 @@ def test_profiles_do_not_use_removed_blocking_audio_stack_action() -> None:
 
 
 def test_ota_waits_for_audio_stack_idle_without_blocking_main_loop() -> None:
-    for relative in (
-        "packages/ota/full_audio_maintenance.yaml",
-        "packages/ota/full_audio_lvgl_maintenance.yaml",
-    ):
-        from esphome import yaml_util
+    from tests.native_profile import profile
+    from tests.test_package_composition import maintenance_begin_actions
 
-        config = yaml_util.load_yaml(ROOT / relative)
-        steps = config["ota"][0]["on_begin"]
-        stop_index = next(i for i, step in enumerate(steps) if "esp_audio_stack.stop" in step)
-        wait_index = next(
-            i for i, step in enumerate(steps)
-            if "esp_audio_stack.is_idle" in step.get("wait_until", {}).get("condition", {})
-        )
-        assert stop_index < wait_index
-        assert steps[stop_index]["esp_audio_stack.stop"] is None
-        wait = steps[wait_index]["wait_until"]
-        assert wait["condition"]["esp_audio_stack.is_idle"] is None
-        assert wait["timeout"] == "2s"
+    for relative in (
+        'full-experience/single-bus/waveshare-s3-full-afe.yaml',
+        'full-experience/single-bus/spotpear-ball-v2-full-afe.yaml',
+    ):
+        steps = maintenance_begin_actions(profile(relative))
+        sink_index = next(i for i, step in enumerate(steps) if step.get('speaker.stop') == 'hw_speaker')
+        stop_index = next(i for i, step in enumerate(steps) if 'esp_audio_stack.stop' in step)
+        wait_index = next(i for i, step in enumerate(steps)
+                          if 'esp_audio_stack.is_idle' in step.get('wait_until', {}).get('condition', {}))
+        assert sink_index < stop_index < wait_index
+        assert steps[sink_index]['speaker.stop'] == 'hw_speaker'
+        assert steps[stop_index]['esp_audio_stack.stop'] in (None, {})
+        assert steps[wait_index]['wait_until']['timeout'] == '2s'
+        # Nothing may be deferred until after OTA's blocking data phase.
+        assert wait_index == len(steps) - 1

@@ -13,6 +13,7 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.voip_stack import automation_call as module
 from custom_components.voip_stack import media_ports, local_application
+from custom_components.voip_stack.browser_playback import BrowserPlayback
 from custom_components.voip_stack.core import rtp, sdp, sip
 from custom_components.voip_stack.endpoint_session import TerminationIntent
 from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
@@ -268,7 +269,7 @@ async def test_native_automation_can_hangup_implicitly_after_speaking(applicatio
 
 async def test_browser_announcement_waits_for_current_connection(application, monkeypatch):
     app, registry, _peer, _released = application
-    app.playback = module.BrowserPlayback()
+    app.playback = BrowserPlayback()
     old_connection, current_connection = object(), object()
     app.playback.attach(old_connection)
     app.playback.attach(current_connection)
@@ -305,7 +306,7 @@ async def test_browser_announcement_waits_for_current_connection(application, mo
 
 
 async def test_closed_browser_playback_wakes_waiter():
-    playback = module.BrowserPlayback()
+    playback = BrowserPlayback()
     waiter = asyncio.create_task(playback.wait_ready())
     await asyncio.sleep(0)
     await playback.close("remote_hangup")

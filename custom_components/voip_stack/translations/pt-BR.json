@@ -14,9 +14,7 @@
           "media_capture": "Gravar áudio privado das chamadas para diagnóstico",
           "experimental_sip_video": "Ativar vídeo SIP para o softphone do Home Assistant",
           "sip_registrar_enabled": "Ativar contas SIP locais",
-          "trunk_enabled": "Ativar tronco SIP opcional",
-          "voicemail_enabled": "Ativar correio de voz",
-          "parking_enabled": "Ativar estacionamento de chamadas"
+          "trunk_enabled": "Ativar tronco SIP opcional"
         },
         "data_description": {
           "sip_port": "Porta de escuta do endpoint SIP do Home Assistant. O Home Assistant aceita sinalização SIP por UDP e TCP nessa porta.",
@@ -77,7 +75,8 @@
           "trunk_dtmf_terminator": "Finalizador DTMF",
           "trunk_allowed_ips": "Endereços IP de entrada permitidos",
           "trunk_audio_codecs": "Codecs de áudio permitidos",
-          "trunk_video_codecs": "Codecs de vídeo permitidos"
+          "trunk_video_codecs": "Codecs de vídeo permitidos",
+          "trunk_outbound_media_address": "Endereço IPv4 de mídia para chamadas de saída"
         },
         "data_description": {
           "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -96,7 +95,8 @@
           "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
           "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
           "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
-          "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
+          "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões.",
+          "trunk_outbound_media_address": "Opcional. Endereço do Home Assistant acessível por este PABX para áudio e vídeo das chamadas de saída. Atrás de NAT, use seu IPv4 público e mantenha RTP/RTCP acessíveis sem alterar os números das portas. Não informe o endereço do provedor. Vazio usa o endereço atual do HA. Não altera chamadas na LAN nem o registro SIP."
         }
       },
       "trunk_mode": {
@@ -137,6 +137,15 @@
           "hold_media": "Áudio de espera",
           "clear_hold_media": "Remover áudio de espera salvo"
         }
+      },
+      "reconfigure": {
+        "title": "Configurações do VoIP Stack",
+        "description": "Escolha as configurações. Os recursos PBX estão disponíveis; configure-os quando necessário.",
+        "menu_options": {
+          "user": "Configurações gerais",
+          "parking": "Estacionamento de chamadas",
+          "voicemail": "Voz do correio de voz"
+        }
       }
     },
     "error": {
@@ -154,7 +163,9 @@
       "parking_configuration_invalid": "Escolha códigos distintos e tempos entre 1 e 3600 segundos.",
       "parking_route_conflict": "Um código já está em uso por um telefone, contato, ramal Assist ou grupo.",
       "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio.",
-      "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem."
+      "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem.",
+      "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio.",
+      "parking_slots_in_use": "Recupere ou encerre as chamadas nas posições removidas antes de alterar a lista."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigurado com sucesso.",
@@ -190,13 +201,14 @@
             "video_enabled": "Permitir vídeo",
             "auto_answer": "Atendimento automático",
             "send_video": "Enviar vídeo",
-            "voicemail_enabled": "Ativar correio de voz para este telefone"
+            "voicemail_enabled": "Ativar caixa postal"
           },
           "data_description": {
             "name": "Nome obrigatório do telefone usado pelo card, pela agenda telefônica e pelo roteamento de chamadas.",
             "extension": "Extensão discável exclusiva opcional. O telefone lógico continua podendo receber chamadas mesmo sem um card de navegador conectado.",
             "auto_answer": "Atende automaticamente quando um navegador conectado tiver permissão para usar o microfone.",
-            "send_video": "Envia por padrão a câmera do navegador conectado quando o vídeo for negociado e houver permissão."
+            "send_video": "Envia por padrão a câmera do navegador conectado quando o vídeo for negociado e houver permissão.",
+            "voicemail_enabled": "Desativar exclui permanentemente as mensagens, arquivos, PIN e configurações da caixa postal. Ativar novamente cria uma caixa vazia."
           }
         },
         "sip_account": {
@@ -215,7 +227,10 @@
             "video_enabled": "Permitir negociação de vídeo",
             "offline_policy": "Quando não estiver registrado",
             "offline_forward_target": "Destino de encaminhamento",
-            "voicemail_enabled": "Ativar correio de voz para este telefone"
+            "voicemail_enabled": "Ativar caixa postal"
+          },
+          "data_description": {
+            "voicemail_enabled": "Desativar exclui permanentemente as mensagens, arquivos, PIN e configurações da caixa postal. Ativar novamente cria uma caixa vazia."
           }
         },
         "reconfigure": {
@@ -227,7 +242,8 @@
         "phone_username_invalid": "Use somente letras, números, pontos, sublinhados ou hífens.",
         "phone_password_required": "A senha SIP é obrigatória.",
         "phone_forward_target_required": "Um destino de encaminhamento é obrigatório para a política Encaminhar.",
-        "phone_alias_conflict": "O nome, a extensão ou o usuário já está sendo usado por outro telefone."
+        "phone_alias_conflict": "O nome, a extensão ou o usuário já está sendo usado por outro telefone.",
+        "mailbox_removal_failed": "Não foi possível excluir a caixa postal. Restaure o acesso ao diretório de mídia e tente novamente."
       },
       "abort": {
         "reconfigure_successful": "Telefone reconfigurado com sucesso.",
@@ -315,7 +331,8 @@
             "trunk_dtmf_terminator": "Finalizador DTMF",
             "trunk_allowed_ips": "Endereços IP de entrada permitidos",
             "trunk_audio_codecs": "Codecs de áudio permitidos",
-            "trunk_video_codecs": "Codecs de vídeo permitidos"
+            "trunk_video_codecs": "Codecs de vídeo permitidos",
+            "trunk_outbound_media_address": "Endereço IPv4 de mídia para chamadas de saída"
           },
           "data_description": {
             "trunk_transport": "Transporte SIP usado pelo Home Assistant até o provedor.",
@@ -334,7 +351,8 @@
             "trunk_dtmf_terminator": "Dígito finalizador opcional, como #. Vazio significa que o tempo limite ou uma correspondência exata de extensão na agenda decide.",
             "trunk_allowed_ips": "Insira cada IP de origem ou rede CIDR permitida separadamente. Podem ser diferentes do servidor de saída. Obrigatórios sem registro.",
             "trunk_audio_codecs": "Codecs permitidos em chamadas recebidas e efetuadas por este tronco. Mantenha os padrões, a menos que o provedor especifique outra lista. Selecione pelo menos um codec de áudio. As partes precisam de um codec em comum; DTMF é negociado separadamente. Outros troncos e telefones locais não são alterados.",
-            "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões."
+            "trunk_video_codecs": "Esvazie a lista para chamadas somente de áudio. A seleção não ativa vídeo nem transcodificação: o telefone e o caminho de mídia precisam suportar o codec. Os perfis H.264 são negociados automaticamente. Em caso de dúvida, mantenha os padrões.",
+            "trunk_outbound_media_address": "Opcional. Endereço do Home Assistant acessível por este PABX para áudio e vídeo das chamadas de saída. Atrás de NAT, use seu IPv4 público e mantenha RTP/RTCP acessíveis sem alterar os números das portas. Não informe o endereço do provedor. Vazio usa o endereço atual do HA. Não altera chamadas na LAN nem o registro SIP."
           }
         }
       },
@@ -350,7 +368,8 @@
         "trunk_registration_failed": "Falha no registro. Verifique servidor, transporte e credenciais. A configuração salva não foi alterada.",
         "trunk_validation_failed": "Verifique a conexão e as redes de origem permitidas. Troncos estáticos com o mesmo transporte não podem ter redes de origem sobrepostas.",
         "trunk_codecs_invalid": "Selecione codecs suportados e mantenha pelo menos um codec de áudio.",
-        "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem."
+        "trunk_target_required": "Selecione um telefone de destino ou informe um destino do plano de discagem.",
+        "trunk_media_address_invalid": "Informe um endereço IPv4 unicast acessível ou deixe vazio."
       },
       "abort": {
         "reconfigure_successful": "Configuração do tronco atualizada."
@@ -429,6 +448,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Livre",
+        "unavailable": "Indisponível",
+        "calling": "Chamando",
+        "ringing": "Tocando",
+        "in_call": "Em chamada",
+        "held": "Em espera"
+      }
     }
   },
   "system_health": {
@@ -463,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Ramais duplicados",
       "description": "Estes destinos usam o mesmo ramal: {conflicts}. Atribua um ramal diferente a cada telefone, contato ou endpoint Assist. Chamadas para um ramal ambíguo são rejeitadas; nomes únicos e endereços SIP explícitos continuam disponíveis. Para um telefone ESPHome, altere o ramal no dispositivo. O aviso desaparece quando a agenda não contém conflitos."
+    },
+    "parking_configuration": {
+      "title": "Verifique a configuração de estacionamento",
+      "description": "Escolha números válidos sem conflitos com telefones, contatos ou grupos. Os destinos existentes serão preservados."
+    },
+    "mailbox_route_conflict": {
+      "title": "Conflito nos códigos do correio de voz",
+      "description": "Um telefone, contato ou grupo usa um endereço do correio de voz. Renomeie o destino em conflito; as rotas existentes serão preservadas."
     }
   },
   "exceptions": {
@@ -835,6 +872,36 @@
           "description": "Filtro de telefone opcional. Deixe vazio para todas as caixas."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Estado do telefone alterado",
+      "fields": {
+        "phone": {
+          "name": "Telefone"
+        },
+        "from": {
+          "name": "De"
+        },
+        "to": {
+          "name": "Para"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Caixa postal do telefone alterada",
+      "fields": {
+        "phone": {
+          "name": "Telefone"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Chamada capturada",
+      "fields": {
+        "destination": {
+          "name": "Destino"
+        }
+      }
     }
   },
   "conditions": {
@@ -875,6 +942,74 @@
         "digits": {
           "name": "Dígitos esperados",
           "description": "Deixe vazio para aceitar qualquer sequência recebida."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Telefone está no estado",
+      "fields": {
+        "phone": {
+          "name": "Telefone"
+        },
+        "state": {
+          "name": "Estado"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Telefone tem uma chamada tocando",
+      "fields": {
+        "phone": {
+          "name": "Telefone"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Telefone tem mensagens de voz",
+      "fields": {
+        "phone": {
+          "name": "Telefone"
+        },
+        "unread_only": {
+          "name": "Somente mensagens não lidas"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Obter estado do telefone",
+      "description": "Consultar o estado, as chamadas e os contadores da caixa postal do telefone selecionado.",
+      "fields": {
+        "device_id": {
+          "name": "Telefone"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Capturar chamada",
+      "description": "Capturar uma chamada tocando ou estacionada no telefone selecionado.",
+      "fields": {
+        "device_id": {
+          "name": "Telefone que recebe a chamada"
+        },
+        "target_device_id": {
+          "name": "Telefone tocando"
+        },
+        "slot": {
+          "name": "Vaga de estacionamento"
+        },
+        "answer_timeout": {
+          "name": "Aguardar atendimento"
+        },
+        "call_id": {
+          "name": "ID da chamada"
+        },
+        "expected_generation": {
+          "name": "Geração da chamada"
+        },
+        "leg_id": {
+          "name": "Ramo da chamada"
         }
       }
     }

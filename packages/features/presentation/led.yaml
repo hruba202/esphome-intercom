@@ -1,0 +1,14 @@
+defaults:
+  runtime_controller_led_id: ${ runtime_controller_led_id | default("status_led") }
+  runtime_controller_led_preset: ${ runtime_controller_led_preset | default("ws2812_ring") }
+substitutions:
+  runtime_controller_led_id: ${runtime_controller_led_id}
+  runtime_controller_led_preset: ${runtime_controller_led_preset}
+packages:
+  hardware: !include '${firmware_led_package}'
+  runtime: !include 'led_runtime.yaml'
+runtime_controller:
+  outputs:
+    led:
+      id: ${runtime_controller_led_id}
+      preset: ${runtime_controller_led_preset}

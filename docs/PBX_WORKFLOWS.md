@@ -15,9 +15,10 @@ rules or mailbox. ESP hardware is optional.
 | Add a second provider or external PBX | Integration menu > Add SIP trunk |
 | Choose which line a phone uses | Phone card > Options > Call routing |
 | Send unanswered calls elsewhere | Enable Ringing timeout and choose an outcome |
-| Take messages when nobody answers | Enable voicemail, then the phone's mailbox and no-answer rule |
+| Take messages when nobody answers | Create the phone's mailbox and no-answer rule; configure a voice for spoken menus |
 | Listen to your messages | Voicemail in the HA phone card, or dial `*97` |
 | Continue a conversation on another phone | Park it, then dial its assigned slot |
+| Hand an answered call to another person | Transfer from the card, or consult first from a compatible SIP handset |
 | Answer a different phone that is still ringing | Dial `pickup.<phone>` or `*8` followed by its extension |
 | Save a conversation | Enable recording controls or use Start recording in an automation |
 | Change routing according to presence or time | Use native VoIP triggers and actions in an HA automation |
@@ -32,7 +33,7 @@ Open **Settings > Devices & services > VoIP Stack**. In the integration's
 three-dot menu, choose **Add SIP trunk**. HA also offers a shortcut with the same
 name at the top of its integration page.
 
-![VoIP Stack integration menu with Add SIP trunk](images/pbx-add-trunk-menu.png)
+![VoIP Stack integration menu with Add SIP trunk](images/pbx-add-trunk-menu-dark.png)
 
 Each trunk now has a separate named entry, a device and a readiness entity.
 Provider credentials are no longer edited in the integration's main
@@ -40,7 +41,7 @@ Provider credentials are no longer edited in the integration's main
 See the [migration instructions](BREAKING_CHANGES.md#pbx-development-branch-separate-sip-trunk-entries)
 before updating an existing installation.
 
-![First step for adding a named SIP trunk](images/pbx-add-trunk.png)
+![First step for adding a named SIP trunk](images/pbx-add-trunk-dark.png)
 
 The first line becomes the default automatically. The screenshot shows adding
 another line, which also offers **Use as the default outgoing trunk**.
@@ -70,11 +71,18 @@ Open that phone's card, then **Options > Call routing**. The same settings are
 available through **VoIP Stack: Configure phone routing**, using HA's device
 picker. This includes ESP mirror cards: the policy is stored in HA.
 
+![Phone options and expanded call-routing settings](images/pbx-phone-routing-green.png)
+
+The screenshot shows a 20-second voicemail rule being prepared before saving.
+Enable **Ringing timeout** to choose how long this phone rings and what happens
+afterwards. The outgoing-line selector chooses a specific trunk or follows the
+integration default. The Save button becomes available when you edit the rule.
+
 For example, to let Kitchen ring for 20 seconds and then take a message:
 
 1. Enable Kitchen's mailbox as described below.
 2. Enable **Ringing timeout** and enter **20 seconds**.
-3. Choose **Voicemail** under **When nobody answers**.
+3. Choose **Voicemail** under **After timeout**.
 4. Leave the mailbox destination empty to use Kitchen's own mailbox.
 
 Choose **Forward** and another phone name or extension to ring that phone
@@ -91,17 +99,18 @@ card. Ring groups keep their group policy instead of allowing each member's
 personal voicemail to answer while the others are still ringing.
 See [phone routing](PHONE_ROUTING.md) for precedence and examples.
 
-## Enable and use voicemail
+## Configure and use voicemail
 
 **Voicemail** is the feature. A **mailbox** is one phone's message inbox, where
 its messages are stored. There is no separate mailbox server to install.
 
-First enable voicemail in the integration configuration and choose an HA TTS
-entity, language and, when offered, voice for the spoken menus. Then enable
+Voicemail is available by default. Choose an HA TTS entity, language and optional
+voice under **Reconfigure > Voicemail voice** for spoken menus. Enable
 **Enable this phone's mailbox** in the desired phone card's Options. This also
 works for an ESP mirror card. Messages are stored on HA, not in the ESP's flash.
 Enabling the mailbox alone does not redirect unanswered calls: configure the
-no-answer rule separately.
+no-answer rule separately. Disabling **Enable this phone's mailbox** permanently
+deletes that mailbox, its messages, PIN and settings. Re-enabling starts empty.
 
 On an HA softphone, **Voicemail** appears when messages exist. Open it to see the
 caller and date, select a message to listen, or use Delete for that message.
@@ -132,7 +141,7 @@ automations and all keypad commands.
 
 ## Park a call or answer another ringing phone
 
-Enable parking in the integration configuration first. The default access
+Parking is available by default. Customize it under **Reconfigure > Call parking**. The default access
 number is `700`; available slots start at `701`.
 
 Suppose you are talking on Kitchen and want to continue on Office:
@@ -151,8 +160,9 @@ that parked it, or another configured destination.
 Directed pickup is different: if Kitchen (extension 101) is still ringing,
 dial **`*8101`** or **`pickup.Kitchen`** from Office to answer it there. No parking
 step is needed. Current parking and directed pickup support audio calls and
-reject active video before moving the call. Directed pickup targets individual
-phones, not ringing-group branches. See [parking and pickup](CALL_PARKING.md).
+reject active video before moving the call. Directed pickup targets a ringing phone, including a member of a ring group.
+Groups containing only HA browser phones use the same pickup confirmation as
+mixed SIP/browser groups. See [parking and pickup](CALL_PARKING.md).
 
 ## Transfer, monitor and record calls
 

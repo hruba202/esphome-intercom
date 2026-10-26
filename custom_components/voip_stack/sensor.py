@@ -22,6 +22,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
+from .device_resolver import entity_role
 from .endpoint_device import (
     async_link_endpoint_entity,
     endpoint_call_state_attributes,
@@ -102,17 +103,11 @@ def _state_is_available(state) -> bool:
     )
 
 
-def _is_voip_roster_entity(entity_id: str) -> bool:
-    return any(
-        token in entity_id
-        for token in (
-            "voip_state",
-            "voip_endpoint",
-            "voip_ring_groups",
-            "voip_conference_groups",
-            "voip_ring_on_conference",
-        )
-    )
+def _is_voip_roster_entity(entity: object) -> bool:
+    return getattr(entity, "platform", None) == "esphome" and entity_role(entity) in {
+        "voip_state", "voip_endpoint", "voip_ring_groups",
+        "voip_conference_groups", "voip_conference_ring",
+    }
 
 
 async def async_setup_entry(
@@ -155,13 +150,24 @@ class PhoneEndpointCallStateSensor(SensorEntity):
         self._active_call_id = ""
         self._revision = -1
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         from .websocket_api import CALL_EVENT, _ha_softphone_state
 
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
         if enum_value(self.endpoint.kind) == "browser":
             self._apply_call_payload(
                 _ha_softphone_state(self.hass, self.endpoint.endpoint_id)
@@ -280,11 +286,21 @@ class VoipPhonebookSensor(SensorEntity):
             "count": self._count,
         }
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Preserve subscriptions when Home Assistant renames this entity."""
+        super().async_entity_id_changed(old_entity_id)
+
     async def async_added_to_hass(self) -> None:
         @callback
         def _on_registry_change(event) -> None:
             entity_id = event.data.get("entity_id") or ""
-            if not _is_voip_roster_entity(entity_id):
+            entity = er.async_get(self.hass).async_get(entity_id)
+            if (
+                not _is_voip_roster_entity(entity)
+                and entity_id not in self._tracked_entities
+                and event.data.get("old_entity_id") not in self._tracked_entities
+            ):
                 return
             self.hass.async_create_task(self._refresh_tracked_entities())
 
@@ -337,7 +353,7 @@ class VoipPhonebookSensor(SensorEntity):
         new_set = {
             e.entity_id
             for e in entity_registry.entities.values()
-            if _is_voip_roster_entity(e.entity_id)
+            if _is_voip_roster_entity(e)
         }
         if new_set == self._tracked_entities and not initial:
             return
@@ -348,7 +364,8 @@ class VoipPhonebookSensor(SensorEntity):
             entity_id = event.data.get("entity_id") or ""
             new_state = event.data.get("new_state")
             old_state = event.data.get("old_state")
-            if "voip_endpoint" in entity_id:
+            role = entity_role(er.async_get(self.hass).async_get(entity_id))
+            if role == "voip_endpoint":
                 old_value = old_state.state if old_state is not None else None
                 new_value = new_state.state if new_state is not None else None
                 old_endpoint = (
@@ -365,9 +382,7 @@ class VoipPhonebookSensor(SensorEntity):
                     self._schedule_recompute()
                 return
             if (
-                "voip_ring_groups" in entity_id
-                or "voip_conference_groups" in entity_id
-                or "voip_ring_on_conference" in entity_id
+                role in {"voip_ring_groups", "voip_conference_groups", "voip_conference_ring"}
             ):
                 old_value = old_state.state if old_state is not None else None
                 new_value = new_state.state if new_state is not None else None

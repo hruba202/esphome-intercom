@@ -21,14 +21,40 @@ HA integration tests with `./scripts/test_suite.sh ha`; that mode selects
 `../ha-voip-lab/.venv/bin/python`, or the interpreter supplied through
 `HA_PYTHON`. Do not invoke HA test modules with the repository `.venv`.
 
-The complete local gate also runs Ruff and parses every shipped JavaScript
-module:
+CI checks Python with Ruff. The complete local gate also parses every shipped
+JavaScript module:
 
 ```bash
 ./.venv/bin/ruff check custom_components scripts tests
 find custom_components/voip_stack/frontend -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 ```
+
+### Repeat a coordinated CI source set
+
+The software CI job uploads `coordinated-sources.json`, containing the actual
+backend commit and the four component commits checked out for that run.
+Default runs continue following the coordinated `dev`/`main` branches. To repeat
+an exact run, select its backend revision and supply the complete artifact JSON
+as the manual workflow's `component_manifest` input.
+
+For an isolated local checkout, use an empty component parent directory:
+
+```bash
+python scripts/coordinated_sources.py --root /path/to/component-parent \
+  --manifest coordinated-sources.json --output replayed-sources.json
+```
+
+The script rejects partial manifests, mutable commit references, mismatched
+backend revisions and existing component directories. It never resets a local
+checkout. This checkout manifest complements the local `candidate-lock.json`,
+which also records toolchain and dependency identities.
+
+The ESP component's `contract` job uploads `native.xml`. Its permanent REFER
+socket regressions exercise production response dispatch and retired-transaction
+replay with real loopback UDP/TCP sockets. These tests substitute scheduling and
+hardware media, so their results do not qualify physical audio or video. A full
+board build and an explicitly authorized hardware session are separate gates.
 
 ## Candidate qualification
 
@@ -42,10 +68,17 @@ local component checkouts for candidate firmware builds.
 
 The complete plan includes `software-full`, the real Home Assistant runtime,
 coverage, mutation, isolated peers, a real browser, firmware compilation and
-the selected S3/P4 hardware jobs. The maintained YAML files remain readable
-and reference the four `dev` branches. Test operators must record the resolved
-commits with the resulting evidence: a green CI run is not a physical-device
-qualification.
+the selected S3/P4 hardware jobs. Keep published references in maintained YAMLs
+unchanged and create a disposable local-source variant for candidate builds.
+Test operators must record the resolved commits with the resulting evidence:
+a green CI run is not a physical-device qualification.
+
+The browser startup regression delays worklet downloads in real Chromium and
+checks the first rendered samples after preparation, using silent virtual
+devices. A separate SIP/UDP test checks that initial PCMU frames survive an
+80 ms browser-readiness handshake. These checks cover frontend preparation and
+the RTP/WebSocket boundary; they do not qualify a physical phone's audio route
+or promise lossless playback after an arbitrarily long browser suspension.
 
 This software and compile gate still does not claim physical interoperability.
 A release candidate also needs the applicable live browser, SIP peer and ESP
@@ -436,6 +469,177 @@ The checked-in capture and summary tools keep this workflow reproducible:
 ./.venv/bin/python tools/analyze_jtag_snapshots.py --help
 ```
 
+### Render the on-device options page
+
+Use the actual expanded configuration with ESPHome's official host snapshot
+display. The renderer imports the production page, fonts, theme and settings
+callbacks. It replaces hardware data owners with host fixtures, without an
+audio or SIP stack:
+
+```bash
+esphome config device.yaml > device-expanded.yaml
+./.venv/bin/python tools/render_lvgl.py \
+  --input device-expanded.yaml --page settings_continuous_page \
+  --width 240 --height 240 \
+  --output test_captures/options-preview \
+  --build-parent /tmp/options-preview-build
+```
+
+Use the complete config dump here, without `--no-defaults`, so native generated
+entities are available to the host fixtures. Do not use `--show-secrets`.
+Box V2 uses 360 by 360 pixels; P4 uses `settings_p4_page` and the selected
+orientation's dimensions. `--prepare-only` writes the host configuration
+without compiling or running it.
+
+Inspect the top, middle and end snapshots, including the physical circular
+boundary on round displays. Check the fixed Back button, wrapped labels,
+values and units, optional controls and the final VoIP section. A host
+snapshot proves the rendered layout, not panel operation, touch propagation,
+speaker audio or DSP behavior. Gesture tests need real LVGL pointer input;
+calling a gesture handler directly does not exercise hit testing or bubbling.
+
+For round profiles with VoIP, add `--pointer` to exercise the production
+startup page registry, page selector and LVGL pointer input. Check the bounded
+Assist -> Contacts -> Dialer -> Options sequence: UP advances, DOWN goes back,
+and neither end wraps. Inside Options, test navigation from the fixed header
+or exposed area outside the scrolling body, and verify that dragging inside
+the body scrolls without leaving the page. During a call, a recognized swipe
+must not become a hangup, while a normal hangup tap must still work. These
+host checks do not replace validation of the physical touchscreen.
+
+Settings must update from their existing owners' notifications and refresh on
+page entry. Verify that opening or refreshing the page causes no writes to
+the controls, that a rejected command restores the actual value, and that a
+dragged slider is not overwritten by a concurrent state notification. Changes
+to playback metadata alone must not redraw an unchanged volume control.
+
+### ESP32-S3 profiling without application probes
+
+`tools/esp_profile.py` collects DEBUGPC samples and whole-core PMU counters
+through stock OpenOCD `irscan`/`drscan` commands, following the ESP32-S3 JTAG
+NAR protocol in the qualified Espressif release `v0.12.0-esp32-20260831`.
+The ESP32-S3 target does not expose the generic `xtensa dm` command, whose
+APB register addresses also differ from NAR register numbers. It never invokes
+the `profile` command, which can fall back to halting the target. It also
+rejects arbitrary Tcl commands, halted cores, zero PCs, PMU ownership conflicts
+and overflowing counters. Only one collector can own a local endpoint.
+During raw scans it temporarily suspends OpenOCD's background target polling
+and verifies its restoration on exit. This controls the debugger only;
+the ESP keeps executing, with its running state checked through DSR.
+
+Start with `doctor`, which checks local files without contacting hardware:
+
+```bash
+./.venv/bin/python tools/esp_profile.py doctor \
+  --elf firmware.elf --manifest build-identity.json --openocd /path/to/openocd
+```
+
+The build manifest contains `elf_sha256`, `firmware_sha256`, `device_mac`,
+`profile`, `scenario_contract` and `source_revisions`. Each source revision
+records its full `head`, a `tree_sha256` of the component contents and its
+`dirty` state. `running_identity` binds the ELF hash to an independently
+verified upload/device identity record through `evidence` and
+`evidence_sha256`. A filename or the newest ELF in a build directory is not
+proof that it matches the running firmware.
+
+Keep the original waveform, volumes, gains, DSP mode, enabled models and UI
+load in `scenario_contract`; these must match when comparing revisions.
+Use a fresh output directory for each independent measurement:
+
+```bash
+./.venv/bin/python tools/esp_profile.py record --mode pc \
+  --elf firmware.elf --manifest build-identity.json --scenario music-48k \
+  --seconds 60 --hz 100 --output test_captures/profile/music-48k/run-1
+./.venv/bin/python tools/esp_profile.py analyze \
+  test_captures/profile/music-48k/run-1 --elf firmware.elf \
+  --addr2line /path/to/xtensa-esp32s3-elf-addr2line
+```
+
+The two cores are sampled sequentially with host timestamps and slightly
+varying intervals. Results are **shares of observed PC samples**, including
+unresolved addresses, not exact task CPU percentages or per-function latency.
+PMU mode uses windows of at most five seconds; select `--event instructions`,
+`data_stalls`, `instruction_stalls` or `waiti`. It restores the previously
+unowned counters and requires `apptrace_enabled: false` in the manifest.
+These aggregate stalls are not flash/PSRAM cache-miss counts.
+
+`compare` accepts lists of baseline/candidate `analysis.json` files. It
+requires matching acquisition/workload contracts and unique capture identities.
+At least five independent windows per revision are needed for its run-based
+bootstrap interval. Repeating the same file does not create new measurements.
+
+SystemView is a separate diagnostic-build mode, using official FreeRTOS hooks
+with nonzero overhead. It requires `apptrace_enabled: true`,
+`systemview_enabled: true`, `--mode sysview --seconds 10`, `--idf-root`,
+`--idf-python`, the actual `--toolchain` prefix and `--openocd-log` pointing
+to the live endpoint's regular logfile at INFO verbosity or above. Host-only
+`echo` markers verify that this file belongs to the endpoint and delimit the
+active interval after native START and before native STOP. The collector saves
+the appended log with its hash, inode and original offset; missing markers,
+rotation, truncation, CRC retries or recovery invalidate the capture. A halt,
+resume or reset inside the active interval also invalidates it. Native
+attach/detach halts outside those markers do not alone reject the capture.
+The primary acquisition error is preserved if STOP or log qualification also
+fails. Raw per-core files and
+parser errors are retained. `analyze` excludes attach/detach edges, rejects
+overflow or a nonzero parser exit, and requires the hash-bound accepted log.
+Older captures without this evidence cannot qualify timing retroactively.
+On ESP32-S3 with ESP-IDF 5.5.6, the official AppTrace implementation documents
+trace-memory corruption under concurrent writes. OpenOCD can recover a CRC
+failure by halting and resuming the CPU even when incomplete-block and lost-byte
+counts remain zero. A successful parser and zero transport loss therefore do
+not establish uninterrupted execution. These checks reject that observer
+failure; they do not remove tracing overhead or qualify this mode on hardware.
+See the pinned [OpenOCD CRC recovery](https://github.com/espressif/openocd-esp32/blob/b0edad625b5edc0a64d52a641a7bd02e3a56c37d/src/target/espressif/esp_xtensa_apptrace.c#L231)
+and [ESP-IDF 5.5.6 S3 trace-memory workaround](https://github.com/espressif/esp-idf/blob/v5.5.6/components/app_trace/app_trace_membufs_proto.c#L153).
+Acquisition also requires zero incomplete
+transport blocks and lost bytes, and a verified final STOPPED state. Use the
+official shared ESP_TIMER timestamp source for dual-core captures; independent
+CPU clocks are not synchronized by the parser. It reports ready-to-run waits separately
+from scheduled residency. Residency includes untraced interrupts; it is not
+exclusive task CPU time. Qualify trace overhead and RAM usage before relying
+on a diagnostic build. PMU and AppTrace must not own the counters concurrently.
+
+SystemView admission also requires three independently collected, hash-bound
+JSON receipts. Add `boot_confirmation`, `post_prefit_evidence` and
+`runtime_preflight_evidence` to the manifest, each containing `evidence` and
+`evidence_sha256`. The collector reads these files; it does not upload firmware,
+connect to the ESPHome API or perform a memory-mapping halt for you.
+
+The boot receipt records the uploaded ELF/binary hashes, target MAC, build,
+the actual `Boot seems successful; resetting boot loop counter` log with its
+host timestamp, and a matching API identity obtained after that message.
+The post-preflight receipt records another matching API identity and a fresh
+requested audio-diagnostic `uptime_ms`. Do not estimate boot time from the
+ordinary Uptime sensor replayed on an API connection: its value can be cached.
+The runtime receipt records `verified_at`, `elf_sha256` and the independently
+read `live_app_elf_sha256`, together with the task/queue mapping used for analysis.
+
+Boot-time estimates tolerate five seconds for deferred diagnostic reporting.
+A detected reboot is allowed only when the matching live app identity and
+runtime pointers were observed after that new boot. Otherwise discard the old
+runtime mapping and obtain new evidence before recording. A successful boot
+message precedes ESPHome's unchecked IDF mark-valid return; it is not a direct
+partition-state read. The expected live app surviving a subsequent reboot is
+separate evidence of persistence. PC/PMU captures retain their existing identity
+contract; historical captures are not rewritten by this admission gate.
+
+Do not reuse hardware instruction TRAX on a SystemView image merely because
+its recorder is STOPPED. The compiled RTOS hooks still poll AppTrace's down
+channel, including shared TRAX protocol registers, when recording is disabled.
+Restoring the memory mux alone does not restore that protocol state. Use a
+separate, cold-booted TRAX-only diagnostic image with AppTrace/SystemView and
+their hooks absent. On ESP32-S3, enable the official `ESP32S3_TRAX` and
+`ESP32S3_TRAX_TWOBANKS` options, then verify the resulting 32 KiB memory
+reservation before use. These observer modes must have separate firmware and
+resource qualification; a failed mixed-observer run is not a production AFE
+regression by itself.
+
+Complete source audits and local regression gates before uploading a profiling
+candidate. Collect dumps/PCM separately from the main measurement windows.
+Keep captures private under `test_captures/`; profiling does not replace
+independent continuity, acoustic or wake-word hit-rate tests.
+
 On ESPHome 2026.7 and newer native ESP-IDF builds, custom partition tables use
 `esp32.partitions`; `board_build.partitions` under `platformio_options` is not
 the authoritative native-build setting. A partition-layout change on an
@@ -484,3 +688,84 @@ Use your actual HA test interpreter in the last line. The peer is installed only
 in the supplied directory; system packages and running PBXs are not replaced.
 The override also selects its matching modules. Real peer tests must not be
 reported as hardware validation for a physical phone or ESP.
+
+
+### SIP consolidation regressions
+
+The focused protocol tests exercise REFER correlation, independent event dialog
+lifetime, authenticated retries, parsing, request saturation and subscription
+routing. The saturation test occupies 24 real request handlers, then exchanges
+final responses, PRACK, NOTIFY, BYE and CANCEL over UDP and TCP. The routing test
+uses a separate TCP listener for the Contact or proxy destination.
+
+```bash
+.venv/bin/python -m pytest -q tests/test_refer_correlation.py \
+  tests/test_sip_refer_parser.py tests/test_sip_control_load.py \
+  tests/test_sip_subscription_routing.py tests/test_sip_replaces.py
+```
+
+The Home Assistant transfer suite starts three independent baresip processes.
+It covers audio transfers, video added or removed during replacement, transfer
+while a consultation is being put on hold, and compensation after an injected
+handoff failure. Use the Home Assistant test environment for this suite:
+
+```bash
+HA_PYTHON=/path/to/ha-test-environment/bin/python
+"$HA_PYTHON" -m pytest -q tests/test_sip_phone_transfers_ha.py
+```
+
+A short repeated-call test runs by default. For a one-hour, 100-cycle run on the
+same backend and registered peers:
+
+```bash
+mkdir -p test_captures
+VOIP_CONSOLIDATION_SOAK_CYCLES=100 \
+VOIP_CONSOLIDATION_SOAK_SECONDS=3600 \
+VOIP_CONSOLIDATION_SOAK_REPORT="$PWD/test_captures/sip-soak.jsonl" \
+"$HA_PYTHON" -m pytest -q tests/test_sip_phone_transfers_ha.py \
+  -k long_lived_transfer_runtime --timeout=3720
+```
+
+Each cycle establishes a call, starts a consultation, performs an attended
+transfer, observes bidirectional RTP and hangs up. It requires empty call and
+RTP reservation registries before the next cycle. The JSONL report records
+application subscription ownership, notification tasks, cached responses, open
+file descriptors and process task counts. Pin and record the component tree
+before starting; do not edit it during the run. A short run is not evidence of
+one-hour stability, and RTP packet counts alone do not certify decoded audio or
+video presentation.
+
+For an independent Asterisk/PJSIP transfer check, install Asterisk, baresip and
+FFmpeg, then run:
+
+```bash
+.venv/bin/python scripts/run_asterisk_transfer_lab.py \
+  --output test_captures/asterisk-transfer
+```
+
+The output directory must be new. The runner starts a private Asterisk process
+with loopback SIP transports and two baresip phones. It calls through Asterisk,
+checks a received PCMU tone, transfers the call and checks the independently
+decoded audio at both phones. It stops its processes before writing a successful
+`result.json`. Asterisk's installed documentation data must be readable; use
+`--asterisk-data` to select an accessible data directory if required by the
+package's permissions. It does not modify the installed PBX configuration or
+contact an external provider. This check validates the SIP client and transfer
+path; the separate HA suite validates services, session ownership and UI-facing
+state.
+
+
+Use `--mode attended` to exercise consultation followed by Replaces, and
+`--authenticate` to require Digest credentials generated for that run. The
+password is removed from the saved PBX configuration after shutdown. With
+`--transport tcp`, the HA client leg uses TCP while Asterisk routes the handset
+legs over UDP. The lab leaves endpoint transport selection to the URI, following
+[Asterisk's transport selection rules](https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/PJSIP-Transport-Selection/),
+so an endpoint setting cannot force TCP dialog notifications onto a UDP transport.
+For example:
+
+```bash
+.venv/bin/python scripts/run_asterisk_transfer_lab.py \
+  --mode attended --authenticate --transport tcp \
+  --output test_captures/asterisk-attended-tcp
+```

@@ -14,9 +14,7 @@
           "media_capture": "Record private call audio for diagnostics",
           "experimental_sip_video": "Enable SIP video for the Home Assistant softphone",
           "sip_registrar_enabled": "Enable local SIP accounts",
-          "trunk_enabled": "Enable optional SIP trunk",
-          "voicemail_enabled": "Enable voicemail",
-          "parking_enabled": "Enable call parking"
+          "trunk_enabled": "Enable optional SIP trunk"
         },
         "data_description": {
           "sip_port": "Listen port for the HA SIP endpoint. HA accepts SIP signaling over both UDP and TCP on this port.",
@@ -77,7 +75,8 @@
           "trunk_dtmf_terminator": "DTMF terminator",
           "trunk_allowed_ips": "Allowed incoming IP addresses",
           "trunk_audio_codecs": "Allowed audio codecs",
-          "trunk_video_codecs": "Allowed video codecs"
+          "trunk_video_codecs": "Allowed video codecs",
+          "trunk_outbound_media_address": "Outbound media IPv4 address"
         },
         "data_description": {
           "trunk_transport": "SIP transport used from HA to the provider.",
@@ -96,7 +95,8 @@
           "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
           "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
           "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
-          "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
+          "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure.",
+          "trunk_outbound_media_address": "Optional. Home Assistant address reachable by this PBX for audio and video on outgoing calls. Behind NAT, use your public IPv4 address and keep RTP/RTCP reachable with unchanged port numbers. Do not enter the provider address. Empty uses the existing HA address. Does not change LAN calls or SIP registration."
         }
       },
       "trunk_mode": {
@@ -137,6 +137,15 @@
           "hold_media": "Hold audio",
           "clear_hold_media": "Remove the saved hold audio"
         }
+      },
+      "reconfigure": {
+        "title": "VoIP Stack settings",
+        "description": "Choose which settings to configure. All PBX applications are available; configure their resources when needed.",
+        "menu_options": {
+          "user": "General settings",
+          "parking": "Call parking",
+          "voicemail": "Voicemail voice"
+        }
       }
     },
     "error": {
@@ -154,7 +163,9 @@
       "parking_configuration_invalid": "Choose distinct parking codes and timeouts between 1 and 3600 seconds.",
       "parking_route_conflict": "A parking code conflicts with an existing phone, contact, Assist extension or group.",
       "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec.",
-      "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination."
+      "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination.",
+      "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty.",
+      "parking_slots_in_use": "Retrieve or end calls in the removed slots before changing the parking slot list."
     },
     "abort": {
       "reconfigure_successful": "VoIP Stack reconfigured successfully.",
@@ -190,13 +201,14 @@
             "video_enabled": "Allow video",
             "auto_answer": "Auto answer",
             "send_video": "Send video",
-            "voicemail_enabled": "Enable voicemail for this phone"
+            "voicemail_enabled": "Enable mailbox"
           },
           "data_description": {
             "name": "Required phone name used by the card, phonebook and call routing.",
             "extension": "Optional unique dialable extension. The logical phone remains ringable when no browser card is connected.",
             "auto_answer": "Automatically answer when an attached browser has microphone permission.",
-            "send_video": "Send an attached browser camera by default when video is negotiated and permission is available."
+            "send_video": "Send an attached browser camera by default when video is negotiated and permission is available.",
+            "voicemail_enabled": "Disabling this mailbox permanently deletes its messages, files, PIN and mailbox settings. Enabling it again creates an empty mailbox."
           }
         },
         "sip_account": {
@@ -215,7 +227,10 @@
             "video_enabled": "Allow video negotiation",
             "offline_policy": "When not registered",
             "offline_forward_target": "Forward destination",
-            "voicemail_enabled": "Enable voicemail for this phone"
+            "voicemail_enabled": "Enable mailbox"
+          },
+          "data_description": {
+            "voicemail_enabled": "Disabling this mailbox permanently deletes its messages, files, PIN and mailbox settings. Enabling it again creates an empty mailbox."
           }
         },
         "reconfigure": {
@@ -227,7 +242,8 @@
         "phone_username_invalid": "Use only letters, numbers, dots, underscores or hyphens.",
         "phone_password_required": "A SIP password is required.",
         "phone_forward_target_required": "A forward destination is required for the Forward policy.",
-        "phone_alias_conflict": "The name, extension or username is already used by another phone."
+        "phone_alias_conflict": "The name, extension or username is already used by another phone.",
+        "mailbox_removal_failed": "The mailbox could not be deleted. Restore access to the media directory and try again."
       },
       "abort": {
         "reconfigure_successful": "Phone reconfigured successfully.",
@@ -315,7 +331,8 @@
             "trunk_dtmf_terminator": "DTMF terminator",
             "trunk_allowed_ips": "Allowed incoming IP addresses",
             "trunk_audio_codecs": "Allowed audio codecs",
-            "trunk_video_codecs": "Allowed video codecs"
+            "trunk_video_codecs": "Allowed video codecs",
+            "trunk_outbound_media_address": "Outbound media IPv4 address"
           },
           "data_description": {
             "trunk_transport": "SIP transport used from HA to the provider.",
@@ -334,7 +351,8 @@
             "trunk_dtmf_terminator": "Optional terminator digit such as #. Empty means timeout or exact phonebook extension match decides.",
             "trunk_allowed_ips": "Enter each permitted source IP or CIDR network separately. These may differ from the outbound server. Required without registration.",
             "trunk_audio_codecs": "Audio codecs permitted for incoming and outgoing calls on this trunk. Keep the defaults unless your PBX/provider specifies a list. Select at least one codec. A call needs a common codec; DTMF is negotiated separately. This list does not change other trunks or local phones.",
-            "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure."
+            "trunk_video_codecs": "Video codecs permitted on this trunk. Clear the list for audio-only calls. Selecting a codec does not enable video or transcoding: the phone and media path must support it. H.264 profiles are negotiated automatically. Keep the defaults if unsure.",
+            "trunk_outbound_media_address": "Optional. Home Assistant address reachable by this PBX for audio and video on outgoing calls. Behind NAT, use your public IPv4 address and keep RTP/RTCP reachable with unchanged port numbers. Do not enter the provider address. Empty uses the existing HA address. Does not change LAN calls or SIP registration."
           }
         }
       },
@@ -350,7 +368,8 @@
         "trunk_registration_failed": "Registration failed. Check the server, transport and credentials. The saved configuration has not changed.",
         "trunk_validation_failed": "Check the connection settings and incoming networks. Static trunks on the same transport cannot have overlapping source networks.",
         "trunk_codecs_invalid": "Select supported codecs and keep at least one audio codec.",
-        "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination."
+        "trunk_target_required": "Choose a receiving phone or enter a dial-plan destination.",
+        "trunk_media_address_invalid": "Enter a reachable unicast IPv4 address, or leave empty."
       },
       "abort": {
         "reconfigure_successful": "Trunk configuration updated."
@@ -429,6 +448,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Idle",
+        "unavailable": "Unavailable",
+        "calling": "Calling",
+        "ringing": "Ringing",
+        "in_call": "In a call",
+        "held": "On hold"
+      }
     }
   },
   "system_health": {
@@ -463,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Duplicate phone extensions",
       "description": "These destinations use the same extension: {conflicts}. Assign a different extension to each phone, contact or Assist endpoint. Calls to an ambiguous extension are rejected; names and explicit SIP addresses remain available. For an ESPHome phone, change its extension on the device. This issue disappears when the phonebook has no conflicts."
+    },
+    "parking_configuration": {
+      "title": "Parking configuration needs attention",
+      "description": "Choose valid parking access and slot numbers that do not conflict with existing phones, contacts or groups. Existing destinations remain unchanged."
+    },
+    "mailbox_route_conflict": {
+      "title": "Voicemail feature codes conflict",
+      "description": "A phone, contact or group uses a voicemail feature address. Rename the conflicting destination; existing routes remain unchanged."
     }
   },
   "exceptions": {
@@ -835,6 +872,36 @@
           "description": "Optional phone filter. Leave empty for all mailboxes."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Phone state changed",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "from": {
+          "name": "From"
+        },
+        "to": {
+          "name": "To"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Phone mailbox changed",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Call picked up",
+      "fields": {
+        "destination": {
+          "name": "Destination"
+        }
+      }
     }
   },
   "conditions": {
@@ -875,6 +942,74 @@
         "digits": {
           "name": "Expected digits",
           "description": "Leave empty to match any received digits."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Phone is in state",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "state": {
+          "name": "State"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Phone has a ringing call",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Phone has voicemail",
+      "fields": {
+        "phone": {
+          "name": "Phone"
+        },
+        "unread_only": {
+          "name": "Unread messages only"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Get phone state",
+      "description": "Read state, calls and mailbox counters for the selected phone.",
+      "fields": {
+        "device_id": {
+          "name": "Phone"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Pick up call",
+      "description": "Recover a ringing or parked call on the selected phone.",
+      "fields": {
+        "device_id": {
+          "name": "Recovering phone"
+        },
+        "target_device_id": {
+          "name": "Ringing phone"
+        },
+        "slot": {
+          "name": "Parking slot"
+        },
+        "answer_timeout": {
+          "name": "Wait for answer"
+        },
+        "call_id": {
+          "name": "Call ID"
+        },
+        "expected_generation": {
+          "name": "Call generation"
+        },
+        "leg_id": {
+          "name": "Call leg"
         }
       }
     }

@@ -16,7 +16,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 
 from .const import DOMAIN, SIP_CALL_ENDED_EVENT
 
-CALL_EVENT_ENTITY_ID = "event.voip_stack_call"
+from .entity_identity import shared_entity_ids
 
 
 def _party(data: Mapping[str, Any], *keys: str) -> str:
@@ -70,7 +70,7 @@ def _route_destination(data: Mapping[str, Any]) -> str:
     return ""
 
 
-def _describe_call(data: Mapping[str, Any]) -> dict[str, str]:
+def _describe_call(data: Mapping[str, Any], entity_id: str | None = None) -> dict[str, str]:
     """Build one durable summary from the terminal event payload."""
 
     caller = _party(data, "caller", "peer_name") or "Unknown caller"
@@ -124,7 +124,7 @@ def _describe_call(data: Mapping[str, Any]) -> dict[str, str]:
     return {
         LOGBOOK_ENTRY_NAME: "VoIP Stack",
         LOGBOOK_ENTRY_MESSAGE: message,
-        LOGBOOK_ENTRY_ENTITY_ID: CALL_EVENT_ENTITY_ID,
+        **({LOGBOOK_ENTRY_ENTITY_ID: entity_id} if entity_id else {}),
         LOGBOOK_ENTRY_ICON: "mdi:phone-log",
     }
 
@@ -142,6 +142,6 @@ def async_describe_events(
     def async_describe_call_event(
         event: Event[dict[str, Any]],
     ) -> dict[str, str]:
-        return _describe_call(event.data)
+        return _describe_call(event.data, shared_entity_ids(hass)["call_event"])
 
     async_describe_event(DOMAIN, SIP_CALL_ENDED_EVENT, async_describe_call_event)

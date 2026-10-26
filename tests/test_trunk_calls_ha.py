@@ -3,6 +3,7 @@
 import asyncio
 import re
 import socket
+import secrets
 import struct
 
 import pytest
@@ -15,7 +16,7 @@ from custom_components.voip_stack.roster import RosterEntry
 from custom_components.voip_stack.runtime_data import sip_trunk, sip_trunks
 from custom_components.voip_stack.trunk_runtime import async_start_sip_trunk, async_stop_sip_trunk
 
-from .test_automation_originate_ha import lab, dial, tts_fixture
+from .test_automation_originate_ha import lab as lab, dial, tts_fixture
 
 pytestmark = pytest.mark.ha
 
@@ -29,9 +30,20 @@ async def trunks(lab, monkeypatch, request):
         from custom_components.voip_stack.pbx_runtime import SipEndpointRuntime
 
         lab.runtime.sip = lab.calls = SipEndpointRuntime(allow_dark_sessions=True)
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            lab.runtime.transport_config["sip_port"] = probe.getsockname()[1]
+        # The listener needs the same port on UDP and TCP. Keep it outside
+        # peer media and OS ephemeral ranges to avoid cross-transport collisions.
+        for _ in range(128):
+            selected_port = 10000 + secrets.randbelow(2000)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_probe, socket.socket() as tcp_probe:
+                    udp_probe.bind(("0.0.0.0", selected_port))
+                    tcp_probe.bind(("0.0.0.0", selected_port))
+            except OSError:
+                continue
+            lab.runtime.transport_config["sip_port"] = selected_port
+            break
+        else:
+            raise RuntimeError("No free UDP/TCP port in the SIP laboratory range")
         monkeypatch.setattr(peer_snapshot, "async_build_peer_snapshot", AsyncMock(return_value=[]))
         monkeypatch.setattr(endpoint_runtime, "_roster_from_peers", lambda *_args: lab.roster)
         monkeypatch.setattr(invite_router, "_roster_from_peers", lambda *_args: lab.roster)
@@ -194,7 +206,8 @@ async def test_browser_phone_preference_and_explicit_override_dial_the_selected_
 
 
 @pytest.mark.parametrize("trunks", [True], indirect=True)
-async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_duplex_rtp(trunks):
+@pytest.mark.parametrize("rename", [False, True])
+async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_duplex_rtp(trunks, rename):
     from custom_components.voip_stack.core.audio_format import AudioFormat
     from custom_components.voip_stack.phone_endpoint import EndpointKind, PhoneEndpoint
     from custom_components.voip_stack.phone_policy import PhonePolicy
@@ -219,6 +232,7 @@ async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_d
         lambda: SipDatagramQueueProtocol(client.queue), local_addr=("127.0.0.2", 0),
     )
     client.local_sip_port = client.transport.get_extra_info("sockname")[1]
+    platform = None
     try:
         result = await client.invite(target="External", remote_host="127.0.0.1",
                                      remote_sip_port=lab.runtime.transport_config["sip_port"], timeout=3)
@@ -228,6 +242,32 @@ async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_d
         assert not lab.phones[0].invites and len(lab.phones[1].invites) == 1
         session = lab.calls.get_session(client.dialog_ids.call_id)
         assert session.metadata["outbound_trunk_id"] == "work"
+        platform = None
+        if rename:
+            from datetime import timedelta
+            import logging
+            from homeassistant.helpers import entity_registry as er
+            from homeassistant.helpers.entity_platform import EntityPlatform
+            from custom_components.voip_stack.sensor import PhoneEndpointCallStateSensor
+
+            entity = PhoneEndpointCallStateSensor(lab.hass, lab.runtime.endpoints.require("source"), lab.runtime.endpoints)
+            platform = EntityPlatform(hass=lab.hass, logger=logging.getLogger(__name__), domain="sensor",
+                platform_name="voip_stack", platform=None, scan_interval=timedelta(seconds=30), entity_namespace=None)
+            platform.config_entry = lab.hass.config_entries.async_entries("voip_stack")[0]
+            await platform.async_add_entities([entity])
+            old_id = entity.entity_id
+            renamed = asyncio.Event()
+            unsubscribe_rename = lab.runtime.endpoints.subscribe(
+                lambda event: renamed.set() if "sensor.source_renamed_during_call" in event.endpoint.entity_ids else None
+            )
+            try:
+                er.async_get(lab.hass).async_update_entity(old_id, new_entity_id="sensor.source_renamed_during_call")
+                await asyncio.wait_for(renamed.wait(), 3)
+            finally:
+                unsubscribe_rename()
+            assert lab.runtime.endpoints.by_entity_id(old_id) is None
+            assert lab.runtime.endpoints.by_entity_id(entity.entity_id).active_call_id == session.call_id
+            assert lab.calls.get_session(session.call_id) is session
         dialog = client.dialog
         async with asyncio.timeout(3):
             for index in range(3):
@@ -249,7 +289,31 @@ async def test_sip_phone_uses_its_line_preference_through_real_ha_listener_and_d
             await barrier
         assert not lab.calls.sessions
         assert all(trunk.ready for trunk in sip_trunks(lab.hass).values())
+        if rename:
+            await client.close()
+            client = SipCallClient(local_ip="127.0.0.2", local_name="Source", local_uri_user="source",
+                local_sip_port=5060, local_rtp_port=audio.getsockname()[1],
+                supported_formats=[AudioFormat(sample_rate=16000, frame_ms=20)])
+            client.transport, client.protocol = await lab.hass.loop.create_datagram_endpoint(
+                lambda: SipDatagramQueueProtocol(client.queue), local_addr=("127.0.0.2", 0),
+            )
+            client.local_sip_port = client.transport.get_extra_info("sockname")[1]
+            result = await client.invite(target="External", remote_host="127.0.0.1",
+                remote_sip_port=lab.runtime.transport_config["sip_port"], timeout=3)
+            if result == "ringing":
+                result = await client.wait_for_final(timeout=3)
+            assert result == "in_call"
+            second = lab.calls.get_session(client.dialog_ids.call_id)
+            assert second is not session
+            assert client.bye()
+            await asyncio.wait_for(second.termination_started.wait(), 3)
+            barrier = lab.calls.request_termination(second.call_id, second.termination_intent)
+            if barrier is not None:
+                await barrier
+            assert not lab.calls.sessions
     finally:
+        if platform is not None:
+            await platform.async_reset()
         await client.close()
         audio.close()
 

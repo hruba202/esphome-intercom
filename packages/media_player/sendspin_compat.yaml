@@ -1,5 +1,4 @@
-# Optional Sendspin library fixes, without player or mixer instances.
-external_components:
-  - source: ${ext_components_source}
-    components: [sendspin_compat]
-sendspin_compat:
+# Legacy include path. Sendspin now uses its official dependency unchanged.
+# Native ESPHome provides this backend; no external override is needed.
+esphome:
+  min_version: 2026.10.0

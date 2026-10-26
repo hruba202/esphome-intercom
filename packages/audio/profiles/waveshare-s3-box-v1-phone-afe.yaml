@@ -1,0 +1,73 @@
+# Physical audio/backend configuration; local GMF selection is explicit.
+esp_audio_stack:
+  i2s_lrclk_pin: ${i2s_lrclk_pin}
+  i2s_bclk_pin: ${i2s_bclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+  i2s_din_pin: ${i2s_din_pin}
+  i2s_dout_pin: ${i2s_dout_pin}
+  sample_rate: 32000
+  output_sample_rate: 16000
+  bits_per_sample: 16
+  slot_bit_width: 32
+  correct_dc_offset: true
+  processor_id: afe_processor
+  audio_effects:
+    rate_cvt_complexity: 3
+    rate_cvt_perf_type: speed
+  num_channels: 2
+  codec:
+    i2c_id: i2c_bus
+    input:
+      type: es7210
+      address: 64
+      mic_selected: 15
+      gain_db: 12.0
+    output:
+      type: es8311
+      address: 24
+      use_mclk: true
+      no_dac_ref: true
+  tdm_total_slots: 4
+  tdm_mic_slot: 0
+  use_tdm_reference: true
+  tdm_ref_slot: 1
+  buffers_in_psram: true
+  audio_task_stack_in_psram: true
+esp_afe:
+  id: afe_processor
+  type: vc
+  mode: low_cost
+  mic_num: 1
+  aec_enabled: true
+  aec_filter_length: 4
+  aec_nlp_level: normal
+  se_enabled: false
+  ns_enabled: true
+  vad_enabled: false
+  continuous_vad: true
+  agc_enabled: true
+  memory_alloc_mode: more_psram
+microphone:
+- platform: esp_audio_stack
+  id: mic_afe
+number:
+- platform: esp_audio_stack
+  master_volume:
+    name: Speaker Volume
+    speaker_id: hw_speaker
+  mic_gain:
+    name: Microphone Gain
+speaker:
+- platform: esp_audio_stack
+  id: hw_speaker
+  sample_rate: 32000
+  bits_per_sample: 16
+external_components:
+- source: ${audio_stack_components_source}
+  components:
+  - esp_audio_stack
+  - esp_afe
+packages:
+  playback: !include '../../media_player/playback_compat.yaml'
+  afe_entities: !include '../../esp_afe/single_mic_entities.yaml'
+  gmf_source: !include '../gmf_source.yaml'

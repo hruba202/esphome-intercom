@@ -11,8 +11,10 @@
 #   - apply_media_artwork
 #   - mood_bg and mood_neutral LVGL image objects
 
+defaults:
+  sendspin_artwork_resize: '${ sendspin_artwork_resize | default("240x240") }'
 substitutions:
-  sendspin_artwork_resize: 240x240
+  sendspin_artwork_resize: ${sendspin_artwork_resize}
 
 globals:
   - id: sendspin_artwork_available

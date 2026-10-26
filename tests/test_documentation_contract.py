@@ -22,6 +22,9 @@ WEBSOCKET_API = ROOT / "custom_components" / "voip_stack" / "websocket_api.py"
 MARKDOWN_FILES = (
     ROOT / "README.md",
     *sorted(path for path in DOCS.rglob("*.md") if "private" not in path.parts),
+    *sorted((ROOT / "packages").rglob("*.md")),
+    *sorted(path for path in (ROOT / "yamls").rglob("*.md")
+            if not any(part.startswith(".") for part in path.relative_to(ROOT).parts)),
 )
 STYLE_MARKDOWN_FILES = (
     ROOT / "README.md",
@@ -208,6 +211,8 @@ def test_public_markdown_headings_use_sentence_case_without_emoji() -> None:
         "Enhancement",
         "ESPHome",
         "Espressif",
+        "FreeSWITCH",
+        "FusionPBX",
         "GitHub",
         "HACS",
         "Home",
@@ -386,6 +391,9 @@ def test_internal_reports_are_not_in_public_checkout() -> None:
     forbidden = [
         path for path in tracked
         if path and (ROOT / path).is_file()
-        and (path.startswith("docs/audits/") or path == "docs/COMMUNITY_REGRESSIONS.md")
+        and (
+            path.startswith(("docs/audits/", "docs/ESP_AUDIT_", "docs/ESP_COMPONENT_CONSOLIDATION_"))
+            or path in ("docs/COMMUNITY_REGRESSIONS.md", "docs/FORK_RETIREMENT.md")
+        )
     ]
     assert not forbidden, f"Internal reports must remain private: {forbidden}"

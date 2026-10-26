@@ -6,7 +6,6 @@ import re
 import socket
 import struct
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.exceptions import ServiceValidationError
@@ -19,7 +18,7 @@ from custom_components.voip_stack.roster import RosterEntry
 from custom_components.voip_stack.sip_client import SipCallClient
 from custom_components.voip_stack.sip_udp_io import SipDatagramQueueProtocol
 from custom_components.voip_stack.runtime_data import sip_trunks
-from .test_trunk_calls_ha import trunks, lab
+from .test_trunk_calls_ha import trunks as trunks, lab as lab
 
 pytestmark = pytest.mark.ha
 
@@ -37,7 +36,8 @@ async def esp_phones(trunks, monkeypatch):
         runtime.runtime.endpoints.register(endpoint)
         runtime.roster.append(RosterEntry(identity, address=host, metadata={'endpoint_id':identity}))
         audio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        audio.bind((host, 0)); audio.setblocking(False)
+        audio.bind((host, 0))
+        audio.setblocking(False)
         phone = SimpleNamespace(identity=identity, endpoint=endpoint, audio=audio, host=host, client=None,
             tasks=[], stopped=[], delivered=[], ordinary_args=[], send_invite=True, device={
                 'endpoint_id':identity, 'device_id':endpoint.device_id, 'name':identity,
@@ -79,7 +79,8 @@ async def esp_phones(trunks, monkeypatch):
             await phone.client.terminate()
             await phone.client.close()
         for task in phone.tasks:
-            if not task.done():task.cancel()
+            if not task.done():
+                task.cancel()
         await asyncio.gather(*phone.tasks, return_exceptions=True)
         phone.audio.close()
 
@@ -95,7 +96,8 @@ async def test_two_esp_actions_use_independent_lines_and_real_duplex_rtp(trunks,
     for index,(phone,response) in enumerate(zip(esp_phones,responses,strict=True)):
         client = phone.client
         result = await phone.tasks[-1]
-        if result=='ringing':result=await client.wait_for_final(timeout=3)
+        if result=='ringing':
+            result=await client.wait_for_final(timeout=3)
         assert result=='in_call'
         assert response['call']['call_id']==client.dialog_ids.call_id==phone.delivered[0]
         session=runtime.calls.get_session(client.dialog_ids.call_id)
@@ -116,7 +118,8 @@ async def test_two_esp_actions_use_independent_lines_and_real_duplex_rtp(trunks,
     for phone in esp_phones:
         await phone.client.terminate()
     async with asyncio.timeout(3):
-        while runtime.calls.sessions:await asyncio.sleep(.01)
+        while runtime.calls.sessions:
+            await asyncio.sleep(.01)
     assert not runtime.runtime.rtp_port_pool['used']
     assert all(client.ready for client in sip_trunks(runtime.hass).values())
     phone=esp_phones[0]
@@ -124,13 +127,15 @@ async def test_two_esp_actions_use_independent_lines_and_real_duplex_rtp(trunks,
     await runtime.hass.services.async_call('voip_stack','call',{
         'device_id':phone.endpoint.device_id,'destination':'External'},blocking=True)
     result=await phone.tasks[-1]
-    if result=='ringing':result=await phone.client.wait_for_final(timeout=3)
+    if result=='ringing':
+        result=await phone.client.wait_for_final(timeout=3)
     assert result=='in_call'
     assert len(runtime.phones[0].invites)==1 and len(runtime.phones[1].invites)==2
     assert runtime.calls.get_session(phone.client.dialog_ids.call_id).metadata['outbound_trunk_id']=='work'
     await phone.client.terminate()
     async with asyncio.timeout(3):
-        while runtime.calls.sessions:await asyncio.sleep(.01)
+        while runtime.calls.sessions:
+            await asyncio.sleep(.01)
     assert not runtime.runtime.rtp_port_pool['used']
 
 
@@ -139,16 +144,20 @@ async def test_two_esp_actions_use_independent_lines_and_real_duplex_rtp(trunks,
 async def test_cancelled_action_rejects_late_invite_and_releases_claim(trunks, esp_phones, monkeypatch, failure):
     from custom_components.voip_stack import esphome_origination
     monkeypatch.setattr(esphome_origination, 'ACTION_TIMEOUT', .1)
-    phone=esp_phones[0];phone.send_invite=False
+    phone=esp_phones[0]
+    phone.send_invite=False
     task=asyncio.create_task(trunks.hass.services.async_call('voip_stack','call',{
         'device_id':phone.endpoint.device_id,'destination':'External','trunk_id':'home'},blocking=True))
     async with asyncio.timeout(2):
-        while not phone.delivered:await asyncio.sleep(.001)
+        while not phone.delivered:
+            await asyncio.sleep(.001)
     if failure=='cancel':
         task.cancel()
-        with pytest.raises(asyncio.CancelledError):await task
+        with pytest.raises(asyncio.CancelledError):
+            await task
     else:
-        with pytest.raises(ServiceValidationError, match='did not start'):await task
+        with pytest.raises(ServiceValidationError, match='did not start'):
+            await task
     identity=phone.delivered[0]
     assert phone.stopped==[identity]
     assert not trunks.calls.sessions
@@ -224,26 +233,31 @@ async def test_action_cancel_after_invite_drains_late_answer(trunks, esp_phones)
         'device_id':phone.endpoint.device_id,'destination':'External','trunk_id':'home'},blocking=True))
     try:
         async with asyncio.timeout(3):
-            while not phone.tasks:await asyncio.sleep(.001)
+            while not phone.tasks:
+                await asyncio.sleep(.001)
         assert await phone.tasks[-1]=='ringing'
         assert len(peer.invites)==1
         task.cancel()
-        with pytest.raises(asyncio.CancelledError):await task
+        with pytest.raises(asyncio.CancelledError):
+            await task
         async with asyncio.timeout(3):
-            while trunks.calls.sessions:await asyncio.sleep(.01)
+            while trunks.calls.sessions:
+                await asyncio.sleep(.01)
         methods=[request.method for request in peer.requests]
         assert 'CANCEL' in methods and 'ACK' in methods and 'BYE' in methods
         assert phone.stopped==phone.delivered
         assert not trunks.runtime.rtp_port_pool.get('used',set())
         assert all(client.ready for client in sip_trunks(trunks.hass).values())
     finally:
-        if not task.done():task.cancel()
+        if not task.done():
+            task.cancel()
         await asyncio.gather(task,return_exceptions=True)
 
 
 @pytest.mark.parametrize('trunks', [True], indirect=True)
 async def test_repeated_cancellation_waits_for_scoped_firmware_cleanup(trunks, esp_phones):
-    phone=esp_phones[0];phone.send_invite=False
+    phone=esp_phones[0]
+    phone.send_invite=False
     entered,release=asyncio.Event(),asyncio.Event()
     async def gated_stop(call):
         phone.stopped.append(call.data['call_id'])
@@ -254,14 +268,16 @@ async def test_repeated_cancellation_waits_for_scoped_firmware_cleanup(trunks, e
         'device_id':phone.endpoint.device_id,'destination':'External','trunk_id':'home'},blocking=True))
     try:
         async with asyncio.timeout(2):
-            while not phone.delivered:await asyncio.sleep(.001)
+            while not phone.delivered:
+                await asyncio.sleep(.001)
         task.cancel()
         await asyncio.wait_for(entered.wait(),2)
         task.cancel()
         await asyncio.sleep(0)
         assert not task.done(), 'A second cancellation bypassed owned cleanup'
         release.set()
-        with pytest.raises(asyncio.CancelledError):await task
+        with pytest.raises(asyncio.CancelledError):
+            await task
         assert phone.stopped==phone.delivered
         assert not trunks.calls.sessions and not trunks.runtime.endpoints.get(phone.identity).active_call_id
     finally:
@@ -271,12 +287,14 @@ async def test_repeated_cancellation_waits_for_scoped_firmware_cleanup(trunks, e
 
 @pytest.mark.parametrize('trunks', [True], indirect=True)
 async def test_second_action_cannot_replace_pending_phone_request(trunks, esp_phones):
-    phone=esp_phones[0];phone.send_invite=False
+    phone=esp_phones[0]
+    phone.send_invite=False
     first=asyncio.create_task(trunks.hass.services.async_call('voip_stack','call',{
         'device_id':phone.endpoint.device_id,'destination':'External','trunk_id':'home'},blocking=True))
     try:
         async with asyncio.timeout(2):
-            while not phone.delivered:await asyncio.sleep(.001)
+            while not phone.delivered:
+                await asyncio.sleep(.001)
         identity=phone.delivered[0]
         with pytest.raises(ServiceValidationError,match='busy'):
             await trunks.hass.services.async_call('voip_stack','call',{

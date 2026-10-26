@@ -10,7 +10,7 @@ from urllib.parse import quote
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
-from .core.media_archive import MediaArchive
+from .core.media_archive import ArchiveError, MediaArchive
 from .phone_config import phone_subentry_by_endpoint_id, update_phone_subentry
 from .phone_endpoint import EndpointKind
 from .runtime_data import require_runtime_data
@@ -100,6 +100,9 @@ async def async_set_voicemail_settings(call: ServiceCall) -> None:
     entry = config_entry(call.hass)
     if entry is None:
         raise ServiceValidationError("VoIP Stack configuration is unavailable")
+    if call.data.get("enabled") is False:
+        await async_remove_mailbox(call.hass, endpoint.endpoint_id)
+        return
     settings = mailbox_settings(call.hass, endpoint.endpoint_id)
     for key in ("enabled", "max_seconds"):
         if key in call.data:
@@ -148,12 +151,15 @@ def resolve_mailbox_route(hass, target: str, entries, *, source_endpoint_id=""):
     from .router import RouteAction, RouteDecision, RouteReason
     from .roster import RosterEntry
     from .runtime_data import runtime_data
-    from .voicemail_config import voicemail_config
+    from .voicemail_config import mailbox_routes_available
     from .mailbox_address import parse_mailbox_address
 
     raw = str(target or "").strip()
     address = parse_mailbox_address(raw)
-    if address is None or not voicemail_config(hass).get("enabled"):
+    if address is None or not mailbox_routes_available(hass):
+        return None
+    if any(str(value or "").strip().casefold() == raw.casefold()
+           for entry in entries for value in (entry.id, entry.name, entry.extension, entry.number)):
         return None
     runtime = runtime_data(hass)
     if runtime is None:
@@ -166,9 +172,6 @@ def resolve_mailbox_route(hass, target: str, entries, *, source_endpoint_id=""):
         return RouteDecision(RouteAction.REJECT, target=raw, status=480, reason=RouteReason.TARGET_UNREACHABLE)
     if mode == "access" and endpoint is None:
         return RouteDecision(RouteAction.REJECT, target=raw, status=404, reason=RouteReason.ROUTE_NOT_FOUND)
-    if any(str(value or "").strip().casefold() == raw.casefold()
-           for entry in entries for value in (entry.id, entry.name, entry.extension, entry.number)):
-        return RouteDecision(RouteAction.REJECT, target=raw, status=403, reason=RouteReason.TARGET_DISABLED)
     entry = RosterEntry(raw, name=f"Voicemail: {endpoint.name}" if endpoint else "Voicemail",
                         metadata={"mailbox_endpoint_id": endpoint.endpoint_id if endpoint else "",
                                   "mailbox_mode": mode})
@@ -178,13 +181,13 @@ def resolve_mailbox_route(hass, target: str, entries, *, source_endpoint_id=""):
 def mailbox_snapshot(hass, endpoint_id):
     """One mailbox state projected to HA phones and standard SIP MWI."""
     from .runtime_data import runtime_data
-    from .voicemail_config import voicemail_config
+    from .voicemail_config import mailbox_routes_available
 
     runtime = runtime_data(hass)
     owner = runtime.sip if runtime is not None else None
     archive = owner.component("media_archive") if owner is not None else None
     new, old = archive.counts(endpoint_id) if archive is not None else (0, 0)
-    available = bool(voicemail_config(hass).get("enabled"))
+    available = mailbox_routes_available(hass)
     return {"available": available, "enabled": bool(available and mailbox_settings(hass, endpoint_id).get("enabled")),
             "new": new, "old": old, "total": new + old}
 
@@ -193,9 +196,12 @@ async def async_remove_mailbox(hass, endpoint_id):
     """Permanently remove one phone's mailbox after its applications release it."""
     from .session_cleanup import async_wait_for_cleanup
 
-    await async_wait_for_cleanup(asyncio.create_task(
-        _remove_mailbox(hass, endpoint_id), name="voip-mailbox-remove",
-    ))
+    try:
+        await async_wait_for_cleanup(asyncio.create_task(
+            _remove_mailbox(hass, endpoint_id), name="voip-mailbox-remove",
+        ))
+    except (OSError, ArchiveError) as error:
+        raise ServiceValidationError("The mailbox could not be deleted. Restore access to the media directory and try again.") from error
 
 
 async def _remove_mailbox(hass, endpoint_id):
@@ -220,6 +226,9 @@ async def _remove_mailbox(hass, endpoint_id):
     if barriers:
         await asyncio.gather(*barriers)
     archive = owner.component("media_archive")
+    path = archive_path(hass)
+    if archive is None and path is not None:
+        archive = await get_archive(hass)
     if archive is not None:
         await archive.remove_mailbox(endpoint_id)
     entry = config_entry(hass)
@@ -227,6 +236,8 @@ async def _remove_mailbox(hass, endpoint_id):
         settings = dict(entry.data[CONF_ESPHOME_MAILBOXES])
         settings.pop(endpoint_id)
         hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_ESPHOME_MAILBOXES: settings})
+    if entry is not None and phone_subentry_by_endpoint_id(entry, endpoint_id) is not None:
+        update_phone_subentry(hass, entry, endpoint_id, {"voicemail": {}})
     hass.bus.async_fire(EVENT_VOICEMAIL_CHANGED, {"endpoint_id": endpoint_id, "removed": True})
 
 
@@ -235,14 +246,7 @@ async def async_setup_mailboxes(hass, entry):
     from homeassistant.core import callback
     from homeassistant.helpers.device_registry import EVENT_DEVICE_REGISTRY_UPDATED
     from .endpoint_lifecycle import create_runtime_task
-    from .phone_config import phone_subentries
-    from .voicemail_config import voicemail_config
-
     runtime = require_runtime_data(hass)
-    if voicemail_config(hass).get("enabled") or entry.data.get(CONF_ESPHOME_MAILBOXES) or any(
-        child.data.get("voicemail") for child in phone_subentries(entry)
-    ):
-        await get_archive(hass)
 
     @callback
     def changed(event):
@@ -296,13 +300,15 @@ async def async_remove_entry_mailboxes(hass, entry):
 
 
 async def async_refresh_mailbox_state(hass):
-    from .voicemail_config import voicemail_config
+    from .phone_config import phone_subentries
     from .websocket_api import _publish_ha_softphone_state, _ha_softphone_store
 
     runtime = require_runtime_data(hass)
     if runtime.sip is None:
         return
-    if voicemail_config(hass).get("enabled"):
+    entry = config_entry(hass)
+    if entry is not None and (any(item.get("enabled") for item in entry.data.get(CONF_ESPHOME_MAILBOXES, {}).values())
+            or any(child.data.get("voicemail", {}).get("enabled") for child in phone_subentries(entry))):
         await get_archive(hass)
     for endpoint in runtime.endpoints.endpoints:
         if endpoint.kind.is_softphone:

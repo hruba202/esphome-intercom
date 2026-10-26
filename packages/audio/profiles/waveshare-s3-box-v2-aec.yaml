@@ -1,0 +1,12 @@
+# Standalone mono AEC. Audio Stack selects one mic or averages the two inputs.
+esp_aec:
+  id: aec_processor
+  sample_rate: 16000
+  filter_length: 4
+  mode: fd_low_cost
+external_components:
+- source: ${audio_stack_components_source}
+  components: [esp_aec]
+packages:
+  hardware: !include waveshare-s3-box-v2-common.yaml
+  processor_controls: !include '../../esp_audio_stack/aec_controls.yaml'

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -27,6 +28,7 @@ _METADATA_RESERVE = 65536
 _MAX_SEGMENTS = 128
 _QUEUE_FRAMES = 64
 _MAX_PCM_CHUNK = 32768
+_LOGGER = logging.getLogger(__name__)
 
 
 class ArchiveError(RuntimeError):
@@ -273,6 +275,10 @@ class ArchiveWriter:
         self._recording_timeline = {}
         self._final_shape = (0, 0, 0)
 
+    def fail(self, reason: str) -> None:
+        """Mark this recording failed while retaining its normal finalization owner."""
+        self._fail(reason)
+
     def _fail(self, reason):
         self.error = reason
         self.accepting = False
@@ -370,6 +376,7 @@ class MediaArchive:
         self.quota_bytes = int(quota_bytes)
         self._entries, self._active = {}, {}
         self._used = self._reserved = self.recovery_errors = 0
+        self._usage_dirty = False
         self._lock = asyncio.Lock()
 
     async def load(self):
@@ -380,6 +387,16 @@ class MediaArchive:
                 return await self.run_io(_load, self.root, self.quota_bytes)
             loading = asyncio.create_task(read(), name="voip-archive-load")
             self._entries, self._used, self.recovery_errors = await async_wait_for_cleanup(loading)
+            self._usage_dirty = False
+
+    async def _recount_usage(self, active):
+        try:
+            used = await self.run_io(_audio_bytes, self.root, tuple(active))
+        except BaseException:
+            self._usage_dirty = True
+            raise
+        self._used = used
+        self._usage_dirty = False
 
     def _reserve(self, count):
         if self._used + self._reserved + count > self.quota_bytes:
@@ -391,6 +408,11 @@ class MediaArchive:
         if kind not in {"voicemail", "recording"} or not 1 <= len(mailbox_id) <= 255:
             raise ArchiveError("Invalid recording destination")
         async with self._lock:
+            if self._usage_dirty:
+                try:
+                    await self._recount_usage(self._active)
+                except OSError as error:
+                    raise ArchiveError("Media archive storage is unavailable") from error
             if not self._reserve(_METADATA_RESERVE):
                 raise ArchiveError("Media archive quota exceeded")
             identity = uuid4().hex
@@ -431,12 +453,19 @@ class MediaArchive:
                 except (ArchiveError, OSError, ValueError):
                     writer._fail("finalization_failed")
                     writer.result = None
-            used = await self.run_io(_audio_bytes, self.root, tuple(identity for identity in self._active if identity != writer.identity))
-            self._active.pop(writer.identity, None)
-            self._reserved -= writer.reserved
-            self._used = used
-            if writer.result is not None:
-                self._entries[writer.identity] = deepcopy(writer.result)
+            try:
+                await self._recount_usage(identity for identity in self._active if identity != writer.identity)
+            except OSError:
+                # The reservation bounds this recording's disk footprint. Keep
+                # it as used space until a later scan can measure the files.
+                self._used += writer.reserved
+                _LOGGER.warning("Media archive size scan failed; retaining conservative quota accounting", exc_info=True)
+            finally:
+                self._active.pop(writer.identity, None)
+                self._reserved -= writer.reserved
+                writer.reserved = 0
+                if writer.result is not None:
+                    self._entries[writer.identity] = deepcopy(writer.result)
 
     def list(self, mailbox_id: str, *, kind="voicemail", offset=0, limit=None) -> list[dict]:
         entries = sorted((entry for entry in self._entries.values()
@@ -501,7 +530,10 @@ class MediaArchive:
             async def commit():
                 await self.run_io(remove)
                 self._entries.pop(identity)
-                self._used = await self.run_io(_audio_bytes, self.root, tuple(self._active))
+                try:
+                    await self._recount_usage(self._active)
+                except OSError:
+                    _LOGGER.warning("Media archive size scan failed after deletion; retaining previous quota accounting", exc_info=True)
             await async_wait_for_cleanup(asyncio.create_task(commit(), name="voip-archive-delete"))
 
     async def remove_mailbox(self, mailbox_id: str):

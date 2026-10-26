@@ -1,11 +1,11 @@
 # Spotpear full-experience VoIP navigation.
 #
-# Base vertical stack:
-#   VA --swipe up--> contacts --swipe up--> settings
-# Device-specific pages may insert another screen between contacts and settings.
+# Legacy call-page bridges retain their existing settings and VA owners.
+# Modern round pages invoke round_navigate directly; these compatibility
+# actions also serve the first-generation layout, which has no dialer.
 #
 # Requires the full-experience scripts/globals:
-#   swipe_to_va, settings_open, nav_anim, nav_anim_ms.
+#   settings_open, swipe_to_va, nav_anim, nav_anim_ms.
 
 script:
   - id: !extend settings_open_transition

@@ -1,0 +1,16 @@
+# Shared maintenance without an additional runtime coordinator.
+defaults:
+  _fw_voice: false
+  _fw_wake_word: false
+  _fw_timers: false
+  _fw_music: false
+  _fw_voip: ${ 'voip' in firmware_features }
+  _fw_announcements: ${ 'voip' in firmware_features and firmware_phone_has_ringtone | default(false) }
+  _fw_lvgl: ${ 'voip' in firmware_features and 'display' in firmware_features and firmware_phone_has_display | default(false)
+    }
+  firmware_audio_backend: ${ firmware_audio_backend | default('audio_stack') }
+  firmware_maintenance_stop_animation: []
+  firmware_maintenance_redraw: ${ firmware_phone_redraw | default([]) }
+packages:
+  lifecycle: !include 'maintenance.yaml'
+  state: !include 'ota_state.yaml'

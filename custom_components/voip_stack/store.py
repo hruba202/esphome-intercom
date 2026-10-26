@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 
-from .const import CONF_PHONEBOOK_CONTACTS, CONF_SIP_ACCOUNTS, DOMAIN
+from .const import CONF_SIP_ACCOUNTS, DOMAIN
 from .runtime_data import sip_registrar
 
 _LOGGER = logging.getLogger(__name__)

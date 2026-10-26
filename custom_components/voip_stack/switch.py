@@ -13,7 +13,6 @@ from .endpoint_entity_manager import (
     EndpointEntityManager,
     register_endpoint_entity_manager,
 )
-from .phone_endpoint import EndpointKind
 from .runtime_data import endpoint_directory
 
 
@@ -118,11 +117,22 @@ class PhoneEndpointDndSwitch(SwitchEntity):
         self._attr_device_info = endpoint_device_info(endpoint)
         self._attr_is_on = bool(endpoint.dnd)
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
 
     @callback
     def apply_endpoint(self, endpoint) -> None:
@@ -156,11 +166,22 @@ class PhoneEndpointConferenceRingSwitch(SwitchEntity):
         self._attr_device_info = endpoint_device_info(endpoint)
         self._attr_is_on = bool(endpoint.conference_ring)
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
 
     @callback
     def apply_endpoint(self, endpoint) -> None:
@@ -202,11 +223,22 @@ class _PhoneEndpointBrowserPreferenceSwitch(SwitchEntity):
         self._attr_device_info = endpoint_device_info(endpoint)
         self._attr_is_on = bool(getattr(endpoint, self.preference_name))
 
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep phone lookup and permissions attached to the renamed entity."""
+        super().async_entity_id_changed(old_entity_id)
+        async_link_endpoint_entity(
+            self.registry, self.endpoint.endpoint_id, self.entity_id, old_entity_id
+        )
+        self._linked_entity_id = self.entity_id
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         async_link_endpoint_entity(
-            self.registry, self.endpoint.endpoint_id, self.entity_id
+            self.registry, self.endpoint.endpoint_id, self.entity_id,
+            getattr(self, "_linked_entity_id", None),
         )
+        self._linked_entity_id = self.entity_id
 
     @callback
     def apply_endpoint(self, endpoint) -> None:

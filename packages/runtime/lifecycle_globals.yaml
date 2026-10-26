@@ -1,18 +1,16 @@
-# Globals owned by lifecycle adapters.
+# Runtime lifecycle state; maintenance state has one shared declaration.
 globals:
-  - id: init_in_progress
-    type: bool
-    restore_value: false
-    initial_value: "true"
-  - id: runtime_activity_mask
-    type: uint32_t
-    restore_value: false
-    initial_value: "0"
-  - id: runtime_sequence
-    type: uint32_t
-    restore_value: false
-    initial_value: "0"
-  - id: g_ota_in_progress
-    type: bool
-    restore_value: false
-    initial_value: "false"
+- id: init_in_progress
+  type: bool
+  restore_value: false
+  initial_value: 'true'
+- id: runtime_activity_mask
+  type: uint32_t
+  restore_value: false
+  initial_value: '0'
+- id: runtime_sequence
+  type: uint32_t
+  restore_value: false
+  initial_value: '0'
+packages:
+  ota_state: !include '../features/shared/ota_state.yaml'

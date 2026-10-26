@@ -7,10 +7,17 @@ Parking leaves the other party connected to Home Assistant while you put down
 your phone. Another phone retrieves that conversation by calling its parking
 slot. The caller does not have to redial.
 
-## Enable and configure
+## Configure parking
 
-Open the integration's main configuration and enable call parking. By default,
-parking is disabled and does not reserve any numbers in the dial plan.
+Parking is available by default. Open **VoIP Stack > Reconfigure > Call parking**
+to customize its numbers, timeouts and optional hold audio. No hold media means
+silence while parked, not a background player.
+
+If an existing phone, contact or group already uses a parking address, that
+route remains intact and HA Repairs reports the conflict. Configure another
+parking range before using the feature. Occupied slots cannot be removed until
+their calls have been retrieved or ended; editing other settings does not reload
+the SIP transport. Existing parked calls retain their timer and media settings.
 
 The initial settings are:
 
@@ -36,6 +43,23 @@ is **701**, put Kitchen down and dial **701** from Office. You do not transfer t
 
 ![Park on one phone and retrieve from another](images/park-and-retrieve.svg)
 
+## Follow the slot shown by the card
+
+![The card reports that the call is parked in slot 701](images/pbx-phone-parked-green.png)
+
+In this example, pressing **P** released Test and left Spotpear connected to
+VoIP Stack in slot **701**. The phonebook selection visible after parking is
+for the next call; it is not the parked participant.
+
+![Dial the reported slot to retrieve the parked call](images/pbx-phone-pickup-green.png)
+
+Open the keypad on the phone where you want to continue, enter **701** and
+press **Call**. The same card can also retrieve it. After pickup, the occupied
+slot disappears and the card shows the resumed call. The current peer is not
+repeated in the busy-phone list.
+
+![The call resumed after retrieving slot 701](images/pbx-phone-retrieved-green.png)
+
 ## From a SIP phone
 
 While speaking to someone, transfer the call to `700`. The PBX retains the
@@ -51,10 +75,20 @@ package (RFC 4235) for a busy-lamp indication.
 
 ## From the dashboard card
 
-During an established audio call, **Park call** appears when parking is enabled
-in the backend. It invokes the same action described below and displays the
-assigned slot. The card does not choose a slot or move media itself. Dial the
-slot from another phone to retrieve its caller.
+During an established audio call, **Park call** is available without a global
+enable switch. Resolve any parking-number conflict reported by HA Repairs
+before using it. Occupied slots appear in the list on the left of the card,
+including calls parked by another phone. The list updates when a call is
+retrieved, returned or ended. The Park control is disabled during a browser video call: parking currently
+supports audio-only calls, even if the local webcam is switched off. It invokes the same action described below and displays the
+assigned slot. The card does not choose a slot or move media itself. Dial that
+slot from the same card or another phone to retrieve its caller. For example,
+after **Park** reports **701**, open the keypad, enter **701** and press **Call**.
+Do not call 700 to retrieve it: 700 is the parking access number.
+
+These slots belong to VoIP Stack in Home Assistant. A telephone registered to
+another PBX, such as FusionPBX, needs a dial-plan route from that PBX to HA's
+parking slots. Its own PBX's extension 701 is not automatically HA's slot 701.
 
 Browser-to-browser calls return to the existing local audio bridge after
 pickup. SIP participants retain their established SIP dialog and negotiated
@@ -80,10 +114,10 @@ fields; a phone selected with the GUI does not require a hand-written device ID.
 
 ## Answer another ringing phone
 
-With parking enabled, dial `pickup.kitchen` to answer the individual phone named
+Dial `pickup.kitchen` to answer the individual phone named
 `kitchen`, or `*8101` if its extension is `101`. An occupied parking slot still
 uses its normal slot number or `pickup.701`. Slot names take precedence.
-The `*8` prefix is reserved while this feature is enabled; it is a local dial-plan
+The `*8` prefix is reserved by the pickup feature; it is a local dial-plan
 convention, not a standardized SIP feature code. Asterisk also exposes directed
 pickup through its dial plan, although its configured access code may differ.
 
@@ -97,8 +131,15 @@ the replacement media owner.
 
 Use an identified phone connected to this HA PBX. For a dashboard phone, enter
 the same address in its card or use `voip_stack.call` with that phone selected.
-Pickup currently targets individual ringing audio calls, not a conference,
-a group branch, an active video call or an Automation-owned announcement.
+Pickup can target a ringing member of an audio ring group, including a group
+containing only HA browser phones. The group confirms the recovering phone
+before retiring its other answerers. If preparation fails and the caller is
+still connected, another member can answer or another phone can try pickup.
+A phone that already declined this group call cannot recover that same call;
+its failed attempt does not make it ring again. Later calls remain available.
+
+Conferences, active video calls and Automation-owned announcements are not
+supported pickup targets.
 
 ## Current verification boundary
 

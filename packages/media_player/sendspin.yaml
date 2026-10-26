@@ -1,8 +1,8 @@
 # Optional Sendspin source added to the existing player.
+defaults:
+  sendspin_audio_ring_buffer_size: '${ sendspin_audio_ring_buffer_size | default("262144") }'
 substitutions:
-  sendspin_audio_ring_buffer_size: "262144"
-packages:
-  sendspin_compat: !include sendspin_compat.yaml
+  sendspin_audio_ring_buffer_size: ${sendspin_audio_ring_buffer_size}
 sendspin:
   id: sendspin_hub
   task_stack_in_psram: true
@@ -18,3 +18,26 @@ media_player:
     media_pipeline:
       sources:
         - sendspin_media_source
+
+# Music Assistant requests pairing; confirm it from this device's HA controls,
+# then enter the temporary code shown by the native Sendspin text sensor.
+text_sensor:
+  - platform: sendspin
+    id: sendspin_pairing_code
+    sendspin_id: sendspin_hub
+    type: pairing_code
+    name: Sendspin Pairing Code
+    entity_category: diagnostic
+button:
+  - platform: template
+    id: sendspin_confirm_pairing
+    name: Sendspin Confirm Pairing
+    entity_category: config
+    on_press:
+      - sendspin.confirm_pairing_window: sendspin_hub
+  - platform: template
+    id: sendspin_cancel_pairing
+    name: Sendspin Cancel Pairing
+    entity_category: config
+    on_press:
+      - sendspin.cancel_pairing_window: sendspin_hub

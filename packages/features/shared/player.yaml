@@ -1,0 +1,14 @@
+# One player. Feature modules attach only the pipelines they use.
+packages:
+  compatibility: !include '../../media_player/playback_compat.yaml'
+  codecs: !include '../../audio/http_media_codecs.yaml'
+  observer: !include 'player_observer.yaml'
+media_player:
+- platform: speaker_source
+  id: speaker_media_player
+  name: None
+  internal: false
+  volume_initial: 100%
+  volume_min: 0%
+  volume_max: 100%
+  volume_increment: 5%

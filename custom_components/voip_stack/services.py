@@ -332,7 +332,10 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
 
     def handler_for(name: str):
         async def _handle(call: ServiceCall) -> object:
-            if name in admin_services:
+            if name == "get_phone_state":
+                from .authorization import async_require_service_read
+                await async_require_service_read(hass, call)
+            elif name in admin_services:
                 await async_require_service_admin(hass, call)
             else:
                 await async_require_service_control(hass, call)
@@ -388,6 +391,19 @@ async def async_register_services(hass: HomeAssistant, handlers: dict[str, objec
         schema=sip_transfer_schema,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(DOMAIN, "pickup", handler_for("pickup"),
+        schema=vol.Schema({vol.Required("device_id"): IDENTIFIER_TEXT,
+            vol.Optional("target_device_id", default=""): IDENTIFIER_TEXT,
+            vol.Optional("slot", default=""): IDENTIFIER_TEXT,
+            vol.Optional("call_id", default=""): SHORT_TEXT,
+            vol.Optional("expected_generation"): SEQUENCE,
+            vol.Optional("leg_id", default=""): SHORT_TEXT,
+            vol.Optional("media_client_id", default=""): IDENTIFIER_TEXT,
+            vol.Optional("answer_timeout", default=30): vol.All(vol.Coerce(float), vol.Range(min=1, max=120)),
+        }, extra=vol.PREVENT_EXTRA), supports_response=SupportsResponse.OPTIONAL)
+    hass.services.async_register(DOMAIN, "get_phone_state", handler_for("get_phone_state"),
+        schema=vol.Schema({vol.Required("device_id"): IDENTIFIER_TEXT}, extra=vol.PREVENT_EXTRA),
+        supports_response=SupportsResponse.ONLY)
     hass.services.async_register(DOMAIN, "park", handler_for("park"),
         schema=vol.Schema({**phone_selector_fields,
             vol.Optional("call_id", default=""): SHORT_TEXT,

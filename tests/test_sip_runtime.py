@@ -273,6 +273,70 @@ class SipRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["connected_identity_name"], "")
         self.assertEqual(kwargs["connected_identity_user"], "")
 
+    def test_application_answer_identity_does_not_reflect_the_caller(self) -> None:
+        for application_user, application_name in (
+            ("voicemail.kitchen", "Kitchen mailbox"),
+            ("*97", "My mailbox"),
+            ("announcements", "Announcements"),
+        ):
+            with self.subTest(application=application_user):
+                owner = _Server(owns="application-call")
+                session = SimpleNamespace(
+                    metadata={
+                        "endpoint_id": "caller",
+                        "source_endpoint_id": "caller",
+                        "dest_endpoint_id": "",
+                        "target_endpoint_id": "",
+                        "sip_uri": f"sip:{application_user}@pbx.example.test",
+                    },
+                    callee=application_name,
+                    generation=3,
+                    answer_committed=True,
+                )
+                caller = SimpleNamespace(name="Calling phone", sip_uri_user="2600")
+                hass = SimpleNamespace(data={DOMAIN: {
+                    "sip_endpoint": owner,
+                    "call_registry": SimpleNamespace(
+                        resolve_session_id=lambda call_id: call_id,
+                        sessions={"application-call": session},
+                    ),
+                    "endpoint_registry": SimpleNamespace(
+                        get=lambda endpoint_id: caller if endpoint_id == "caller" else None,
+                    ),
+                }})
+
+                self.assertTrue(send_final_response(
+                    hass, "application-call", 200, "OK", expected_generation=3,
+                ))
+                kwargs = owner.final_calls[-1][3]
+                self.assertEqual(kwargs["connected_identity_name"], application_name)
+                self.assertEqual(kwargs["connected_identity_user"], application_user)
+
+    def test_explicit_answer_identity_is_preserved_after_call_rearrangement(self) -> None:
+        for identity_key in ("dest_endpoint_id", "target_endpoint_id", "endpoint_id"):
+            with self.subTest(identity_key=identity_key):
+                # An explicit destination remains authoritative even when it
+                # has replaced the original source after call rearrangement.
+                source_id = "caller" if identity_key == "endpoint_id" else "kitchen"
+                session = SimpleNamespace(
+                    metadata={identity_key: "kitchen", "source_endpoint_id": source_id},
+                    callee="Previous destination",
+                )
+                kitchen = SimpleNamespace(name="Cucina", sip_uri_user="428")
+                hass = SimpleNamespace(data={DOMAIN: {
+                    "call_registry": SimpleNamespace(
+                        resolve_session_id=lambda call_id: call_id,
+                        sessions={"rearranged-call": session},
+                    ),
+                    "endpoint_registry": SimpleNamespace(
+                        get=lambda endpoint_id: kitchen if endpoint_id == "kitchen" else None,
+                    ),
+                }})
+                self.assertEqual(
+                    sip_runtime._connected_identity_for_call(hass, "rearranged-call"),
+                    ("Cucina", "428"),
+                )
+
     def test_uri_transport_defaults_to_udp(self) -> None:
         self.assertEqual(uri_transport(SimpleNamespace(params=())), "UDP")
         self.assertEqual(

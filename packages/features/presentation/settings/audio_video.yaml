@@ -1,0 +1,699 @@
+# Audio, processing and voice controls retain their existing owners.
+# Only user events write owners; programmatic updates use separate LVGL events.
+substitutions:
+  _settings_speaker_widgets:
+    - label:
+        width: ${_settings_control_width}
+        text: !lambda |-
+          char text[64];
+          snprintf(text, sizeof(text), "Master volume: %.0f%%", static_cast<double>(id(master_volume).state));
+          return std::string(text);
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+        id: ui_speaker_value_label
+    - slider:
+        id: ui_speaker_vol_slider
+        width: ${_settings_control_width}
+        height: ${settings_slider_height}
+        ext_click_area: ${_settings_slider_touch_pad}
+        margin_bottom: ${_settings_slider_touch_pad}
+        min_value: 0
+        max_value: 100
+        adv_hittest: true
+        on_release:
+          - number.set:
+              id: master_volume
+              value: !lambda |-
+                return x;
+          - script.execute: settings_sync_speaker
+  _settings_speaker_package:
+    script:
+      - id: settings_sync_speaker
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj && !lv_obj_has_state(id(ui_speaker_vol_slider), LV_STATE_PRESSED);
+              then:
+                - lvgl.label.update:
+                    id: ui_speaker_value_label
+                    text: !lambda |-
+                      char text[64];
+                      snprintf(text, sizeof(text), "Master volume: %.0f%%", static_cast<double>(id(master_volume).state));
+                      return std::string(text);
+                - lvgl.slider.update:
+                    id: ui_speaker_vol_slider
+                    value: !lambda |-
+                      return id(master_volume).state;
+  _settings_speaker_callback: id(master_volume).add_on_state_callback([](float) {
+    id(settings_sync_speaker).execute(); });
+  _settings_playback_widgets:
+    - label:
+        width: ${_settings_control_width}
+        text: !lambda |-
+          char text[64];
+          snprintf(text, sizeof(text), "Playback volume: %ld%%", std::lround(id(speaker_media_player).volume * 100.0f));
+          return std::string(text);
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+        id: ui_playback_value_label
+    - slider:
+        id: ui_playback_vol_slider
+        width: ${_settings_control_width}
+        height: ${settings_slider_height}
+        ext_click_area: ${_settings_slider_touch_pad}
+        margin_bottom: ${_settings_slider_touch_pad}
+        min_value: 0
+        max_value: 100
+        adv_hittest: true
+        on_release:
+          - media_player.volume_set:
+              id: speaker_media_player
+              volume: !lambda |-
+                return x / 100.0f;
+          - script.execute: settings_sync_playback
+  _settings_playback_package:
+    script:
+      - id: settings_sync_playback
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  if (lv_disp_get_scr_act(nullptr) != id(${_settings_page_id})->obj ||
+                      lv_obj_has_state(id(ui_playback_vol_slider), LV_STATE_PRESSED)) return false;
+                  char text[64];
+                  snprintf(text, sizeof(text), "Playback volume: %ld%%",
+                           std::lround(id(speaker_media_player).volume * 100.0f));
+                  return lv_slider_get_value(id(ui_playback_vol_slider)) !=
+                             std::lround(id(speaker_media_player).volume * 100.0f) ||
+                         strcmp(lv_label_get_text(id(ui_playback_value_label)), text) != 0;
+              then:
+                - lvgl.label.update:
+                    id: ui_playback_value_label
+                    text: !lambda |-
+                      char text[64];
+                      snprintf(text, sizeof(text), "Playback volume: %ld%%", std::lround(id(speaker_media_player).volume * 100.0f));
+                      return std::string(text);
+                - lvgl.slider.update:
+                    id: ui_playback_vol_slider
+                    value: !lambda |-
+                      return std::lround(id(speaker_media_player).volume * 100.0f);
+  _settings_playback_callback: id(speaker_media_player).add_on_state_callback([](media_player::MediaPlayerState)
+    { id(settings_sync_playback).execute(); });
+  _settings_mic_widgets:
+    - label:
+        width: ${_settings_control_width}
+        text: !lambda |-
+          char text[64];
+          snprintf(text, sizeof(text), "Microphone gain: %.0f dB", static_cast<double>(id(mic_gain).state));
+          return std::string(text);
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+        id: ui_mic_value_label
+    - slider:
+        id: ui_mic_vol_slider
+        width: ${_settings_control_width}
+        height: ${settings_slider_height}
+        ext_click_area: ${_settings_slider_touch_pad}
+        margin_bottom: ${_settings_slider_touch_pad}
+        min_value: ${mic_gain_min}
+        max_value: ${mic_gain_max}
+        adv_hittest: true
+        on_release:
+          - number.set:
+              id: mic_gain
+              value: !lambda |-
+                return x;
+          - script.execute: settings_sync_mic
+  _settings_mic_package:
+    script:
+      - id: settings_sync_mic
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj && !lv_obj_has_state(id(ui_mic_vol_slider), LV_STATE_PRESSED);
+              then:
+                - lvgl.label.update:
+                    id: ui_mic_value_label
+                    text: !lambda |-
+                      char text[64];
+                      snprintf(text, sizeof(text), "Microphone gain: %.0f dB", static_cast<double>(id(mic_gain).state));
+                      return std::string(text);
+                - lvgl.slider.update:
+                    id: ui_mic_vol_slider
+                    value: !lambda |-
+                      return id(mic_gain).state;
+  _settings_mic_callback: id(mic_gain).add_on_state_callback([](float) { id(settings_sync_mic).execute();
+    });
+  _settings_speaker_mute_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Speaker mute
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_speaker_mute_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(speaker_mute).state) return;
+                    if (x) id(speaker_mute).turn_on();
+                    else id(speaker_mute).turn_off();
+                - script.execute: settings_sync_speaker_mute
+  _settings_speaker_mute_package:
+    script:
+      - id: settings_sync_speaker_mute
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_speaker_mute_sw
+                    state:
+                      checked: !lambda |-
+                        return id(speaker_mute).state;
+  _settings_speaker_mute_callback: id(speaker_mute).add_on_state_callback([](bool)
+    { id(settings_sync_speaker_mute).execute(); });
+  _settings_mic_mute_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Microphone mute
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_mic_mute_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(mute).state) return;
+                    if (x) id(mute).turn_on();
+                    else id(mute).turn_off();
+                - script.execute: settings_sync_mic_mute
+  _settings_mic_mute_package:
+    script:
+      - id: settings_sync_mic_mute
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_mic_mute_sw
+                    state:
+                      checked: !lambda |-
+                        return id(mute).state;
+  _settings_mic_mute_callback: id(mute).add_on_state_callback([](bool) { id(settings_sync_mic_mute).execute();
+    });
+  _settings_aec_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Echo cancellation
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_aec_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(aec_switch).state) return;
+                    if (x) id(aec_switch).turn_on();
+                    else id(aec_switch).turn_off();
+                - script.execute: settings_sync_aec
+  _settings_aec_package:
+    script:
+      - id: settings_sync_aec
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_aec_sw
+                    state:
+                      checked: !lambda |-
+                        return id(aec_switch).state;
+  _settings_aec_callback: id(aec_switch).add_on_state_callback([](bool) { id(settings_sync_aec).execute();
+    });
+  _settings_ns_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Noise suppression
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_ns_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(ns_switch).state) return;
+                    if (x) id(ns_switch).turn_on();
+                    else id(ns_switch).turn_off();
+                - script.execute: settings_sync_ns
+  _settings_ns_package:
+    script:
+      - id: settings_sync_ns
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_ns_sw
+                    state:
+                      checked: !lambda |-
+                        return id(ns_switch).state;
+  _settings_ns_callback: id(ns_switch).add_on_state_callback([](bool) { id(settings_sync_ns).execute();
+    });
+  _settings_agc_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Automatic gain
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_agc_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(agc_switch).state) return;
+                    if (x) id(agc_switch).turn_on();
+                    else id(agc_switch).turn_off();
+                - script.execute: settings_sync_agc
+  _settings_agc_package:
+    script:
+      - id: settings_sync_agc
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_agc_sw
+                    state:
+                      checked: !lambda |-
+                        return id(agc_switch).state;
+  _settings_agc_callback: id(agc_switch).add_on_state_callback([](bool) { id(settings_sync_agc).execute();
+    });
+  _settings_vad_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Voice activity detection
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_vad_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(vad_switch).state) return;
+                    if (x) id(vad_switch).turn_on();
+                    else id(vad_switch).turn_off();
+                - script.execute: settings_sync_vad
+  _settings_vad_package:
+    script:
+      - id: settings_sync_vad
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_vad_sw
+                    state:
+                      checked: !lambda |-
+                        return id(vad_switch).state;
+  _settings_vad_callback: id(vad_switch).add_on_state_callback([](bool) { id(settings_sync_vad).execute();
+    });
+  _settings_wake_word_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: SIZE_CONTENT
+        min_height: ${_settings_row_height}
+        clickable: false
+        bg_opa: TRANSP
+        border_width: 0
+        pad_all: 0
+        scrollable: false
+        layout:
+          type: FLEX
+          flex_flow: ROW
+          flex_align_main: SPACE_BETWEEN
+          flex_align_cross: CENTER
+        widgets:
+          - label:
+              width: ${_settings_label_width}
+              text: Wake word
+              text_align: LEFT
+              text_color: 16777215
+              text_font: ${_settings_font}
+              long_mode: WRAP
+          - switch:
+              id: ui_wake_word_sw
+              width: ${_settings_switch_width}
+              height: ${_settings_switch_height}
+              on_change:
+                - lambda: !lambda |-
+                    if (x == id(wake_word_switch).state) return;
+                    if (x) id(wake_word_switch).turn_on();
+                    else id(wake_word_switch).turn_off();
+                - script.execute: settings_sync_wake_word
+  _settings_wake_word_package:
+    script:
+      - id: settings_sync_wake_word
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.widget.update:
+                    id: ui_wake_word_sw
+                    state:
+                      checked: !lambda |-
+                        return id(wake_word_switch).state;
+  _settings_wake_word_callback: id(wake_word_switch).add_on_state_callback([](bool)
+    { id(settings_sync_wake_word).execute(); });
+  _settings_mode_widgets:
+    - label:
+        width: ${_settings_control_width}
+        text: Processing mode
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+    - dropdown:
+        id: ui_aec_mode_dd
+        width: ${_settings_control_width}
+        options: ${_settings_modes}
+        on_change:
+          - select.set_index:
+              id: aec_mode_select
+              index: !lambda |-
+                return x;
+          - script.execute: settings_sync_mode
+  _settings_mode_package:
+    script:
+      - id: settings_sync_mode
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.dropdown.update:
+                    id: ui_aec_mode_dd
+                    selected_text: !lambda |-
+                      return id(aec_mode_select).current_option();
+  _settings_mode_callback: id(aec_mode_select).add_on_state_callback([](size_t) {
+    id(settings_sync_mode).execute(); });
+  _settings_sendspin_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: 2
+        bg_color: 4473924
+        border_width: 0
+        pad_all: 0
+    - label:
+        width: ${_settings_control_width}
+        text: Sendspin
+        text_align: LEFT
+        text_color: 8956671
+        text_font: ${_settings_font}
+        long_mode: WRAP
+    - label:
+        width: ${_settings_control_width}
+        text: Pair this device from Music Assistant.
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+    - label:
+        width: ${_settings_control_width}
+        text: !lambda |-
+          const auto &code = id(sendspin_pairing_code).state;
+          return code.empty() ? std::string("No pairing code") : std::string("Pairing code: ") + code;
+        text_align: LEFT
+        text_color: 16777215
+        text_font: ${_settings_font}
+        long_mode: WRAP
+        id: ui_sendspin_pairing_label
+    - button:
+        id: ui_sendspin_confirm_btn
+        width: ${_settings_control_width}
+        height: 44
+        on_click:
+          - button.press: sendspin_confirm_pairing
+        widgets:
+          - label:
+              align: CENTER
+              text: Confirm pairing
+              text_font: ${_settings_font}
+    - button:
+        id: ui_sendspin_cancel_btn
+        width: ${_settings_control_width}
+        height: 44
+        on_click:
+          - button.press: sendspin_cancel_pairing
+        widgets:
+          - label:
+              align: CENTER
+              text: Cancel pairing
+              text_font: ${_settings_font}
+  _settings_sendspin_package:
+    script:
+      - id: settings_sync_sendspin
+        then:
+          - if:
+              condition:
+                lambda: !lambda |-
+                  return lv_disp_get_scr_act(nullptr) == id(${_settings_page_id})->obj;
+              then:
+                - lvgl.label.update:
+                    id: ui_sendspin_pairing_label
+                    text: !lambda |-
+                      const auto &code = id(sendspin_pairing_code).state;
+                      return code.empty() ? std::string("No pairing code") : std::string("Pairing code: ") + code;
+  _settings_sendspin_callback: id(sendspin_pairing_code).add_on_state_callback([](const
+    std::string &) { id(settings_sync_sendspin).execute(); });
+  _settings_audio_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: 2
+        bg_color: 4473924
+        border_width: 0
+        pad_all: 0
+    - label:
+        width: ${_settings_control_width}
+        text: Audio
+        text_align: LEFT
+        text_color: 8956671
+        text_font: ${_settings_font}
+        long_mode: WRAP
+  _settings_processing_widgets:
+    - obj:
+        width: ${_settings_control_width}
+        height: 2
+        bg_color: 4473924
+        border_width: 0
+        pad_all: 0
+    - label:
+        width: ${_settings_control_width}
+        text: Processing
+        text_align: LEFT
+        text_color: 8956671
+        text_font: ${_settings_font}
+        long_mode: WRAP
+  _settings_voice_heading:
+    - obj:
+        width: ${_settings_control_width}
+        height: 2
+        bg_color: 4473924
+        border_width: 0
+        pad_all: 0
+    - label:
+        width: ${_settings_control_width}
+        text: Voice
+        text_align: LEFT
+        text_color: 8956671
+        text_font: ${_settings_font}
+        long_mode: WRAP
+  _settings_left_widgets: ${ _settings_audio_widgets + _settings_speaker_widgets
+    + (_settings_playback_widgets if _fw_playback else []) + _settings_mic_widgets
+    + _settings_speaker_mute_widgets + _settings_mic_mute_widgets }
+  _settings_right_widgets: ${ _settings_processing_widgets + _settings_aec_widgets + _settings_mode_widgets
+    + (_settings_ns_widgets + _settings_agc_widgets if _settings_afe and _settings_single_mic
+    else []) + (_settings_vad_widgets if _settings_afe else []) + (_settings_voice_heading
+    + _settings_wake_word_widgets if _fw_wake_word else [])
+    + (_settings_sendspin_widgets if _fw_sendspin else []) }
+  _settings_audio_callbacks: !lambda |-
+    ${ _settings_speaker_callback }
+    ${ _settings_mic_callback }
+    ${ _settings_speaker_mute_callback }
+    ${ _settings_mic_mute_callback }
+    ${ _settings_aec_callback }
+    ${ _settings_mode_callback }
+    ${ _settings_ns_callback + '\n' + _settings_agc_callback if _settings_afe and _settings_single_mic else '' }
+    ${ _settings_vad_callback if _settings_afe else '' }
+    ${ _settings_wake_word_callback if _fw_wake_word else '' }
+    ${ _settings_playback_callback if _fw_playback else '' }
+    ${ _settings_sendspin_callback if _fw_sendspin else '' }
+  _settings_audio_sync:
+    - script.execute: settings_sync_speaker
+    - script.execute: settings_sync_mic
+    - script.execute: settings_sync_speaker_mute
+    - script.execute: settings_sync_mic_mute
+    - script.execute: settings_sync_aec
+    - script.execute: settings_sync_mode
+  _settings_refresh_ns:
+    - script.execute: settings_sync_ns
+  _settings_refresh_agc:
+    - script.execute: settings_sync_agc
+  _settings_refresh_vad:
+    - script.execute: settings_sync_vad
+  _settings_refresh_wake_word:
+    - script.execute: settings_sync_wake_word
+  _settings_refresh_playback:
+    - script.execute: settings_sync_playback
+  _settings_refresh_sendspin:
+    - script.execute: settings_sync_sendspin
+  _settings_refresh_audio: ${ _settings_audio_sync + (_settings_refresh_ns + _settings_refresh_agc
+    if _settings_afe and _settings_single_mic else []) + (_settings_refresh_vad if
+    _settings_afe else []) + (_settings_refresh_wake_word if _fw_wake_word else [])
+    + (_settings_refresh_playback if _fw_playback else []) + (_settings_refresh_sendspin
+    if _fw_sendspin else []) }
+packages:
+  speaker: ${ _settings_speaker_package }
+  mic: ${ _settings_mic_package }
+  speaker_mute: ${ _settings_speaker_mute_package }
+  mic_mute: ${ _settings_mic_mute_package }
+  aec: ${ _settings_aec_package }
+  mode: ${ _settings_mode_package }
+  ns: ${ _settings_ns_package if _settings_afe and _settings_single_mic else {} }
+  agc: ${ _settings_agc_package if _settings_afe and _settings_single_mic else {}
+    }
+  vad: ${ _settings_vad_package if _settings_afe else {} }
+  wake_word: ${ _settings_wake_word_package if _fw_wake_word else {} }
+  playback: ${ _settings_playback_package if _fw_playback else {} }
+  sendspin: ${ _settings_sendspin_package if _fw_sendspin else {} }

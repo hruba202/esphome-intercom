@@ -8,6 +8,8 @@ import logging
 
 from homeassistant.core import HomeAssistant, ServiceCall
 
+from .entity_identity import phonebook_state
+
 from .trunk_policy import external_call_denied, is_any_trunk_uri, trunk_available
 from .peer_media_profile import resolve_peer_media_profile
 from .call_projection import publish_phone_projection
@@ -15,7 +17,6 @@ from .core.audio_format import HA_TRUNK_AUDIO_FORMATS
 from .authorization import async_require_service_admin
 from .config import (
     transport_config as _get_transport_config,
-    trunk_config as _get_trunk_config,
     trunk_enabled as _trunk_enabled,
     trunk_identity_uri as _trunk_identity_uri,
     trunk_leg_identity as _trunk_leg_identity,
@@ -73,7 +74,6 @@ from .runtime_data import (
     endpoint_directory,
     require_runtime_data,
     sip_registrar,
-    sip_trunk,
 )
 from .service_endpoints import (
     async_require_phone_service_control as _require_phone_service_control,
@@ -219,7 +219,7 @@ async def async_originate_browser_call(
     trunk_ready = _trunk_enabled(trunk_cfg) and bool(
         trunk_available(trunk)
     )
-    sensor = hass.states.get("sensor.voip_phonebook")
+    sensor = phonebook_state(hass)
     roster_json = (
         str(sensor.attributes.get("roster_json") or "") if sensor is not None else ""
     )
@@ -705,6 +705,8 @@ async def async_originate_browser_call(
         if reuse_registered_trunk_flow(trunk, client):
             _LOGGER.info("SIP trunk registered UDP flow reused for outbound call")
     else:
+        from .sip_runtime import configure_local_contact
+        configure_local_contact(hass, client)
         _enable_reused_sip_tcp_connection(
             hass,
             client,

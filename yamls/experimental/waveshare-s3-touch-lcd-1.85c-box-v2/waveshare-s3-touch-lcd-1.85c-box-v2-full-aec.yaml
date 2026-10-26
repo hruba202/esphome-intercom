@@ -1,0 +1,37 @@
+# Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2, legacy AEC entrypoint.
+# The unified full.yaml entrypoint exposes the same processor/mix/transport choices.
+# V1 has different audio hardware. This profile requires ESPHome 2026.10.0+.
+#
+# This firmware is composed from shared ESPHome packages. Inspect the merged YAML:
+#   esphome config --no-defaults device.yaml > device-expanded.yaml
+# Replace device.yaml with this file's name. Edit the original, not the generated view.
+# External component sources and media assets remain referenced in that view.
+#
+# Choose independently, then rebuild:
+#   audio_processor: aec | afe
+#   mic_mix: average | passthrough
+#   voip_transport: udp | tcp (SIP only, RTP audio always uses UDP)
+# AEC + average: both microphones averaged into one AEC input.
+# AEC + passthrough: the first microphone, without downmix.
+# AFE + passthrough: two separate microphones, with structural SE/BSS.
+# AFE + average: mono AFE, without dual-microphone SE/BSS.
+# Both backends share this board's calibrated analog playback reference.
+# Direct ESP calls require matching SIP transports; HA can bridge mixed transports.
+#
+# Keep secrets.yaml beside this file, with wifi_ssid and wifi_password.
+# The device package supplies pinout, 360x360 UI, controls and media wiring.
+# See packages/README.md for feature selection and supported hardware-test scope.
+# Support: https://github.com/sponsors/n-IA-hane
+
+substitutions:
+  name: waveshare-s3-touch-lcd-185c-v2
+  friendly_name: Waveshare S3 Touch LCD 1.85C V2
+  firmware_features: [voice, wake_word, voip, music, sendspin, timers, display, diagnostics]
+  audio_processor: aec
+  mic_mix: passthrough
+  mic_id: mic_main
+  voip_transport: udp
+  # Optional overrides: mic_id, ai_avatar, component source refs, pins and buffers.
+
+packages:
+  device: github://n-IA-hane/esphome-intercom/packages/devices/waveshare-s3-box-v2-aec.yaml@dev

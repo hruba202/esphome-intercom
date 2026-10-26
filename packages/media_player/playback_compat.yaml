@@ -1,8 +1,3 @@
-# Shared playback-completion and Sendspin compatibility adapters.
-# Keeps playback accounting and pending-source cancellation consistent.
+# Playback uses the official ESPHome audio, mixer and speaker_source providers.
 esphome:
-  min_version: 2026.9.0
-
-external_components:
-  - source: ${ext_components_source}
-    components: [mixer, speaker_source]
+  min_version: 2026.10.0

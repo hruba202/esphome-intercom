@@ -1,0 +1,46 @@
+# P4 timer events and overlay projection, loaded only with timers and display.
+voice_assistant:
+  on_timer_started:
+  - script.execute: update_timer_state
+  on_timer_cancelled:
+  - script.execute: update_timer_state
+  on_timer_updated:
+  - script.execute: update_timer_state
+  on_timer_tick:
+  - script.execute: update_timer_state
+  on_timer_finished:
+  - script.execute: draw_display
+script:
+- id: update_timer_state
+  then:
+  - lambda: |-
+      const auto &timers = id(va).get_timers();
+      bool any_active = false;
+      voice_assistant::Timer first_active{};
+      for (const auto &t : timers) {
+        if (t.is_active && (!any_active || t.seconds_left < first_active.seconds_left)) {
+          first_active = t;
+          any_active = true;
+        }
+      }
+      int phase = id(voice_assistant_phase);
+      bool on_supported_page = (
+        phase == ${voice_assist_idle_phase_id} ||
+        phase == ${voice_assist_listening_phase_id} ||
+        phase == ${voice_assist_thinking_phase_id} ||
+        phase == ${voice_assist_muted_phase_id}
+      );
+      if (!on_supported_page || !any_active) {
+        lv_obj_add_flag(id(timer_overlay), LV_OBJ_FLAG_HIDDEN);
+        return;
+      }
+      uint32_t sec = first_active.seconds_left;
+      lv_bar_set_value(id(timer_bar), 100, LV_ANIM_OFF);
+      char buf[16];
+      int h = sec / 3600;
+      int m = (sec / 60) % 60;
+      int s = sec % 60;
+      if (h > 0) snprintf(buf, sizeof(buf), "%02d:%02d", h, m);
+      else       snprintf(buf, sizeof(buf), "%02d:%02d", m, s);
+      lv_label_set_text(id(timer_label), buf);
+      lv_obj_clear_flag(id(timer_overlay), LV_OBJ_FLAG_HIDDEN);

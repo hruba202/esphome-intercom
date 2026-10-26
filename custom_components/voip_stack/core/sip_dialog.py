@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Protocol, TypeVar
 
 from . import sip
+from ..session_cleanup import async_wait_for_cleanup
+
+
+_MediaContract = TypeVar("_MediaContract")
+_LOGGER = logging.getLogger(__name__)
+
+
+def notify_media_commit(callback: Callable[[_MediaContract], None] | None, contract: _MediaContract) -> None:
+    """Notify observers only after the signaling owner publishes its contract."""
+    if callback is not None:
+        try:
+            callback(contract)
+        except Exception:
+            _LOGGER.exception("Committed SIP media observer failed")
 
 
 async def apply_remote_offer_media(
     commit: Callable[[], Awaitable[None]] | None,
     rollback: Callable[[], Awaitable[None]] | None = None,
+    finalize: Callable[[], Awaitable[None]] | None = None,
 ) -> bool:
     """Commit prepared media atomically, rolling it back on local failure."""
 
@@ -18,9 +36,13 @@ async def apply_remote_offer_media(
         return True
     try:
         await commit()
-    except Exception:
+        if finalize is not None:
+            await async_wait_for_cleanup(asyncio.create_task(finalize(), name="voip-media-finalize"))
+    except BaseException as error:
         if rollback is not None:
-            await rollback()
+            await async_wait_for_cleanup(asyncio.create_task(rollback(), name="voip-media-rollback"))
+        if isinstance(error, asyncio.CancelledError):
+            raise
         return False
     return True
 
@@ -153,3 +175,58 @@ def uas_request_matches_dialog(
     expected = DialogKey.for_uas_dialog(initial_request, local_tag=local_tag)
     received = DialogKey.from_uas_request(request)
     return expected.complete and received.complete and received == expected
+
+
+class DialogIdentityOwner(Protocol):
+    @property
+    def dialog(self) -> object | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDialogIdentity:
+    """Expected identity publication by one prepared media transition."""
+
+    owner: DialogIdentityOwner
+    previous: object
+    candidate: object
+
+    def current(self, *, committed: bool) -> bool:
+        return self.owner.dialog is (self.candidate if committed else self.previous)
+
+
+@dataclass(slots=True, kw_only=True)
+class SubscriptionDialog(DialogSignalingState):
+    """Stable dialog routing with independent local and remote sequences."""
+
+    key: DialogKey
+    local_uri: str
+    remote_uri: str
+    remote_cseq: int
+    local_cseq: int = 1
+
+    @classmethod
+    def from_request(cls, request: sip.SipMessage, local_tag: str):
+        return cls(
+            key=DialogKey.for_uas_dialog(request, local_tag=local_tag),
+            local_uri=sip.name_addr_uri(request.header("To")).split(";tag=", 1)[0],
+            remote_uri=sip.name_addr_uri(request.header("From")).split(";tag=", 1)[0],
+            remote_target_uri=sip.contact_target_uri(request),
+            route_set=tuple(request.header_values("Record-Route")),
+            remote_cseq=sip.parse_cseq(request.header("CSeq")).number,
+        )
+
+    def refresh(self, request: sip.SipMessage):
+        if DialogKey.from_uas_request(request) != self.key:
+            raise sip.SipError("subscription dialog does not match")
+        sequence = sip.parse_cseq(request.header("CSeq")).number
+        if sequence <= self.remote_cseq:
+            raise ValueError("subscription CSeq did not advance")
+        target = sip.contact_target_uri(request)
+        if target:
+            self.remote_target_uri = target
+        self.remote_cseq = sequence
+
+    def next_cseq(self):
+        sequence = self.local_cseq
+        self.local_cseq += 1
+        return sequence

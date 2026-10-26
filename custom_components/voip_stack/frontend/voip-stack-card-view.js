@@ -8,6 +8,12 @@
 function installWheelScrollHandoff(scroller) {
   scroller.addEventListener("wheel", (event) => {
     if (event.ctrlKey || !event.deltaY) return;
+    // Let nested scroll panels consume the wheel before handing it to HA.
+    for (const node of event.composedPath()) {
+      if (node === scroller) break;
+      if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight &&
+          ["auto", "scroll"].includes(getComputedStyle(node).overflowY)) return;
+    }
     const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
       ? 16
       : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
@@ -90,7 +96,7 @@ export function buildMainCardSkeleton(cardVersion) {
         min-width: 0;
         height: 100%;
         min-height: 0;
-        overflow: hidden;
+        overflow: visible;
         --voip-stack-card-surface: var(--ha-card-background, var(--card-background-color, white));
         --voip-control-surface: transparent;
         --voip-control-hover-surface: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
@@ -110,9 +116,6 @@ export function buildMainCardSkeleton(cardVersion) {
          * this card has no remaining vertical overflow. Interactive controls
          * still receive their normal pointer/click events. */
         overscroll-behavior-y: auto;
-        background: var(--voip-stack-card-surface);
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));
         padding: var(--voip-fluid-space, 16px);
         position: relative;
         isolation: isolate;
@@ -223,6 +226,12 @@ export function buildMainCardSkeleton(cardVersion) {
         gap: 10px;
       }
       .keypad-panel[hidden] { display: none; }
+      .video-active:not(.settings-open) .keypad-panel {
+        min-height: 0;
+        max-height: var(--voip-video-keypad-height, 100%);
+        overflow-y: auto;
+        margin-bottom: 0;
+      }
       .keypad-input {
         width: 100%;
         box-sizing: border-box;
@@ -403,6 +412,38 @@ export function buildMainCardSkeleton(cardVersion) {
         margin-top: 10px;
       }
       .runtime-controls[hidden] { display: none; }
+      .card > .phone-activity {
+        position: absolute;
+        top: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
+        pointer-events: auto;
+        width: calc(50% - 2 * var(--voip-fluid-space, 16px));
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: .85em;
+      }
+      .phone-activity[hidden] { display: none; }
+      .parking-activity { left: var(--voip-fluid-space, 16px); }
+      .dialog-activity { right: var(--voip-fluid-space, 16px); }
+      .phone-activity li {
+        margin-bottom: var(--voip-fluid-space, 16px);
+        display: flex;
+        align-items: baseline;
+        gap: .4em;
+        width: max-content;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+      .phone-activity li::before { content: "\\2022"; flex: none; }
+      .dialog-activity li { margin-left: auto; flex-direction: row-reverse; text-align: right; }
+      .phone-activity span { min-width: 0; }
+
+      .runtime-controls .settings-btn {
+        border: 0;
+        background: transparent;
+      }
       .settings-panel {
         margin-top: 10px;
         padding: 8px 10px;
@@ -411,7 +452,12 @@ export function buildMainCardSkeleton(cardVersion) {
         text-align: left;
       }
       .settings-panel[hidden] { display: none; }
-      .settings-label-icon { display: none; }
+      .runtime-controls .settings-label { display: none; }
+      .settings-label-icon {
+        display: inline-flex;
+        vertical-align: middle;
+        --mdc-icon-size: 23px;
+      }
       .video-active:not(.settings-open) .runtime-controls {
         position: absolute;
         z-index: 4;
@@ -422,7 +468,7 @@ export function buildMainCardSkeleton(cardVersion) {
         margin: 0;
       }
       .video-active:not(.settings-open) .runtime-controls .settings-btn {
-        width: 36px;
+        width: var(--voip-video-control-size, 36px);
         height: 100%;
         margin: 0;
         padding: 0;
@@ -436,10 +482,8 @@ export function buildMainCardSkeleton(cardVersion) {
         display: inline-flex;
         --mdc-icon-size: 23px;
       }
-      .video-active:not(.settings-open) .voip-button.hangup { padding-right: 54px; }
-      .video-active.keypad-available:not(.settings-open) .voip-button.hangup {
-        /* Reserve both icon buttons and their gap so the timer cannot overlap. */
-        padding-right: 92px;
+      .video-active:not(.settings-open) .voip-button.hangup {
+        padding-right: var(--voip-video-actions-space, 0px);
       }
       .card.settings-open {
         overflow: auto;
@@ -778,25 +822,67 @@ export function buildMainCardSkeleton(cardVersion) {
     const voicemailBtn = document.createElement("button");
     voicemailBtn.type = "button";
     voicemailBtn.className = "settings-btn";
-    voicemailBtn.textContent = translate("Voicemail");
+    const voicemailLabel = document.createElement("span");
+    voicemailLabel.className = "settings-label";
+    voicemailLabel.textContent = translate("Voicemail");
+    const voicemailIcon = document.createElement("ha-icon");
+    voicemailIcon.className = "settings-label-icon";
+    voicemailIcon.setAttribute("icon", "mdi:voicemail");
+    voicemailBtn.append(voicemailLabel, voicemailIcon);
+    voicemailBtn.setAttribute("aria-label", translate("Voicemail"));
+    voicemailBtn.title = translate("Voicemail");
     voicemailBtn.hidden = true;
     voicemailBtn.setAttribute("aria-controls", "voip-voicemail-panel");
     runtimeControls.appendChild(voicemailBtn);
     const parkBtn = document.createElement("button");
     parkBtn.type = "button";
     parkBtn.className = "settings-btn";
-    parkBtn.textContent = translate("Park call");
+    const parkLabel = document.createElement("span");
+    parkLabel.className = "settings-label";
+    parkLabel.textContent = translate("Park call");
+    const parkIcon = document.createElement("ha-icon");
+    parkIcon.className = "settings-label-icon";
+    parkIcon.setAttribute("icon", "mdi:parking");
+    parkBtn.append(parkLabel, parkIcon);
+    parkBtn.setAttribute("aria-label", translate("Park call"));
+    parkBtn.title = translate("Park call");
     parkBtn.hidden = true;
     runtimeControls.appendChild(parkBtn);
+    const transferBtn = document.createElement("button");
+    const transferHangupBtn = document.createElement("button");
+    for (const [button, icon, label] of [
+      [transferBtn, "mdi:phone-forward", "Transfer call"],
+      [transferHangupBtn, "mdi:phone-hangup", "Hang up call"],
+    ]) {
+      button.type = "button";
+      button.className = "settings-btn";
+      const image = document.createElement("ha-icon");
+      image.className = "settings-label-icon";
+      image.setAttribute("icon", icon);
+      button.appendChild(image);
+      button.title = translate(label);
+      button.setAttribute("aria-label", translate(label));
+      button.hidden = true;
+      runtimeControls.appendChild(button);
+    }
     const recordBtn = document.createElement("button");
     recordBtn.type = "button";
     recordBtn.className = "settings-btn";
     recordBtn.textContent = translate("Record call");
     recordBtn.hidden = true;
     runtimeControls.appendChild(recordBtn);
-    const parkingNotice = document.createElement("span");
+    const parkingNotice = document.createElement("ul");
+    parkingNotice.className = "phone-activity parking-activity";
     parkingNotice.hidden = true;
-    runtimeControls.appendChild(parkingNotice);
+    parkingNotice.setAttribute("role", "list");
+    parkingNotice.setAttribute("aria-live", "polite");
+    card.appendChild(parkingNotice);
+    const phoneActivity = document.createElement("ul");
+    phoneActivity.className = "phone-activity dialog-activity";
+    phoneActivity.hidden = true;
+    phoneActivity.setAttribute("role", "list");
+    phoneActivity.setAttribute("aria-live", "polite");
+    card.appendChild(phoneActivity);
     const voicemailPanel = document.createElement("div");
     voicemailPanel.id = "voip-voicemail-panel";
     voicemailPanel.hidden = true;
@@ -814,6 +900,8 @@ export function buildMainCardSkeleton(cardVersion) {
     settingsLabelIcon.setAttribute("icon", "mdi:tune-variant");
     settingsBtn.appendChild(settingsLabel);
     settingsBtn.appendChild(settingsLabelIcon);
+    settingsBtn.setAttribute("aria-label", translate("Options"));
+    settingsBtn.title = translate("Options");
     settingsBtn.setAttribute("aria-controls", "voip-settings-panel");
     settingsBtn.setAttribute("aria-expanded", "false");
     runtimeControls.appendChild(settingsBtn);
@@ -859,6 +947,10 @@ export function buildMainCardSkeleton(cardVersion) {
     mailboxLabel.textContent = translate("Enable this phone's mailbox");
     mailboxRow.appendChild(mailboxLabel);
     settingsPanel.appendChild(mailboxRow);
+    const mailboxHelp = document.createElement("small");
+    mailboxHelp.textContent = translate("Disabling the mailbox permanently deletes its messages and settings.");
+    mailboxHelp.style.display = "block";
+    mailboxLabel.appendChild(mailboxHelp);
 
     const ringtoneRow = document.createElement("div");
     ringtoneRow.className = "auto-answer-row";
@@ -1065,7 +1157,7 @@ export function buildMainCardSkeleton(cardVersion) {
       keypadPanel, keypadInput, keypadKeys, keypadGrid,
       answerBtn, declineBtn, hangupBtn, hangupState, hangupPeer, hangupStats, hangupDuration, callBtn, placeholderBtn,
       statusIndicator, statusText, statusReason,
-      runtimeControls, keypadBtn, keypadLabel, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, parkingNotice, recordBtn,
+      runtimeControls, keypadBtn, keypadLabel, keypadIcon, settingsBtn, settingsPanel, voicemailBtn, voicemailPanel, parkBtn, transferBtn, transferHangupBtn, parkingNotice, phoneActivity, recordBtn,
       routingPanel, routingControls, ringingControls, trunkRow, trunkSelect,
       autoAnswerRow, autoAnswerCheckbox, dndRow, dndCheckbox, ringtoneRow, ringtoneCheckbox,
       mailboxRow, mailboxCheckbox,
@@ -1093,9 +1185,6 @@ export function buildUnconfiguredCardSkeleton(cardVersion) {
         height: 100%;
         min-height: 0;
         overflow: auto;
-        background: var(--ha-card-background, var(--card-background-color, white));
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));
         padding: 16px;
       }
       .header { font-size: 1.2em; font-weight: 500; margin-bottom: 16px; color: var(--primary-text-color); text-align: center; }

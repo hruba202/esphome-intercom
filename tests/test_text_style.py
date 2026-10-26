@@ -1,6 +1,7 @@
 """Project text style contracts."""
 
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -39,7 +40,16 @@ def test_tracked_text_avoids_generated_typography() -> None:
             text = path.read_text()
         except UnicodeDecodeError:
             continue
+        fence_marker = ""
+        fence_format = ""
         for line_number, line in enumerate(text.splitlines(), start=1):
+            fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line) if path.suffix == ".md" else None
+            if fence:
+                marker, info = fence.groups()
+                if not fence_marker:
+                    fence_marker, fence_format = marker, info.strip()
+                elif marker[0] == fence_marker[0] and len(marker) >= len(fence_marker) and not info.strip():
+                    fence_marker = fence_format = ""
             # Hardware signal diagrams in YAML comments intentionally use joined lines.
             diagram_comment = (
                 path.relative_to(ROOT).parts[0] == "yamls"
@@ -50,7 +60,10 @@ def test_tracked_text_avoids_generated_typography() -> None:
                 name
                 for character, name in forbidden.items()
                 if character in line
-                and not (diagram_comment and name == "box drawing character")
+                and not (
+                    (diagram_comment or fence_format == "text")
+                    and name == "box drawing character"
+                )
             )
             if found:
                 violations.append(

@@ -40,3 +40,56 @@ is_dtmf_result:
     digits:
       selector:
         text: {}
+
+is_phone_state:
+  fields:
+    phone:
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+    state:
+      required: true
+      selector:
+        select:
+          options:
+          - idle
+          - unavailable
+          - calling
+          - ringing
+          - in_call
+          - held
+          translation_key: phone_state
+has_ringing_call:
+  fields:
+    phone:
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+has_voicemail:
+  fields:
+    phone:
+      required: true
+      selector:
+        device:
+          filter:
+          - integration: voip_stack
+            model: Home Assistant softphone
+          - integration: voip_stack
+            model: SIP account
+          - integration: esphome
+    unread_only:
+      default: true
+      selector:
+        boolean: {}

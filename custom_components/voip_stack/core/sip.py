@@ -44,7 +44,8 @@ SUPPORTED_METHODS = frozenset(
         "UPDATE",
     }
 )
-SUPPORTED_OPTION_TAGS = frozenset({"100rel", "from-change", "replaces", "timer"})
+SUPPORTED_OPTION_TAGS = frozenset({"100rel", "from-change", "replaces", "timer", "tdialog"})
+RECOGNIZED_OPTION_TAGS = SUPPORTED_OPTION_TAGS | {"gruu"}
 KNOWN_UNSUPPORTED_METHODS = frozenset()
 _TOKEN_SEPARATORS = set("()<>@,;:\\\"/[]?={} \t")
 _QUOTED_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
@@ -60,6 +61,9 @@ _COMPACT_HEADER_NAMES = {
     "supported": "k",
     "to": "t",
     "via": "v",
+    "refer-to": "r",
+    "event": "o",
+    "referred-by": "b",
 }
 _CANONICAL_HEADER_NAMES = {compact: full for full, compact in _COMPACT_HEADER_NAMES.items()}
 _SINGLETON_HEADERS = frozenset({"call-id", "cseq", "from", "to"})
@@ -331,6 +335,58 @@ def make_branch() -> str:
     return "z9hG4bK" + token_hex(10)
 
 
+def name_addr_uri(value: str) -> str:
+    """Extract one URI before parsing URI headers or name-address parameters."""
+    value = value.strip()
+    if not value or any(ch in value for ch in "\r\n"):
+        raise SipError("empty or invalid name-address")
+    if len(_split_comma_header_values(value)) != 1:
+        raise SipError("name-address must contain exactly one URI")
+    quoted = escaped = False
+    start = None
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quoted:
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif not quoted and char == "<":
+            if start is not None:
+                raise SipError("nested URI brackets")
+            start = index + 1
+        elif not quoted and char == ">":
+            if start is None or start == index:
+                raise SipError("invalid URI brackets")
+            suffix = value[index + 1:].strip()
+            if suffix and not suffix.startswith(";"):
+                raise SipError("invalid name-address suffix")
+            return value[start:index].strip()
+    if start is not None or quoted:
+        raise SipError("unterminated name-address")
+    return value
+
+
+def split_sip_uri_headers(value: str) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """Decode SIP URI headers without HTML form '+' substitution."""
+    raw = name_addr_uri(value)
+    uri, separator, query = raw.partition("?")
+    headers = []
+    if separator:
+        for part in query.split("&"):
+            key, equals, val = part.partition("=")
+            if not key or not equals or re.search(r"%(?![0-9a-fA-F]{2})", part):
+                raise SipError("invalid SIP URI header")
+            try:
+                key, val = unquote(key, errors="strict"), unquote(val, errors="strict")
+            except UnicodeDecodeError as err:
+                raise SipError("invalid SIP URI header encoding") from err
+            if any(char in key + val for char in "\r\n\x00"):
+                raise SipError("invalid SIP URI header control character")
+            headers.append((key, val))
+    return uri, tuple(headers)
+
+
 def parse_sip_uri(value: str) -> SipUri:
     raw = value.strip()
     if any(ch in "\r\n" for ch in raw):
@@ -568,7 +624,7 @@ def supports_option(message: SipMessage, option: str) -> bool:
 def unsupported_required_options(message: SipMessage) -> tuple[str, ...]:
     """Return required option tags outside the implemented SIP profile."""
 
-    return tuple(sorted(option_tags(message, "Require") - SUPPORTED_OPTION_TAGS))
+    return tuple(sorted(option_tags(message, "Require") - RECOGNIZED_OPTION_TAGS))
 
 
 def format_name_addr(uri: str | SipUri, display_name: str = "") -> str:
@@ -635,7 +691,25 @@ def dialog_request_routing(
 
 
 def _split_semicolon_params(value: str) -> tuple[str, tuple[tuple[str, str | None], ...]]:
-    parts = [part.strip() for part in value.split(";")]
+    parts = []
+    quoted = escaped = False
+    bracketed = False
+    start = 0
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif not quoted and char == "<":
+            bracketed = True
+        elif not quoted and char == ">":
+            bracketed = False
+        elif char == ";" and not quoted and not bracketed:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    parts.append(value[start:].strip())
     head = parts[0] if parts else ""
     params: list[tuple[str, str | None]] = []
     for part in parts[1:]:
@@ -737,8 +811,9 @@ def response_matches_dialog_transaction(
     response: SipMessage,
     ids: SipDialogIds,
     method: str,
+    *, creating_dialog: bool = False,
 ) -> bool:
-    """Match one response to an exact in-dialog client transaction."""
+    """Match a transaction, allowing an initial response to establish its tag."""
 
     if not response.is_response:
         return False
@@ -753,7 +828,8 @@ def response_matches_dialog_transaction(
         and branch == ids.branch
         and response.header("Call-ID") == ids.call_id
         and extract_tag(response.header("From")) == ids.local_tag
-        and extract_tag(response.header("To")) == ids.remote_tag
+        and (extract_tag(response.header("To")) == ids.remote_tag
+             or (creating_dialog and not ids.remote_tag and bool(extract_tag(response.header("To")))))
     )
 
 
@@ -977,7 +1053,7 @@ def build_uas_response(
         if request.method in {"INVITE", "UPDATE"}:
             headers.extend(session_timer_response_headers(request))
     if request.method == "INVITE" and 101 <= int(status_code) < 300:
-        headers.append(("Supported", ", ".join(sorted(SUPPORTED_OPTION_TAGS))))
+        headers.append(("Supported", _contact_supported_options(contact_uri)))
     if body:
         headers.append(("Content-Type", "application/sdp"))
     if int(status_code) == 405:
@@ -993,6 +1069,13 @@ def build_uas_response(
             )
         )
     return build_response(status_code, reason, headers, body)
+
+
+def _contact_supported_options(contact_uri: str) -> str:
+    supported = SUPPORTED_OPTION_TAGS
+    if contact_uri and any(key.casefold() == "gr" for key, _value in parse_sip_uri(contact_uri).params):
+        supported = supported | {"gruu"}
+    return ", ".join(sorted(supported))
 
 
 def dialog_headers(
@@ -1034,7 +1117,7 @@ def dialog_headers(
         ("CSeq", f"{dialog.cseq} {method.upper()}"),
         ("Contact", format_name_addr(contact_uri, contact_display_name)),
         ("Allow", ", ".join(sorted(SUPPORTED_METHODS))),
-        ("Supported", ", ".join(sorted(SUPPORTED_OPTION_TAGS))),
+        ("Supported", _contact_supported_options(contact_uri)),
     ]
     if content_type:
         headers.append(("Content-Type", content_type))

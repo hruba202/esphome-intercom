@@ -156,6 +156,9 @@ def call_registry(hass: HomeAssistant) -> SipEndpointRuntime:
             )
         )
     runtime.sip.bind_endpoint_registry(runtime.endpoints)
+    from .call_projection import bind_state_publisher
+
+    bind_state_publisher(hass, runtime.sip)
     return runtime.sip
 
 

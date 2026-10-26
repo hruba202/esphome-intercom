@@ -1,0 +1,14 @@
+# Physical audio for the standalone phone. Playback adapters are selected as a compatible set.
+microphone:
+- platform: i2s_audio
+  id: mic_main
+  adc_type: external
+  i2s_audio_id: rx_i2s
+  i2s_din_pin: ${rx_i2s_din_pin}
+  channel: stereo
+  sample_rate: 48000
+  bits_per_sample: 32bit
+  correct_dc_offset: true
+external_components: []
+packages:
+  playback_compatibility: !include '../../media_player/playback_compat.yaml'

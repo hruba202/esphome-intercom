@@ -57,7 +57,14 @@ class BridgeMediaUpdateBinder:
                         or getattr(relay, side) is not previous_peer):
                     raise RuntimeError("audio bridge ownership changed before commit")
                 commit_peer()
-            return PreparedDialogMediaUpdate(commit)
+            def published(actual):
+                if (registry.is_generation_current(source_call_id, generation)
+                        and client.on_media_update is prepare and client.dialog is actual
+                        and registry.resource_for(source_call_id, "relay") is relay):
+                    session.state_changed()
+                    from .call_projection import publish_bridge_projection
+                    publish_bridge_projection(self.hass, session, event_type="state_changed")
+            return PreparedDialogMediaUpdate(commit, on_committed=published)
         client.on_media_update = prepare
 
     def attach(
@@ -447,6 +454,14 @@ class BridgeMediaUpdateBinder:
                 if adding_video and staged_video_relay is not None:
                     await staged_video_relay.stop()
 
+            def published(actual):
+                if (registry.is_generation_current(source_call_id, call_generation)
+                        and client.on_media_update is prepare and client.dialog is actual
+                        and registry.resource_for(source_call_id, "relay") is relay):
+                    session.state_changed()
+                    from .call_projection import publish_bridge_projection
+                    publish_bridge_projection(self.hass, session, event_type="state_changed")
+
             return PreparedDialogMediaUpdate(
                 commit,
                 rollback
@@ -457,6 +472,7 @@ class BridgeMediaUpdateBinder:
                 answer_video_rtp_port=(
                     int(video_relay.right_port) if updated_video is not None else 0
                 ),
+                on_committed=published,
             )
 
         client.on_media_update = prepare

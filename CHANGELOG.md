@@ -1,8 +1,244 @@
 # Changelog
 
-## 2026.10.3-dev
+## 2026.11.0-dev
+
+> **Recommended: update your ESP firmware too.** Rebuild and upload the current
+> board YAML with the coordinated development components for all device-side
+> features and fixes. Updating the HA integration through HACS does not update
+> the firmware running on an ESP.
+
+> **Attention: ESPHome 2026.10.0 or newer is required.**
+>
+> ESPHome 2026.10 brings substantial audio changes, including several of our
+> accepted contributions. Thank you to the ESPHome team for your work, reviews
+> and accepted PRs! <3
+>
+> We have aligned Audio Stack, ESP VoIP Stack, Runtime Controller and the
+> maintained device packages with this release. Older ESPHome versions are no
+> longer supported and their operation is not guaranteed. Upgrade the builder
+> before compiling the new firmware.
+
 
 Development preview with changes since stable 2026.10.1.
+
+### ESP32-S3 camera video calls
+
+- ESP32-S3 devices can transmit native ESPHome JPEG camera video during SIP
+  calls, including devices without a display. Rendering the remote video on
+  an S3 screen is not yet supported.
+- ESP32-P4 retains bidirectional video, sending its camera stream and displaying
+  the remote caller. Devices with a microphone and speaker retain bidirectional
+  audio on both S3 and P4.
+- Add generic FULL and standalone VoIP-only camera entrypoints, with board
+  memory, microphone/amplifier pins and camera settings exposed at the top.
+  The standalone profile uses VoIP Stack callbacks without Runtime Controller.
+  Thanks to [jayfan0](https://github.com/n-IA-hane/esphome-voip-stack/pull/6) for
+  the native camera contribution and S3 hardware checks.
+
+### Round display settings and package startup
+
+- Share a scrollable Options page with audio controls and an optional VoIP
+  section. Spotpear and BOX V2 FULL displays navigate through Assist, Contacts,
+  Keypad and Options vertically, stopping at each end and omitting unavailable pages.
+- Update visible controls from entity notifications instead of periodic
+  settings refreshes, and consume navigation gestures before they can become
+  clicks on the previous screen. Ordinary button taps remain available.
+- Preserve all startup automations when packages merge, restoring device
+  initialization and Options-page registration.
+- Allow a board-specific full-charge voltage reference for the BOX V2 battery
+  percentage. Document the new package migration and separate FULL and
+  standalone phone entrypoints in the breaking changes.
+- Keep audio and video packet counters separate in the host diagnostic reader.
+
+### SIP registration compatibility
+
+- Accept ordinary Linphone registrations carrying `+sip.instance` without
+  `reg-id`, including when the client advertises Outbound support. Preserve
+  GRUU identity through the existing registration path. Thanks to
+  [Charlyo](https://github.com/n-IA-hane/esphome-intercom/issues/141) for the
+  report and proposed correction.
+
+### Official ESPHome audio providers
+
+- Maintained profiles use the official ESPHome audio, mixer, resampler,
+  `speaker_source`, Voice Assistant, Micro Wake Word, microphone, speaker and
+  OTA providers. Retire their local copies and the MIME, Sendspin-source and
+  DSP-placement adapters; keep Audio Stack/AEC/AFE, VoIP and Runtime Controller
+  in their existing owners. The P4 display adaptation and GMF vendor pin remain
+  separate.
+- Preserve board wiring, dual-microphone BSS/downmix choices, gain/reference
+  calibration, PCM formats, UI, media sources and cleanup composition. Custom
+  configurations must remove the retired external-provider names and their
+  private scheduling/timeout options. Start from the current board YAML.
+- Tie Audio Stack playback completion to the emitted DMA descriptor and
+  generation. Advance software reference through partial frames and silence,
+  preserve valid explicit DMA geometry, and separate AFE acquisition epochs.
+
+### Maintenance and native component cleanup
+
+- Restore camera startup on pre-v3 ESP32-P4 boards with the default ESPHome
+  2026.10 SDK. A video-only build adaptation corrects esp_video's CSI/ISP
+  format boundary for IDF 5.5.6 without changing the external camera source.
+  Synchronize DMA-written pixels before optional framebuffer diagnostics.
+  See [P4 hardware and media](docs/P4_HARDWARE_AND_MEDIA.md#esphome-202610-physical-check).
+
+- Return the mixer runtime to upstream playback counters and stop/start handling,
+  removing the extra contribution queue, output-callback mutex and metadata
+  backpressure. Use the native ESPHome 2026.10 automation bindings.
+
+- Stop playback resampler and mixer inputs before closing shared audio hardware
+  during maintenance. Source completion and Stop now follow the official
+  player. The shared maintenance script restores readiness after an interrupted
+  update without a second media owner.
+
+- Returning from Options through Contacts/Keypad now reveals the selected view
+  on browser phones, ESP mirror cards and the transfer view. The call controls
+  and layout remain the same.
+- Remove the local speaker fork and its legacy player. Maintained profiles use
+  the native ESPHome speaker base; the Spotpear phone-only ringtone now uses
+  `speaker_source` too. Custom configurations need the
+  [speaker migration](docs/BREAKING_CHANGES.md#development-firmware-retired-speaker-fork).
+- Browser startup, media-device selection and FFmpeg regressions have explicit
+  CI ownership. Test results are retained per suite, and missing/skipped
+  mandatory checks cannot silently produce a successful validation gate.
+
+### Firmware configuration migration
+
+The maintained firmware now requires **ESPHome 2026.10.0 or newer**. Upgrade the
+builder before rebuilding. The 2026.9 core compatibility branches are removed.
+Sendspin moves to the native 0.9.3 protocol client; upgrade Music Assistant to
+**2.10.7 or newer**, then open the speaker's **Setup** in Music Assistant.
+Choose PIN pairing, press **Sendspin Confirm Pairing** in the device's HA
+controls, and enter its temporary **Sendspin Pairing Code**. Existing server
+pairings survive a normal reboot. See the [pairing guide](packages/README.md#pair-sendspin-with-music-assistant).
+
+
+**When adopting the reorganized firmware packages, start from the updated YAML
+for your exact board and bring over your settings.** Each profile now includes
+one device package and a `firmware_features` list. Selecting voice, calls, music,
+Sendspin, timers or supported presentation also selects their matching controls
+and callbacks, so removing a feature no longer requires chasing its fragments
+across several files.
+
+Keep your device name, secrets, network/authentication settings, custom pins and
+wanted behavior. Do not paste the old FULL preset or whole player/mixer blocks
+over the new device package. Legacy leaf includes remain for custom builds, but
+mixing both complete compositions can duplicate components and callbacks.
+Follow the [migration checklist](docs/BREAKING_CHANGES.md#development-firmware-new-device-packages)
+and the [simple-to-advanced examples](packages/README.md#work-through-a-full-profile).
+
+This applies when rebuilding ESP firmware with the coordinated package update;
+a HACS update alone does not replace a device's firmware. Use the matching `dev` package and component sources for this preview. Generic
+Full Lite keeps Sendspin out of its default 4 MB selection. Choose the hardware
+and AFE/AEC/native profile separately from its application features.
+
+### Coordinated audio and runtime refresh
+
+- Integrate the validated GMF AI Audio 1.1.1 source, with ESP-SR 2.6.0 explicitly
+  selected by Audio Stack. Retain immediate processed-PCM delivery and use the
+  upstream feed/fetch stack placement and suspend/abort shutdown ordering.
+- Use the libraries selected by official ESPHome 2026.10.0: esp-audio-libs
+  4.0.1, micro-FLAC 0.3.0 and Sendspin 0.9.3 with its native pairing controls.
+  Include the certificate bundle for HTTPS playback.
+- Use native player Stop and EOF draining. Audio Stack rejects writes during
+  its pending reset and honors the caller's wait budget while cleanup completes,
+  preserving producer ownership of unaccepted PCM.
+- Use one shared OTA entry/recovery script for the selected sources and display.
+  Stop the speaker adapter before its hardware, cancel pending idle waits on
+  recovery, and restore readiness after an interrupted update.
+- Explain Runtime Controller decisions with progressive examples and optional
+  debug reports of the activity that selected each policy. Preserve existing
+  audio/SIP owners and the common resolver.
+- Keep the 4 MB Full Lite default free of Sendspin. Validate its composed default
+  while preserving voice, wake word, calls, music and announcement playback.
+
+### PBX applications available by default
+
+- Remove global parking and voicemail enable switches. Keep resource settings in
+  separate reconfiguration panels; initial setup does not require a TTS provider.
+- Preserve configured mailboxes and media through migration. Message deposits can
+  use their greeting/tone without TTS; spoken menus require a configured voice.
+- Protect existing routes from default feature-code collisions and report them in
+  HA Repairs. Update parking settings without restarting SIP or ending calls.
+- Release the shared card activity subscription when no cards or owned calls use
+  it. Idle availability does not open an unused media archive or run hold audio.
+
+### Call card presentation corrections
+
+- Preserve the existing translucent bottom call bar and keypad layout. Show
+  Park call as an icon alongside the existing controls, and reserve their
+  measured width so they do not overlap the call duration.
+- Close the dialing keypad when starting or answering a call without clearing
+  the entered number. Opening it explicitly during a call still enables DTMF.
+- Let the video-call keypad scroll within the available space above the bar,
+  including mouse-wheel and touch scrolling, while the bar remains fixed.
+  Observe keypad/control size changes as well as the card itself so opening
+  the keypad recalculates its available height even when the card size is fixed.
+- Disable Park during an active browser video call and report the audio-only
+  parking limitation before checking audio handoff readiness. Audio-call parking
+  remains available.
+- Resolve the owner of an existing call explicitly when forwarding. A parked
+  external caller no longer inherits the preferred browser phone as its owner,
+  allowing that same phone to retrieve its parked call without a false
+  self-forward error. The self-forward guard remains enabled.
+- Tie video visibility to a frame rendered by the current receiver on the
+  current canvas and to the current call identity. Previous-call frames and
+  cumulative counters cannot expose an empty canvas after renegotiation or
+  remounting the card. Negotiation alone does not display video.
+- Add Chromium layout checks and real H.264 WebSocket decoding tests to CI.
+  These validate browser presentation, not a particular remote PBX's media.
+
+### Waveshare 1.85C-BOX V2 FULL AEC candidate
+
+- Add a separate experimental FULL AEC profile after reports of poor wake-word
+  recognition during playback on the FULL AFE profile. Standalone AEC processes
+  one microphone and the hardware reference; MWW runs on core 0 and Audio Stack
+  on core 1. Dual-microphone AFE speech enhancement is not part of this candidate.
+- Retain the eight native-resolution animation poses and the existing UI,
+  Assist, VoIP, HTTP playback and Sendspin configuration. ESPHome 2026.9.1 with
+  ESP-IDF 5.5.5 compiled successfully: OTA image 7,527,328 bytes, 599,136 bytes
+  of slot headroom, static DIRAM 170,383 bytes. Runtime responsiveness and
+  barge-in remain untested; the maintained AFE profile is unchanged.
+
+### ESP camera interoperability coverage
+
+- Document the difference between a Home Assistant camera preview and SIP/RTP
+  video. Extend JPEG receive-only offer tests with a UDP peer, hangup and redial.
+  Community S3-originated video is confirmed; the reverse hardware direction
+  still needs a retest with the HA integration version recorded.
+
+### Home Assistant entity renaming
+
+- Keep phone lookups and permission checks correct after an entity ID changes,
+  using the Core 2026.11 rename callback while retaining compatibility with
+  earlier supported versions. Remove the old ID from the endpoint index.
+- Resolve the shared phonebook and call-event entities by registry identity,
+  so renaming them does not break routing, automatic card discovery or access
+  checks. ESPHome entities retain their existing device ownership.
+- Addresses [#145](https://github.com/n-IA-hane/esphome-intercom/issues/145),
+  reported with a detailed lifecycle analysis by Erik Montnemery.
+
+### 🔧 Storage and configuration corrections
+
+- Keep edited ringing-timeout fields visible until the updated phonebook state
+  confirms the save. Label the outcome and destination separately as
+  **After timeout**, **Mailbox** or **Forward to**.
+
+- Keep the voicemail language default inside the supported menu languages,
+  including providers whose own default language is outside that set.
+- Release completed recording resources even when the final disk-usage scan
+  fails. Keep saved messages accessible and reconcile the storage quota before
+  accepting a new recording.
+- Make **Enable mailbox** control the existence of one phone's mailbox.
+  Disabling it deletes its messages, files, PIN and mailbox settings; enabling
+  it again creates an empty mailbox. Other mailboxes and call recordings remain.
+- Transfer RTP port-release ownership inside the existing relay splice and
+  restore the original relays if reservation preparation fails.
+- Bind outgoing Automation RTP before sending INVITE and hand the same socket
+  to the media application after answer. This prevents another socket from
+  taking the advertised port while the call is being established.
+- Correct outdated single-trunk, PCM-only and REGISTER requirements in current
+  guides. Add Python lint checks to CI and clarify fixture imports.
 
 ### Czech localization
 

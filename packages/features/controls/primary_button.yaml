@@ -1,0 +1,63 @@
+# Shared primary-button gestures for voice and telephone compositions.
+defaults:
+  firmware_primary_button_id: ${ firmware_primary_button_id | default("boot_button") }
+  firmware_primary_voice_event: ${ firmware_primary_voice_event | default("wake_word") }
+  firmware_button_stops_timer: ${ firmware_button_stops_timer | default(true) }
+  _fw_primary_voice:
+  - runtime_controller.event:
+      id: runtime
+      event: ${firmware_primary_voice_event}
+  _fw_primary_phone:
+  - voip_stack.call_toggle: {}
+  _fw_primary_voice_phone:
+  - if:
+      condition:
+        not:
+          voip_stack.is_idle: {}
+      then: ${ _fw_primary_phone }
+      else: ${ _fw_primary_voice }
+  _fw_primary_normal: ${ _fw_primary_voice_phone if _fw_voice and _fw_voip else _fw_primary_voice if _fw_voice else
+    _fw_primary_phone if _fw_voip else [] }
+  _fw_primary_with_timer:
+  - if:
+      condition:
+        runtime_controller.is_active:
+          id: runtime
+          activity: timer_ringing
+      then:
+      - runtime_controller.event:
+          id: runtime
+          event: timer_stopped
+      else: ${ _fw_primary_normal }
+  _fw_next_contact:
+  - voip_stack.next_contact: {}
+  _fw_decline_or_previous:
+  - if:
+      condition:
+        voip_stack.is_ringing: {}
+      then:
+      - voip_stack.decline_call: {}
+      else:
+      - voip_stack.prev_contact: {}
+substitutions:
+  _fw_primary_phone: ${_fw_primary_phone}
+  _fw_next_contact: ${_fw_next_contact}
+  _fw_decline_or_previous: ${_fw_decline_or_previous}
+binary_sensor:
+- id: !extend '${firmware_primary_button_id}'
+  on_multi_click:
+  - timing:
+    - ON for at most 500ms
+    - OFF for at least 400ms
+    then: ${ _fw_primary_with_timer if _fw_timers and firmware_button_stops_timer else _fw_primary_normal }
+  - timing:
+    - ON for 50ms to 500ms
+    - OFF for at most 300ms
+    - ON for 50ms to 500ms
+    - OFF for at least 400ms
+    then: ${ _fw_next_contact if _fw_voip else [] }
+  - timing:
+    - ON for 1s to 3s
+    - OFF for at least 300ms
+    then:
+    - switch.toggle: mute

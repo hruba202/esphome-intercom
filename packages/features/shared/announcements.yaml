@@ -1,0 +1,21 @@
+defaults:
+  _fw_mixed_announcement_input: !include '../../audio/mixer_announcement_input.yaml'
+  _fw_direct_announcement_input: !include
+    file: direct_input.yaml
+    vars:
+      input_id: tts_speaker_input
+packages:
+  input: ${ _fw_mixed_announcement_input if _fw_mixed else _fw_direct_announcement_input }
+media_source:
+- platform: audio_http
+  id: announcement_http_source
+  buffer_size: 65536
+  task_stack_in_psram: true
+media_player:
+- id: !extend 'speaker_media_player'
+  announcement_pipeline:
+    speaker: tts_speaker_input
+    sample_rate: 48000
+    format: FLAC
+    sources:
+    - announcement_http_source

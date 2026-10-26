@@ -124,7 +124,8 @@ class Registrar(asyncio.DatagramProtocol):
             headers.append(("WWW-Authenticate", 'Digest realm="lab", nonce="fixed-nonce", algorithm=MD5, qop="auth"'))
         else:
             fields = {key: value.strip('"') for key, value in re.findall(r'(\w+)=("[^"]*"|[^, ]+)', auth)}
-            md5 = lambda value: hashlib.md5(value.encode()).hexdigest()
+            def md5(value):
+                return hashlib.md5(value.encode()).hexdigest()
             expected = md5(f'{md5("ha:lab:test-only")}:{fields["nonce"]}:{fields["nc"]}:{fields["cnonce"]}:auth:{md5("REGISTER:" + fields["uri"])}')
             status, reason = (200, "OK") if fields["response"] == expected else (403, "Forbidden")
             if status == 200:
@@ -353,6 +354,7 @@ async def test_global_reconfiguration_preserves_named_trunks_and_phone_policies(
     original = dict(catalog.subentries)
     form = await hass.config_entries.flow.async_init("voip_stack",
         context={"source": "reconfigure", "entry_id": catalog.entry_id})
+    form = await hass.config_entries.flow.async_configure(form["flow_id"], {"next_step_id": "user"})
     values = form["data_schema"]({})
     assert "trunk_enabled" not in values
     result = await hass.config_entries.flow.async_configure(form["flow_id"], values)
@@ -386,7 +388,6 @@ async def test_native_trunk_readiness_updates_from_lifecycle_events_without_poll
 @pytest.mark.parametrize('make_default', [True, False])
 async def test_native_flow_live_listener_adopts_new_trunk_and_creates_sensor(hass, catalog, registrar, monkeypatch, with_listener, make_default):
     from custom_components.voip_stack import trunk_flow
-    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
 
     from custom_components.voip_stack.config_entry_runtime import async_config_entry_updated
     from custom_components.voip_stack.binary_sensor import async_setup_entry
@@ -551,13 +552,15 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
     assert 'trunk_video_codecs' in form['data_schema'].schema
     result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
         'trunk_server':'127.0.0.1','trunk_port':port,'trunk_username':'ha','trunk_inbound_default_target':'Kitchen','trunk_password':'test-only',
-        'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[]})
+        'trunk_audio_codecs':['PCMU'],'trunk_video_codecs':[],
+        'trunk_outbound_media_address':'198.51.100.22'})
     assert result['type']=='create_entry'
     identity=result['data']['trunk_id']
     try:
         await hass.async_block_till_done()
         assert sip_trunk(hass,identity).config.audio_codecs==('PCMU',)
         assert sip_trunk(hass,identity).config.video_codecs==()
+        assert sip_trunk(hass,identity).config.outbound_media_address=='198.51.100.22'
         record=next(s for s in catalog.subentries.values() if s.data['trunk_id']==identity)
         form=await hass.config_entries.subentries.async_init((catalog.entry_id,'trunk'),context={'source':'reconfigure','subentry_id':record.subentry_id})
         result=await hass.config_entries.subentries.async_configure(form['flow_id'],{
@@ -566,6 +569,7 @@ async def test_trunk_flow_persists_codec_choices_and_preserves_them_when_disable
         await hass.async_block_till_done()
         assert catalog.subentries[record.subentry_id].data['trunk_audio_codecs']==['PCMU']
         assert catalog.subentries[record.subentry_id].data['trunk_video_codecs']==[]
+        assert catalog.subentries[record.subentry_id].data['trunk_outbound_media_address']=='198.51.100.22'
     finally:
         await async_stop_sip_trunk(hass)
 
@@ -617,3 +621,57 @@ async def test_home_assistant_stop_unregisters_owned_trunk_binding(hass, catalog
         assert len(peer.requests) == count
     finally:
         await client.stop()
+
+
+@pytest.mark.parametrize("address", ["0.0.0.0", "127.0.0.1", "224.0.0.1", "::1", "https://example.org", "192.0.2.1\r\na=sendrecv"])
+async def test_trunk_rejects_invalid_outbound_media_address(hass, catalog, address):
+    hass.config.components.update({'assist_pipeline', 'ffmpeg', 'http', 'lovelace', 'media_source', 'network'})
+    form = await hass.config_entries.subentries.async_init((catalog.entry_id, 'trunk'), context={'source': 'user'})
+    form = await hass.config_entries.subentries.async_configure(form['flow_id'], {
+        'name': 'Media address validation', 'trunk_enabled': True, 'trunk_register': True, 'make_default': False,
+    })
+    try:
+        result = await hass.config_entries.subentries.async_configure(form['flow_id'], {
+            'trunk_server': '127.0.0.1', 'trunk_username': 'ha', 'trunk_password': 'test-only',
+            'trunk_inbound_default_target': 'Kitchen', 'trunk_outbound_media_address': address,
+        })
+        assert result['type'] == 'form'
+        assert result['errors']['trunk_outbound_media_address'] == 'trunk_media_address_invalid'
+    finally:
+        hass.config_entries.subentries.async_abort(form['flow_id'])
+
+
+@pytest.mark.parametrize("register", [False, True])
+async def test_native_first_trunk_keeps_client_ready_with_eager_entry_listener(hass, catalog, registrar, monkeypatch, register):
+    from custom_components.voip_stack import trunk_flow
+    from custom_components.voip_stack.trunk_runtime import async_reconcile_trunks
+
+    monkeypatch.setattr(trunk_flow, "async_advertise_host", AsyncMock(return_value="127.0.0.1"))
+    hass.config.components.update({"assist_pipeline", "ffmpeg", "http", "lovelace", "media_source", "network"})
+    for subentry_id in tuple(catalog.subentries):
+        hass.config_entries.async_remove_subentry(catalog, subentry_id)
+    hass.config_entries.async_update_entry(catalog, data={})
+    catalog.runtime_data.trunk_configs = {}
+    catalog.runtime_data.default_trunk_id = ""
+    unsubscribe = catalog.add_update_listener(async_reconcile_trunks)
+    try:
+        form = await hass.config_entries.subentries.async_init(
+            (catalog.entry_id, "trunk"), context={"source": "user"})
+        form = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+            "name": "First live trunk", "trunk_enabled": True, "trunk_register": register,
+        })
+        result = await hass.config_entries.subentries.async_configure(form["flow_id"], {
+            "trunk_server": "127.0.0.1",
+            **({"trunk_username": "ha", "trunk_password": "test-only", "trunk_port": registrar[1]}
+               if register else {"trunk_allowed_ips": ["127.0.0.1"]}),
+            "trunk_inbound_default_target": "Kitchen",
+        })
+        assert result["type"] == "create_entry", result
+        await hass.async_block_till_done()
+        identity = result["data"]["trunk_id"]
+        client = sip_trunk(hass, identity)
+        assert client is not None and client.ready
+        assert catalog.runtime_data.sip.component(f"pending_trunk:{identity}") is None
+    finally:
+        unsubscribe()
+        await async_stop_sip_trunk(hass)

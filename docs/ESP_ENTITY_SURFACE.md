@@ -2,7 +2,7 @@
 
 Starting with 2026.10.0, the VoIP component supplies its Home Assistant
 interface directly. No VoIP HA package is required. Compile with **ESPHome
-2026.9.0 or newer**.
+2026.10.0 or newer**.
 
 Keep your board's network, microphone and/or speaker configuration. Add the
 native API option below alongside any existing API encryption settings:

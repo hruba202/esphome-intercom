@@ -3,6 +3,7 @@
 switch:
   - platform: voip_stack
     video_send:
+      id: voip_video_send
       name: Send Video
       # Idle: preference for the next call. In call: SIP direction update.
       # Disabling camera transmission preserves negotiated incoming video.

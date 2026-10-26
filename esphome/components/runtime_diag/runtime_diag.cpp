@@ -65,7 +65,7 @@ void append_heap(std::ostringstream &out, const char *name, uint32_t caps) {
 
 void append_json_string(std::ostringstream &out, const std::string &value) {
   out << "\"";
-  for (char ch : value) {
+  for (unsigned char ch : value) {
     switch (ch) {
       case '\\':
         out << "\\\\";
@@ -83,7 +83,12 @@ void append_json_string(std::ostringstream &out, const std::string &value) {
         out << "\\t";
         break;
       default:
-        out << ch;
+        if (ch < 0x20) {
+          static constexpr char HEX[] = "0123456789abcdef";
+          out << "\\u00" << HEX[ch >> 4] << HEX[ch & 0x0f];
+        } else {
+          out << static_cast<char>(ch);
+        }
         break;
     }
   }

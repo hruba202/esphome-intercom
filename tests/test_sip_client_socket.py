@@ -83,11 +83,9 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_dialog_writer_wakeup_survives_queued_writer(self) -> None:
+    async def test_dialog_requests_remain_serialized_with_a_queued_writer(self) -> None:
         client = object.__new__(sip_client.SipCallClient)
-        client._dialog_read_lock = asyncio.Lock()  # noqa: SLF001
-        client._dialog_writer_requested = asyncio.Event()  # noqa: SLF001
-        client._dialog_writer_count = 0  # noqa: SLF001
+        client._dialog_request_lock = asyncio.Lock()  # noqa: SLF001
         first_entered = asyncio.Event()
         release_first = asyncio.Event()
         second_entered = asyncio.Event()
@@ -107,12 +105,13 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         await first_entered.wait()
         second_task = asyncio.create_task(second())
         await asyncio.sleep(0)
+        self.assertFalse(second_entered.is_set())
         release_first.set()
         await second_entered.wait()
-        self.assertTrue(client._dialog_writer_requested.is_set())  # noqa: SLF001
+        self.assertTrue(client._dialog_request_lock.locked())  # noqa: SLF001
         release_second.set()
         await asyncio.gather(first_task, second_task)
-        self.assertFalse(client._dialog_writer_requested.is_set())  # noqa: SLF001
+        self.assertFalse(client._dialog_request_lock.locked())  # noqa: SLF001
 
     async def test_rfc5168_keyframe_request_uses_in_dialog_info(self) -> None:
         client = object.__new__(sip_client.SipCallClient)
@@ -571,7 +570,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         )
 
         await endpoint._handle_datagram(refer, addr)
-        self.assertEqual(sip.parse_message(sent[0]).status_code, 202)
+        self.assertEqual(sip.parse_message(sent[0]).status_code, 200)
         for notify_count, expected in enumerate((100, 200), start=1):
             for _ in range(100):
                 notifications = [
@@ -2416,7 +2415,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
                     burst_arrivals.append(loop.time())
             self.assertEqual(
                 [packet.sequence for packet in burst],
-                list(range(burst[0].sequence, burst[0].sequence + 40)),
+                [(burst[0].sequence + index) & 0xFFFF for index in range(40)],
             )
             self.assertEqual(
                 [
@@ -2896,49 +2895,43 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
             ["INVITE", "CANCEL", "ACK", "BYE"],
         )
 
-    async def test_cancelled_dialog_waiter_joins_both_child_tasks(self) -> None:
-        client = sip_client.SipCallClient(
-            local_ip="127.0.0.1",
-            local_name="HA",
-            local_sip_port=5060,
-            local_rtp_port=41000,
-        )
-        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2")  # type: ignore[assignment]
-        read_started = asyncio.Event()
-        read_cancelled = asyncio.Event()
-        release_read = asyncio.Event()
+    async def test_cancelled_waiter_preserves_owned_reader_until_client_close(self) -> None:
+        client = sip_client.SipCallClient(local_ip="127.0.0.1", local_name="HA",
+                                          local_sip_port=5060, local_rtp_port=41000)
+        client.dialog = types.SimpleNamespace(remote_host="127.0.0.2", session_timer=sip.SipSessionTimer())
+        read_started, read_cancelled, release_read = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
-        async def blocked_read(_timeout: float):
+        async def blocked_read(_timeout):
             read_started.set()
             try:
-                await asyncio.Event().wait()
+                await asyncio.Future()
             except asyncio.CancelledError:
                 read_cancelled.set()
                 await release_read.wait()
                 raise
 
-        client._read_response = blocked_read  # type: ignore[method-assign]
+        client._read_response = blocked_read
         waiter = asyncio.create_task(client.wait_for_dialog_termination())
-        await asyncio.wait_for(read_started.wait(), timeout=1)
-        waiter.cancel()
-        await asyncio.wait_for(read_cancelled.wait(), timeout=1)
-        waiter.cancel()
-        await asyncio.sleep(0)
-        self.assertFalse(waiter.done())
-
-        release_read.set()
-        with self.assertRaises(asyncio.CancelledError):
-            await asyncio.wait_for(waiter, timeout=1)
-
-        pending_names = {
-            task.get_name()
-            for task in asyncio.all_tasks()
-            if not task.done()
-        }
-        self.assertFalse(
-            any(name.startswith("voip-sip-dialog-") for name in pending_names)
-        )
-        await client.close()
+        try:
+            await asyncio.wait_for(read_started.wait(), 1)
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+            self.assertFalse(read_cancelled.is_set())
+            client.dialog = None
+            closer = asyncio.create_task(client.close())
+            await asyncio.wait_for(read_cancelled.wait(), 1)
+            closer.cancel()
+            await asyncio.sleep(0)
+            self.assertFalse(closer.done())
+            release_read.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await closer
+            self.assertIsNone(client._dialog_dispatcher)
+        finally:
+            release_read.set()
+            client.dialog = None
+            await client.close()
 
     async def test_udp_start_cannot_publish_transport_after_close(self) -> None:
         entered = asyncio.Event()
@@ -3440,6 +3433,144 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(selected, [("192.0.2.20", 5060), ("192.0.2.21", 5060)])
         self.assertEqual(len(sent_branches), 2)
         self.assertNotEqual(sent_branches[0], sent_branches[1])
+
+    async def test_video_offer_obeys_remote_rejection_without_losing_audio(self) -> None:
+        """Video-capable callers negotiate audio-only without a contact override."""
+        received = []
+
+        class Peer(asyncio.DatagramProtocol):
+            mode = "rejected"
+
+            def connection_made(self, transport):
+                self.transport = transport
+
+            def datagram_received(self, raw, addr):
+                message = sip.parse_message(raw)
+                received.append(message)
+                if message.method not in {"INVITE", "BYE"}:
+                    return
+                headers = [(name, message.header(name)) for name in ("Via", "From", "Call-ID", "CSeq")]
+                to = message.header("To")
+                headers.append(("To", to if ";tag=" in to else to + ";tag=peer"))
+                body = b""
+                if message.method == "INVITE":
+                    port = self.transport.get_extra_info("sockname")[1]
+                    headers.extend((("Contact", f"<sip:peer@127.0.0.1:{port}>"),
+                                    ("Content-Type", "application/sdp")))
+                    offered = sdp.offered_video_formats(message.body)[0]
+                    pt = offered.payload_type
+                    video_port = 0 if self.mode == "rejected" else 45002
+                    direction = "inactive" if self.mode == "inactive" else "sendonly"
+                    body = (
+                        "v=0\r\no=peer 1 1 IN IP4 127.0.0.1\r\ns=peer\r\n"
+                        "c=IN IP4 127.0.0.1\r\nt=0 0\r\n"
+                        "m=audio 45000 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n"
+                        "a=ptime:20\r\na=sendrecv\r\n"
+                        f"m=video {video_port} RTP/AVP {pt}\r\n"
+                        f"a=rtpmap:{pt} H264/90000\r\n"
+                        f"a=fmtp:{pt} profile-level-id={offered.profile_level_id};packetization-mode=1;level-asymmetry-allowed=1\r\n"
+                        f"a={direction}\r\n"
+                    ).encode()
+                self.transport.sendto(sip.build_response(200, "OK", headers, body), addr)
+
+        transport, peer = await asyncio.get_running_loop().create_datagram_endpoint(
+            Peer, local_addr=("127.0.0.1", 0)
+        )
+        port = transport.get_extra_info("sockname")[1]
+        try:
+            for offer_direction in ("recvonly", "sendrecv"):
+                for mode in ("rejected", "inactive", "accepted"):
+                    with self.subTest(offer_direction=offer_direction, mode=mode):
+                        peer.mode = mode
+                        client = sip_client.SipCallClient(
+                            local_ip="127.0.0.1", local_name="Browser", local_sip_port=0,
+                            local_rtp_port=41000, signaling_transport="UDP",
+                            include_common_codecs=True, local_video_rtp_port=41002,
+                            video_formats=(sdp.DEFAULT_H264_FORMAT,), video_direction=offer_direction,
+                        )
+                        try:
+                            self.assertEqual(await client.invite(
+                                target="peer", remote_host="127.0.0.1", remote_sip_port=port,
+                                request_uri=f"sip:peer@127.0.0.1:{port}", timeout=2,
+                            ), "in_call")
+                            self.assertEqual(client.dialog.local_audio_direction, "sendrecv")
+                            self.assertEqual(client.dialog.send_format.encoding, "PCMA")
+                            self.assertEqual(client.dialog.local_video_direction,
+                                             "recvonly" if mode == "accepted" else "inactive")
+                            if mode == "rejected":
+                                self.assertIsNone(client.dialog.video_format)
+                                self.assertEqual(client.dialog.remote_video_rtp_port, 0)
+                            await client.terminate()
+                        finally:
+                            await client.close()
+                        self.assertIsNone(client.transport)
+            self.assertEqual(sum(m.method == "BYE" for m in received), 6)
+        finally:
+            transport.close()
+
+    async def test_jpeg_camera_answers_browser_call_without_browser_camera(self) -> None:
+        """A camera-only peer sends JPEG after a receive-only browser offer."""
+        received = []
+
+        class CameraPeer(asyncio.DatagramProtocol):
+            def connection_made(self, transport):
+                self.transport = transport
+
+            def datagram_received(self, data, addr):
+                request = sip.parse_message(data)
+                received.append(request)
+                if request.method not in {"INVITE", "BYE"}:
+                    return
+                headers = [(key, request.header(key)) for key in ("Via", "From", "Call-ID", "CSeq")]
+                to = request.header("To")
+                headers.append(("To", to if ";tag=" in to else to + ";tag=camera"))
+                body = b""
+                if request.method == "INVITE":
+                    host, port = self.transport.get_extra_info("sockname")[:2]
+                    headers.extend((("Contact", f"<sip:camera@{host}:{port}>"),
+                                    ("Content-Type", "application/sdp")))
+                    fmt = sdp.RtpPcmFormat(8, "PCMA", 8000, 1, 20)
+                    body = sdp.build_answer_directional(
+                        "127.0.0.1", "127.0.0.1", 45000, fmt, fmt,
+                        remote_sdp=request.body, video_port=45002,
+                        video_format=sdp.RtpVideoFormat(payload_type=26, encoding="JPEG"),
+                        video_direction="sendonly",
+                    ).encode()
+                self.transport.sendto(sip.build_response(200, "OK", headers, body), addr)
+
+        transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+            CameraPeer, local_addr=("127.0.0.1", 0)
+        )
+        port = transport.get_extra_info("sockname")[1]
+        try:
+            for _ in range(2):
+                client = sip_client.SipCallClient(
+                    local_ip="127.0.0.1", local_name="Browser", local_sip_port=0,
+                    local_rtp_port=41000, signaling_transport="UDP",
+                    include_common_codecs=True, local_video_rtp_port=41002,
+                    video_formats=sdp.video_offer_formats_for_target_codec("jpeg"),
+                    video_direction="recvonly",
+                )
+                try:
+                    self.assertEqual(await client.invite(
+                        target="camera", remote_host="127.0.0.1", remote_sip_port=port,
+                        request_uri=f"sip:camera@127.0.0.1:{port}", timeout=2,
+                    ), "in_call")
+                    offer = next(item for item in reversed(received) if item.method == "INVITE")
+                    self.assertEqual(sdp.parse_video_sdp(offer.body)["direction"], "recvonly")
+                    self.assertEqual([fmt.encoding for fmt in sdp.offered_video_formats(offer.body)], ["JPEG"])
+                    self.assertEqual(client.dialog.local_video_direction, "recvonly")
+                    self.assertEqual(client.dialog.recv_video_format.encoding, "JPEG")
+                    self.assertEqual(client.dialog.recv_video_format.payload_type, 26)
+                    self.assertEqual(client.dialog.local_audio_direction, "sendrecv")
+                    await client.terminate()
+                finally:
+                    await client.close()
+                self.assertIsNone(client.transport)
+                self.assertIsNone(client.writer)
+            self.assertEqual(sum(item.method == "BYE" for item in received), 2)
+        finally:
+            transport.close()
 
     async def test_video_invite_recovers_on_real_udp_only_peer_and_redials(
         self,
@@ -5818,7 +5949,7 @@ class SipClientSocketTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(
             await client._dispatch_in_dialog_request(request, ("127.0.0.2", 5060))
         )
-        self.assertEqual(sip.parse_message(sent[0][0]).status_code, 202)
+        self.assertEqual(sip.parse_message(sent[0][0]).status_code, 200)
         for notify_count, expected in enumerate((100, 200), start=1):
             for _ in range(100):
                 notifications = [

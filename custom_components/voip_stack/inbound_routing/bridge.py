@@ -56,7 +56,6 @@ from ..outbound_bridge_commit import (
     BridgeCommitPolicy,
     async_commit_outbound_bridge,
 )
-from ..phone_endpoint import EndpointKind
 from ..peer import sip_uri_for_peer
 from ..runtime_data import call_runtime_artifacts, sip_trunk
 from ..trunk_signaling import reuse_registered_trunk_flow
@@ -351,6 +350,8 @@ async def route_sip_bridge(
         selected_trunk_id = getattr(decision, "trunk_id", "")
         reuse_registered_trunk_flow(sip_trunk(hass, selected_trunk_id) if selected_trunk_id else sip_trunk(hass), client)
     else:
+        from ..sip_runtime import configure_local_contact
+        configure_local_contact(hass, client)
         runtime.enable_reused_sip_tcp_connection(
             hass,
             client,

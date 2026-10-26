@@ -1,0 +1,104 @@
+# Device wiring and consumer parameters. Shared feature modules own lifecycle and controls.
+defaults:
+  afe_mode_options: ${ afe_mode_options | default(["fd_low_cost", "fd_high_perf"]) }
+  firmware_processing_modes: ${afe_mode_options}
+  _p4_diagnostics: !include '../diagnostics/native_no_wifi_signal.yaml'
+substitutions:
+  firmware_lvgl: true
+  firmware_display_package: ../features/presentation/devices/waveshare-p4-full-portrait.yaml
+  firmware_primary_button_id: boot_button
+  firmware_primary_voice_event: wake_word
+  firmware_button_stops_timer: true
+  firmware_voice_binding:
+    voice_assistant:
+      id: va
+      microphone: mic_afe
+      media_player: speaker_media_player
+      noise_suppression_level: 0
+      auto_gain: 0dBFS
+      volume_multiplier: 1.0
+  firmware_wake_word_binding:
+    micro_wake_word:
+      id: mww
+      microphone: mic_afe
+      stop_after_detection: false
+      models:
+      - model: alexa
+  firmware_voip_binding:
+    voip_stack:
+      use_ha_as_first_contact: true
+      id: phone
+      task_stacks_in_psram: true
+      buffers_in_psram: false
+      audio:
+        tx:
+          sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        tx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        rx:
+          sample_rate: 48000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        - sample_rate: 32000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 32
+      microphone: mic_afe
+      speaker: voip_speaker_input
+      delete_contact_missing_from:
+        updates_number: 1
+    speaker:
+    - id: !extend 'voip_speaker_input'
+      task_stack_in_psram: true
+      buffer_duration: 128ms
+  firmware_music_binding:
+    media_source:
+    - id: !extend 'media_http_source'
+      buffer_size: 65536
+      task_stack_in_psram: true
+    speaker:
+    - id: !extend 'media_speaker_input'
+      task_stack_in_psram: true
+  firmware_announcement_binding:
+    media_source:
+    - id: !extend 'announcement_http_source'
+      buffer_size: 65536
+      task_stack_in_psram: true
+    speaker:
+    - id: !extend 'tts_speaker_input'
+      task_stack_in_psram: true
+  firmware_controls:
+    packages:
+      button: !include '../features/controls/primary_button.yaml'
+      processing: !include '../features/audio_controls/afe_mode.yaml'
+  afe_initial_mode: fd_high_perf
+  afe_mode_restore_value: false
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  hardware: !include '../board/waveshare-p4-full-portrait.yaml'
+  display_hardware: !include '${ ''../board/waveshare-p4-full-portrait-display.yaml'' if ''display'' in firmware_features
+    else ''../features/shared/absent.yaml'' }'
+  audio: !include '../audio/profiles/waveshare-p4-full-portrait.yaml'
+  application: !include '../profiles/application.yaml'
+  flac_memory: !include '../audio/flac_codecs_psram.yaml'
+  diagnostics: ${ _p4_diagnostics if 'diagnostics' in firmware_features else {} }

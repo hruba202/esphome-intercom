@@ -36,9 +36,11 @@ import assert from "assert/strict";
 import {{ pathToFileURL }} from "url";
 
 const cardModel = await import(pathToFileURL({json.dumps(str(CARD_MODEL))}));
+const entityIds = await import(pathToFileURL({json.dumps(str(CARD.with_name("voip-stack-entity-ids.js")))}));
 
 let source = fs.readFileSync({json.dumps(str(CARD))}, "utf8");
 source = source
+  .replace(/const \{{ VoipEntityIds \}} = await import\(`\.\/voip-stack-entity-ids\.js[^;]+;/, "const {{ VoipEntityIds }} = globalThis.__entityIds;")
   .replace(
     /const \{{ voipStackTranslate \}} = await import\(`\.\/voip-stack-i18n\.js[^;]+;/,
     "const {{ voipStackTranslate }} = globalThis.__i18n;",
@@ -175,12 +177,14 @@ class FakeElement {{
     this.classList = new FakeClassList();
     this.style = {{ display: "", setProperty() {{}} }};
     this.attributes = new Map();
+    this.dataset = {{}};
   }}
   setAttribute(name, value) {{ this.attributes.set(name, String(value)); }}
   replaceChildren(...children) {{
     this.children = children;
     for (const child of children) child.parentNode = this;
   }}
+  appendChild(child) {{ (this.children ||= []).push(child); child.parentNode = this; return child; }}
   addEventListener() {{}}
   focus() {{}}
 }}
@@ -206,6 +210,7 @@ const context = vm.createContext({{
   __engine: {{ voipStackEngine: engine }},
   __i18n: {{ voipStackTranslate: (_hass, value) => String(value ?? "") }},
   __cardModel: cardModel,
+  __entityIds: entityIds,
   __cardView: {{
     buildMainCardSkeleton() {{}},
     buildUnconfiguredCardSkeleton() {{}},
@@ -334,6 +339,24 @@ function makeCard() {{
   return card;
 }}
 
+const activityIdentity = makeCard();
+activityIdentity._getSoftphoneEndpointId = () => "office";
+activityIdentity._getConfigDeviceId = () => "device-office";
+activityIdentity._activeSoftphonePeerDevice = () => null;
+activityIdentity._layoutPhoneActivity = () => {{}};
+activityIdentity._els.phoneActivity = new FakeElement();
+activityIdentity._els.parkingNotice = new FakeElement();
+activityIdentity._softphoneSnapshot = {{state: "in_call", call_id: "current-call"}};
+activityIdentity._phoneActivity = {{parked: [], phones: [
+  {{endpoint_id: "peer", name: "Peer", state: "busy", call_ids: ["current-call"]}},
+  {{endpoint_id: "other", name: "Other", state: "busy", call_ids: ["another-call"]}},
+]}};
+activityIdentity._renderPhoneActivity(false);
+assert.deepEqual(JSON.parse(activityIdentity._els.phoneActivity.dataset.rows), ["Other: Busy"]);
+activityIdentity._softphoneSnapshot = {{state: "idle", call_id: ""}};
+activityIdentity._renderPhoneActivity(false);
+assert.deepEqual(JSON.parse(activityIdentity._els.phoneActivity.dataset.rows), ["Peer: Busy", "Other: Busy"]);
+
 const manualIdentity = makeCard();
 manualIdentity._softphoneTargets = () => [{{device_id: "ball", name: "Spotpear"}}];
 manualIdentity._softphoneTargetDeviceId = "ball";
@@ -460,7 +483,21 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_phone_settings", {{ device_id: "device-kitchen",
     ringing_timeout: 25, no_answer_action: "forward", no_answer_to: "Renamed bedroom" }},
 ]);
+assert.equal(routingCard._ringingDraft.seconds, "25");
+// Keep the submitted form visible until the matching backend state arrives.
+routingCard._els.ringingControls = Object.fromEntries(
+  ["enabled","seconds","action","destination","secondsRow","actionRow","destinationRow","save"].map(key => [key, {{}}])
+);
+const ringingEntries = [
+  {{name:"Kitchen",metadata:{{device_id:"device-kitchen",endpoint_id:"kitchen"}}}},
+  {{name:"Renamed bedroom",metadata:{{endpoint_id:"bedroom"}}}},
+];
+routingCard._renderRingingControls("device-kitchen", {{}}, ringingEntries);
+assert.equal(routingCard._els.ringingControls.seconds.value, "25");
+assert.equal(routingCard._els.ringingControls.enabled.checked, true);
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:25,no_answer:{{kind:"contact",target:"bedroom"}}}}, ringingEntries);
 assert.equal(routingCard._ringingDraft, null);
+
 routingCard._ringingDraft = {{ deviceId: "device-kitchen", enabled: false,
   seconds: "25", action: "forward", destination: "Renamed bedroom" }};
 await routingCard._saveRingingPolicy();
@@ -477,12 +514,16 @@ assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_phone_settings", {{device_id: "device-kitchen",
     ringing_timeout: 30, no_answer_action: "voicemail", no_answer_to: ""}},
 ]);
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:10,no_answer:{{kind:"voicemail",target:"kitchen"}}}}, ringingEntries);
+assert.equal(routingCard._els.ringingControls.seconds.value, "30");
+routingCard._renderRingingControls("device-kitchen", {{ringing_timeout:30,no_answer:{{kind:"voicemail",target:"kitchen"}}}}, ringingEntries);
+assert.equal(routingCard._ringingDraft, null);
 routingCard._loadSoftphoneState = async () => {{}};
 await routingCard._setMailboxEnabled(true);
 assert.deepEqual(JSON.parse(JSON.stringify(routingRequests.at(-1))), [
   "voip_stack", "set_voicemail_settings", {{device_id: "device-kitchen", enabled: true}},
 ]);
-// Parking delegates to the public backend action and displays its actual slot.
+// Parking delegates to the public action; the list follows authoritative activity.
 const parkRequests = [];
 routingCard._hass.callWS = async (request) => {{
   parkRequests.push(request);
@@ -493,7 +534,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(parkRequests[0])), {{
   type: "call_service", domain: "voip_stack", service: "park",
   service_data: {{device_id: "device-kitchen"}}, return_response: true,
 }});
-assert.equal(routingCard._parkedSlot, "705");
+routingCard._onCallEvent({{event_type: "voip_stack.activity", data: {{parked: ["705"], phones: []}}}});
+assert.deepEqual(routingCard._phoneActivity.parked, ["705"]);
+routingCard._onCallEvent({{event_type: "voip_stack.activity", data: {{parked: [], phones: []}}}});
+assert.equal(routingCard._phoneActivity.parked.length, 0);
 assert.equal(routingCard._parkingBusy, false);
 routingCard._softphoneSnapshot = {{state: "in_call", call_id: "recording-call", recording: {{active: false}}}};
 await routingCard._toggleRecording();
@@ -990,13 +1034,95 @@ acknowledged._hass.connection={{sendMessagePromise:async request=>{{
  return {{...base, state:"remote_ringing", callee:"426", peer_name:"426", send_video:true,
   capabilities:["audio","video"], sequence:10}};
 }}}};
-engine.startHaSoftphone=async()=>({{schema_version:2,success:true,call_id:base.call_id,
- state:"remote_ringing",destination:"426",device_id:"device-office"}});
-await acknowledged._startCall("426");
+acknowledged._softphoneKeypadOpen = true;
+acknowledged._softphoneManualTarget = "426";
+engine.startHaSoftphone=async(target, session, options)=>{{
+ assert.equal(target.name, "426");
+ assert.equal(options.callee, "426");
+ assert.equal(acknowledged._softphoneKeypadOpen, false);
+ return {{schema_version:2,success:true,call_id:base.call_id,
+  state:"remote_ringing",destination:"426",device_id:"device-office"}};
+}};
+await acknowledged._startCall();
+assert.equal(acknowledged._softphoneKeypadOpen, false);
+assert.equal(acknowledged._softphoneManualTarget, "426");
 assert.equal(stateReads,1);
 assert.equal(acknowledged._getDestination(),"426");
 assert.equal(acknowledged._softphoneSnapshot.send_video,true);
+acknowledged._applySoftphoneSnapshot({{...acknowledged._softphoneSnapshot,state:"in_call",sequence:11}});
+context.requestAnimationFrame = callback => callback();
+acknowledged._toggleKeypad();
+assert.equal(acknowledged._softphoneKeypadOpen, true);
+acknowledged._applySoftphoneSnapshot({{...acknowledged._softphoneSnapshot,state:"in_call",sequence:12}});
+assert.equal(acknowledged._softphoneKeypadOpen, true);
+
 assert.deepEqual(acknowledged._softphoneSnapshot.capabilities,["audio","video"]);
+
+// Transfer reuses the destination UI without sending DTMF or changing preferences.
+const transfer = makeCard();
+transfer.config.device_id = "phone-device";
+transfer._softphoneSnapshot = {{...base, state:"in_call",call_id:"transfer-original"}};
+transfer._softphoneTargets=()=>[{{device_id:"desk",name:"Reception"}}];
+transfer._els.transferBtn=new FakeElement();
+transfer._els.transferHangupBtn=new FakeElement();
+transfer._toggleTransfer();
+assert.equal(transfer._els.callBtn.textContent,"Transfer");
+assert.equal(transfer._els.callBtn.hidden,false);
+assert.equal(transfer._els.hangupBtn.hidden,true);
+assert.equal(transfer._els.transferHangupBtn.hidden,false);
+transfer._toggleKeypad();
+transfer._pressKeypadKey("4");transfer._pressKeypadKey("2");
+assert.equal(transfer._manualTarget(),"42");
+assert.equal(transfer._els.keypadInput.hidden,false);
+let transferRequests=[];
+transfer._hass.callWS=async request=>{{transferRequests.push(request);return {{response:{{success:false,status:486}}}}}};
+await transfer._submitTransfer();
+assert.equal(transferRequests[0].service,"transfer");
+assert.equal(transferRequests[0].service_data.call_id,"transfer-original");
+assert.equal(transferRequests[0].service_data.destination,"42");
+assert.ok(transfer._transferDraft);
+assert.equal(transfer._softphoneSnapshot.state,"in_call");
+transfer._toggleKeypad();
+transfer._hass.callWS=async request=>{{transferRequests.push(request);return {{response:{{success:true}}}}}};
+await transfer._submitTransfer();
+assert.equal(transferRequests[1].service_data.destination,"Reception");
+assert.equal(transfer._transferDraft,null);
+transfer._toggleTransfer();
+transfer._toggleTransfer();
+assert.equal(transfer._transferDraft,null);
+transfer._toggleTransfer();
+transfer._softphoneSnapshot={{...base,state:"idle",call_id:""}};
+transfer._render();
+assert.equal(transfer._transferDraft,null);
+assert.equal(transfer._els.callBtn.textContent,"Call");
+transfer._softphoneSnapshot = {{...base,state:"in_call",call_id:"old-transfer"}};
+transfer._toggleTransfer();
+let finishTransfer;
+transfer._hass.callWS=()=>new Promise(resolve=>{{finishTransfer=resolve;}});
+const pendingTransfer=transfer._submitTransfer();
+const oldDraft=transfer._transferDraft;
+await transfer._submitTransfer();
+assert.equal(transfer._transferDraft,oldDraft);
+transfer._softphoneSnapshot={{...base,state:"in_call",call_id:"next-call"}};
+transfer._render();
+finishTransfer({{response:{{success:false,status:486}}}});
+await pendingTransfer;
+assert.equal(transfer._errorMsg,"");
+assert.equal(transfer._softphoneSnapshot.call_id,"next-call");
+assert.equal(transfer._transferDraft,null);
+
+
+// Video parking is unsupported and must not expose an actionable Park button.
+const videoParking = makeCard();
+videoParking._els.parkBtn = new FakeElement();
+videoParking._els.parkingNotice = new FakeElement();
+videoParking._softphoneSnapshot = {{...base,state:"in_call",parking:{{enabled:true}},video_active:true}};
+videoParking._render();
+assert.equal(videoParking._els.parkBtn.disabled, true);
+assert.equal(videoParking._els.parkBtn.title, "Parking requires an audio-only call");
+videoParking._softphoneSnapshot.video_active = false;
+videoParking._render();
+assert.equal(videoParking._els.parkBtn.disabled, false);
 
 // Provisional SIP responses never render as an answered call. Only the
 // authoritative final state can switch the card to "In Call".
@@ -1042,7 +1168,9 @@ incoming._applySoftphoneSnapshot({{
   peer_name: "Door",
   sequence: 1,
 }});
+incoming._softphoneKeypadOpen = true;
 await incoming._answer();
+assert.equal(incoming._softphoneKeypadOpen, false);
 assert.equal(incoming._softphoneSnapshot.state, "ringing");
 assert.equal(audioPermissionChecks > 0, true);
 assert.equal(cameraPermissionChecks, 0);
@@ -1539,3 +1667,46 @@ assert.equal(JSON.stringify(suggest(hass, "sensor.casa_call_state")).includes("e
         text=True,
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
+def test_shared_entity_identity_refreshes_without_polling() -> None:
+    script = f'''
+import assert from "node:assert/strict";
+import {{ pathToFileURL }} from "node:url";
+const {{ VoipEntityIds }} = await import(pathToFileURL({json.dumps(str(CARD.with_name("voip-stack-entity-ids.js")))}));
+const resolver = new VoipEntityIds();
+let requests = 0, updates = 0, selected = "sensor.original";
+const connection = {{ sendMessagePromise: async () => {{
+  requests++; return {{ entity_ids: {{ phonebook: selected }} }};
+}} }};
+let hass = {{ connection, entities: {{}}, states: {{ "sensor.original": {{}} }} }};
+const changed = () => updates++;
+resolver.update(hass, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.original");
+for (let i = 0; i < 100; i++) resolver.update(hass, changed);
+assert.equal(requests, 1);
+selected = "sensor.renamed";
+hass = {{ ...hass, entities: {{}}, states: {{ "sensor.renamed": {{}}, "sensor.original": {{}} }} }};
+resolver.update(hass, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.renamed");
+assert.equal(requests, 2);
+selected = null;
+resolver.update({{ ...hass, entities: {{}} }}, changed);
+await resolver._pending;
+assert.equal(resolver.phonebook, null);
+assert.equal(updates, 3);
+// An obsolete connection response cannot overwrite the new connection's identity.
+let finish;
+const old = {{ sendMessagePromise: () => new Promise(resolve => {{ finish = resolve; }}) }};
+resolver.update({{ connection: old, entities: {{}}, states: {{}} }}, changed);
+selected = "sensor.new_server";
+resolver.update(hass, changed);
+finish({{ entity_ids: {{ phonebook: "sensor.wrong_server" }} }});
+await resolver._pending;
+if (resolver._pending) await resolver._pending;
+assert.equal(resolver.phonebook, "sensor.new_server");
+'''
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, capture_output=True, text=True)

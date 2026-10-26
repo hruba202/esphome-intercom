@@ -1,0 +1,6 @@
+# Whether the shared content view has assistant response text to present.
+globals:
+- id: runtime_response_text_ready
+  type: bool
+  restore_value: false
+  initial_value: 'false'

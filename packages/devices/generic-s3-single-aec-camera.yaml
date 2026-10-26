@@ -1,0 +1,35 @@
+# Generic S3 audio plus a native DVP camera. Reuse the single-bus audio/runtime bindings.
+defaults:
+  audio_stack_speaker_idle_delay: 30s
+  _generic_camera_amp:
+    output:
+      - platform: gpio
+        id: speaker_enable
+        pin: ${speaker_enable_pin}
+    packages:
+      power: !include '../esp_audio_stack/speaker_power_output.yaml'
+
+packages:
+  audio_runtime: !include 'generic-s3-single-aec.yaml'
+  amplifier: ${ _generic_camera_amp if speaker_enable_pin != '' else {} }
+  camera: !include '${ "../camera/generic-s3-dvp-jpeg.yaml" if "video" in firmware_features and "voip" in firmware_features else "../features/shared/absent.yaml" }'
+
+# The IDF builder needs explicit memory settings; a board name alone is not enough.
+esphome:
+  platformio_options: !remove
+esp32:
+  board: ${board_type}
+  flash_size: ${board_flash_size}
+  flash_mode: ${board_flash_mode}
+psram:
+  mode: ${board_psram_mode}
+  speed: ${board_psram_speed}
+
+esp_audio_stack:
+  task_core: ${audio_task_core}
+  audio_task_stack_in_psram: true
+  aec_ref_ring_in_psram: true
+  bits_per_sample: ${audio_bus_bits}
+  slot_bit_width: ${audio_slot_bits}
+  mic_channel: ${audio_mic_channel}
+  rx_slot_mode: stereo

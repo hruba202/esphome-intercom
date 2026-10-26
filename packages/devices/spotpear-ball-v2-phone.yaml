@@ -1,0 +1,30 @@
+# Complete standalone telephone composition with the shared OTA lifecycle.
+defaults:
+  _phone: !include '../features/voip/devices/spotpear-ball-v2-phone.yaml'
+  _phone_ui: !include '../features/presentation/devices/spotpear-ball-v2-phone.yaml'
+  _phone_display: !include '../board/spotpear-ball-v2-phone-display.yaml'
+  _phone_diagnostics: !include '../diagnostics/native.yaml'
+  _phone_led_hardware: !include '../led/status_spotpear_ball_v2.yaml'
+  _phone_led_status: !include '../voip/simple_led_status_full_duplex.yaml'
+  _phone_no_led_status: !include '../features/voip/no_status_light.yaml'
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  hardware: !include '../board/spotpear-ball-v2-phone.yaml'
+  audio: !include '../audio/profiles/spotpear-ball-v2-phone.yaml'
+  telephone: ${ _phone if 'voip' in firmware_features else {} }
+  display_hardware: ${ _phone_display if 'voip' in firmware_features and 'display' in firmware_features else {}
+    }
+  display: ${ _phone_ui if 'voip' in firmware_features and 'display' in firmware_features else {} }
+  diagnostics: ${ _phone_diagnostics if 'diagnostics' in firmware_features else {} }
+  led: ${ _phone_led_hardware if 'status_led' in firmware_features else {} }
+  status: ${ _phone_led_status if 'voip' in firmware_features and 'status_led' in firmware_features else _phone_no_led_status
+    }
+  maintenance: !include '../features/shared/standalone_phone_maintenance.yaml'
+substitutions:
+  firmware_maintenance_stop_inputs:
+  - speaker.stop: ringtone_speaker
+  - speaker.stop: ringtone_speaker_mix
+  firmware_phone_has_ringtone: true
+  firmware_phone_has_display: true
+  firmware_phone_redraw:
+  - script.execute: draw_display

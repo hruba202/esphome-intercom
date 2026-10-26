@@ -80,6 +80,27 @@ class FakeCandidate:
 
 
 class DialForkControllerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_external_commit_keeps_original_branch_running(self):
+        session = endpoint_session.EndpointCallSession("call", 1)
+        ready = asyncio.Event()
+        original = FakeCandidate("original", dial_fork.DialOutcome(dial_fork.DialDisposition.ANSWERED, 200), dial_gate=ready)
+        gate = dial_fork.ForkAnswerGate()
+        external = dial_fork.DialCandidate("pickup", gate.dial, gate.reject, control=True, confirm=gate.confirm)
+        runner = asyncio.create_task(dial_fork.DialForkController(session, (original.candidate, external)).run(lambda *_: True))
+        answer = gate.submit("picker")
+        try:
+            self.assertTrue(await asyncio.wait_for(answer.selected, 1))
+            self.assertEqual(original.closes, [])
+            answer.finish(False)
+            ready.set()
+            result = await asyncio.wait_for(runner, 1)
+            self.assertIs(result.winner, original.candidate)
+            self.assertEqual(original.closes, [])
+        finally:
+            runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
+            await gate.close()
+
     async def test_all_dnd_preserves_dnd_instead_of_unreachable(self) -> None:
         session = endpoint_session.EndpointCallSession("call-1", 1)
         first = FakeCandidate(

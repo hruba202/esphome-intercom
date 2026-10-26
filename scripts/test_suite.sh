@@ -10,7 +10,7 @@ SEED=
 
 usage() {
   printf '%s\n' \
-    "Usage: scripts/test_suite.sh [fast|software-full|peer|coverage|ha|js-runtime|fault|mutation] [options]" \
+    "Usage: scripts/test_suite.sh [fast|software-full|peer|coverage|ha|js-runtime|browser|fault|mutation] [options]" \
     "" \
     "Options:" \
     "  --keep-going  run independent tests after a failure" \
@@ -90,6 +90,7 @@ ha_tests=(
   tests/test_phone_routing_ha.py
   tests/test_phone_settings_ha.py
   tests/test_phone_policy_runtime_ha.py
+  tests/test_phone_state_ha.py
   tests/test_trunk_config_flow.py
   tests/test_trunk_catalog_ha.py
   tests/test_trunk_calls_ha.py
@@ -104,19 +105,23 @@ ha_tests=(
   tests/test_sip_phone_transfers_ha.py
   tests/test_audio_splice_ha.py
   tests/test_media_call_lifetime_ha.py
+  tests/test_pbx_defaults_ha.py
   tests/test_parking_lot_ha.py
   tests/test_call_recording_ha.py
   tests/test_esphome_origination_ha.py
   tests/test_sip_phone_policy_ha.py
   tests/test_call_pickup_ha.py
+  tests/test_group_pickup_regressions_ha.py
   tests/test_dialog_info_ha.py
   tests/test_automation_originate_ha.py
   tests/test_announcement_media_ha.py
   tests/test_call_trigger.py
   tests/test_call_deadlines_runtime.py
   tests/test_automation_route_result.py
+  tests/test_entity_rename_ha.py
   tests/test_ha_integration_runtime.py
   tests/test_ha_call_transfer.py
+  tests/test_card_transfer_ha.py
   tests/test_ha_assist_speech.py
   tests/test_assist_intent_responses_ha.py
   tests/test_local_source_runtime.py
@@ -133,18 +138,20 @@ ha_tests=(
   tests/test_trunk_inbound_router_behavior.py
   tests/test_softphone_video_intent.py
   tests/test_video_keepalive_runtime.py
+  tests/test_video_transcoder.py
 )
 ha_ignores=()
 for test_path in "${ha_tests[@]}"; do
   ha_ignores+=("--ignore=$test_path")
 done
+common_pytest_args=()
 if [[ $KEEP_GOING -eq 1 ]]; then
-  pytest_args+=(--maxfail=0)
+  common_pytest_args+=(--maxfail=0)
 fi
 if [[ -n $SEED ]]; then
   [[ $SEED =~ ^[0-9]+$ ]] || { printf '%s\n' "Seed must be numeric" >&2; exit 2; }
   export PYTHONHASHSEED=$SEED
-  pytest_args+=(--hypothesis-seed "$SEED")
+  common_pytest_args+=(--hypothesis-seed "$SEED")
 fi
 
 export YAML_PATH_MODE=$path_mode
@@ -152,11 +159,31 @@ export YAML_PATH_MODE=$path_mode
 case "$MODE" in
   fast)
     pytest_args+=("${ha_ignores[@]}")
-    pytest_args+=(-m "not ha and not js_runtime and not live and not mutation and not slow")
+    pytest_args+=(-m "not ha and not js_runtime and not browser_real and not live and not mutation and not slow")
     ;;
   software-full)
     pytest_args+=("${ha_ignores[@]}")
-    pytest_args+=(-m "not live and not mutation")
+    pytest_args+=(-m "not live and not mutation and not browser_real")
+    ;;
+  browser)
+    "$PYTHON" - <<'PY'
+import importlib.util
+import shutil
+import sys
+
+missing = [name for name in ('chromium', 'ffmpeg') if shutil.which(name) is None]
+missing += [name for name in ('playwright', 'aiohttp') if importlib.util.find_spec(name) is None]
+if missing:
+    sys.exit('Browser suite requires: ' + ', '.join(missing) +
+             '. Install requirements-browser-test.txt, Chromium and FFmpeg.')
+PY
+    pytest_args=(
+      tests/test_frontend_card_browser_layout.py
+      tests/test_frontend_video_browser.py
+      tests/test_browser_audio_startup.py
+      tests/test_frontend_media_devices_runtime.py
+      -q --tb=short -m browser_real
+    )
     ;;
   peer)
     peer_tests=(
@@ -171,10 +198,7 @@ case "$MODE" in
     status=0
     for peer_test in "${peer_tests[@]}"; do
       printf 'suite=peer test=%s\n' "$peer_test"
-      command=("$PYTHON" -m pytest "$peer_test" -q --tb=short)
-      if [[ $KEEP_GOING -eq 1 ]]; then
-        command+=(--maxfail=0)
-      fi
+      command=("$PYTHON" -m pytest "$peer_test" -q --tb=short "${common_pytest_args[@]}")
       "${command[@]}" || {
         status=$?
         [[ $KEEP_GOING -eq 1 ]] || exit "$status"
@@ -210,10 +234,8 @@ case "$MODE" in
       "${coverage_args[@]}"
       --cov-append
     )
-    if [[ $KEEP_GOING -eq 1 ]]; then
-      regular_args+=(--maxfail=0)
-      ha_args+=(--maxfail=0)
-    fi
+    regular_args+=("${common_pytest_args[@]}")
+    ha_args+=("${common_pytest_args[@]}")
 
     printf 'suite=coverage phase=regular yaml_paths=%s\n' "$path_mode"
     COVERAGE_FILE=$coverage_file "$PYTHON" -m pytest "${regular_args[@]}"
@@ -230,13 +252,10 @@ case "$MODE" in
       -q
       --tb=short
     )
-    if [[ $KEEP_GOING -eq 1 ]]; then
-      pytest_args+=(--maxfail=0)
-    fi
     ;;
   js-runtime)
     pytest_args+=("${ha_ignores[@]}")
-    pytest_args+=(-m js_runtime)
+    pytest_args+=(-m "js_runtime and not browser_real")
     ;;
   fault)
     pytest_args+=("${ha_ignores[@]}")
@@ -279,6 +298,7 @@ case "$MODE" in
     ;;
 esac
 
+pytest_args+=("${common_pytest_args[@]}")
 printf 'suite=%s yaml_paths=%s fail_fast=%s seed=%s\n' \
   "$MODE" "$path_mode" "$((1 - KEEP_GOING))" "${SEED:-automatic}"
 exec "$PYTHON" -m pytest "${pytest_args[@]}"

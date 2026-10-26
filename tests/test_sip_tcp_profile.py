@@ -138,14 +138,12 @@ class SipTcpProfileTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_tcp_listener_reports_closed_current_flow_once(self) -> None:
         local = "127.0.0.1"
-        with _reserved_udp_ports(2) as ports:
-            sip_port, rtp_port = ports
         closed: list[tuple[str, int, str]] = []
         server = sip_listener.SipTcpServer(
             host=local,
-            port=sip_port,
+            port=0,
             local_ip=local,
-            local_rtp_port=rtp_port,
+            local_rtp_port=40000,
             supported_formats=[audio_format.AudioFormat(16000, "s16le", 1, 20)],
             on_invite=lambda _: None,  # type: ignore[arg-type]
             on_flow_closed=lambda host, port, transport: closed.append(
@@ -153,6 +151,7 @@ class SipTcpProfileTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.assertTrue(await server.start())
+        sip_port = server.server.sockets[0].getsockname()[1]
         _reader, writer = await asyncio.open_connection(local, sip_port)
         peer_port = writer.get_extra_info("sockname")[1]
         writer.close()

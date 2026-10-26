@@ -832,7 +832,6 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         self.assertIn("new_endpoint", sensor)
         self.assertIn("voip_ring_groups", sensor)
         self.assertIn("voip_conference_groups", sensor)
-        self.assertIn("voip_ring_on_conference", sensor)
         self.assertNotIn("async_prune_ha_softphone_groups", sensor)
         self.assertNotIn("async_prune_ha_softphone_groups", websocket)
         self.assertNotIn("local_ha_seen = False", websocket)
@@ -1218,7 +1217,8 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         self.assertIn("build_ring_group_fork(", forward)
         self.assertIn("async def _wait_browser()", group_fork)
         self.assertIn('"in_call_browser"', group_fork)
-        self.assertIn("DialForkController(", forward)
+        self.assertIn("run_owned_ring_group_fork(", forward)
+        self.assertIn("DialForkController(", group_fork)
         self.assertIn('"answer",', forward)
         browser_answer = forward[
             forward.index('"answer",') : forward.index(
@@ -1250,7 +1250,8 @@ class VoipBackendRouteContractTest(unittest.TestCase):
         fork_source = (
             ROOT / "custom_components" / "voip_stack" / "dial_fork.py"
         ).read_text()
-        self.assertIn("DialForkController(", ring_group)
+        self.assertIn("run_owned_ring_group_fork(", ring_group)
+        self.assertEqual(self.ring_group_fork.count("DialForkController("), 1)
         self.assertIn("strategy=ring_policy.strategy", ring_group)
         self.assertIn(
             "sorted(candidates, key=lambda item: (item.tier, item.order, item.candidate_id))",

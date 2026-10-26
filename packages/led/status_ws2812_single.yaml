@@ -5,12 +5,17 @@
 # State mapping stays in the VoIP simple LED status package or runtime_controller.
 # =============================================================================
 
-substitutions:
-  status_led_name: Status LED
-  status_led_pin: GPIO33
-  status_led_chipset: SK6812
-  status_led_rgb_order: GRB
+defaults:
+  status_led_name: '${ status_led_name | default("Status LED") }'
+  status_led_pin: '${ status_led_pin | default("GPIO33") }'
+  status_led_chipset: '${ status_led_chipset | default("SK6812") }'
+  status_led_rgb_order: '${ status_led_rgb_order | default("GRB") }'
 
+substitutions:
+  status_led_name: ${status_led_name}
+  status_led_pin: ${status_led_pin}
+  status_led_chipset: ${status_led_chipset}
+  status_led_rgb_order: ${status_led_rgb_order}
 light:
   - platform: esp32_rmt_led_strip
     id: status_led

@@ -67,7 +67,8 @@ async () => {
   const card = deep("voip-stack-card, intercom-card")
     .find((item) => (item.config?.mode || item.config?.card_mode || "") === "ha_softphone");
   if (!card) return null;
-  const endpointId = card._getSoftphoneEndpointId?.() || card.config?.endpoint_id || "default";
+  const endpointId = card._getSoftphoneEndpointId?.() || card.config?.endpoint_id || "";
+  if (!endpointId || !card._hass?.connection) return null;
   const backend = await card._hass.connection.sendMessagePromise({
     type: "voip_stack/ha_softphone_state", endpoint_id: endpointId,
   });
@@ -88,6 +89,8 @@ async () => {
       callee: backend?.callee || "", terminal_reason: backend?.terminal_reason || "",
       device_id: backend?.device_id || card.config?.device_id || "",
       video_direction: backend?.video_direction || "inactive",
+      rtp_tx_packets: Number(backend?.rtp_tx_packets || 0),
+      rtp_rx_packets: Number(backend?.rtp_rx_packets || 0),
       video_rtp_tx_packets: Number(backend?.video_rtp_tx_packets || 0),
       video_rtp_rx_packets: Number(backend?.video_rtp_rx_packets || 0),
       runtime_resources: backend?.runtime_resources || backend?.media_debug?.runtime_resources || {},
@@ -105,6 +108,7 @@ async () => {
     text,
     auto_answer: !!card._autoAnswer,
     endpoint_id: endpointId,
+    video_rendered: Number(window.__voipStackEngine?._video?.stats?.rendered || 0),
     softphone_subscribers: window.__voipStackEngine?._softphoneSubscribers?.size ?? -1,
     call_subscribers: window.__voipStackEngine?._callSubscribers?.size ?? -1,
   };
@@ -149,7 +153,7 @@ async () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   const panel = root.querySelector("#voip-settings-panel");
-  const selects = [...(panel?.querySelectorAll("select") || [])];
+  const selects = [...(panel?.querySelectorAll(".media-device-row select") || [])];
   const state = window.__voipStackEngine?.mediaDeviceState || {};
   const microphone = state.devices?.audioinput?.[0]?.deviceId || "";
   if (microphone) await card._selectMediaDevice("audioinput", microphone);
@@ -562,9 +566,16 @@ def main() -> int:
         detail: dict[str, Any] = {}
         failure: Exception | None = None
         try:
+            if page is not None:
+                for button in page.locator('voip-stack-card .settings-btn[aria-expanded="true"], intercom-card .settings-btn[aria-expanded="true"]').all():
+                    if button.is_visible():
+                        button.click()
             detail = run()
         except Exception as error:  # noqa: BLE001 - matrix must continue and report every row.
             failure = error
+            if page is not None and not page.is_closed():
+                with suppress(Exception):
+                    page.screenshot(path=str(Path(args.out).with_name(f"{name}-failure.png")))
         finally:
             while active:
                 active.pop().close()
@@ -626,6 +637,8 @@ def main() -> int:
                     "--disable-audio-output",
                     "--use-fake-ui-for-media-stream",
                     "--use-fake-device-for-media-stream",
+                    *(["--use-file-for-fake-audio-capture=" + os.environ["BROWSER_AUDIO_FIXTURE"]]
+                      if os.environ.get("BROWSER_AUDIO_FIXTURE") else []),
                     "--autoplay-policy=no-user-gesture-required",
                     f"--unsafely-treat-insecure-origin-as-secure={HA_BASE}",
                 ],
@@ -706,6 +719,8 @@ def main() -> int:
                     raise RuntimeError("Answer button unavailable")
                 answered = matching(page, "in_call")
                 caller.wait_for("Call established", 5)
+                answered = wait_card(page, lambda item: item["backend"]["rtp_tx_packets"] >= 50
+                    and item["backend"]["rtp_rx_packets"] >= 50, 8, "duplex audio RTP")
                 if os.environ.get("EXPECT_VIDEO", "") == "1":
                     answered = wait_card(
                         page,
@@ -714,10 +729,12 @@ def main() -> int:
                             and item["backend"]["video_direction"] == "sendrecv"
                             and item["backend"]["video_rtp_tx_packets"] > 0
                             and item["backend"]["video_rtp_rx_packets"] > 0
+                            and item["video_rendered"] > 0
                         ),
                         8,
-                        "bidirectional video RTP",
+                        "bidirectional video RTP and rendered frame",
                     )
+                    page.screenshot(path=str(Path(args.out).with_name("manual-answer-video.png")))
                 caller.hangup()
                 matching(page, "idle")
                 return {
@@ -1097,6 +1114,7 @@ def main() -> int:
                             and item["backend"]["video_direction"] == "sendrecv"
                             and item["backend"]["video_rtp_tx_packets"] > 0
                             and item["backend"]["video_rtp_rx_packets"] > 0
+                            and item["video_rendered"] > 0
                         ),
                         8,
                         "registered SIP bidirectional video RTP",

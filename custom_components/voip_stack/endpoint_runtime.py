@@ -270,6 +270,11 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
     from .sip_application import SipApplicationMethods
 
     application_methods = SipApplicationMethods(hass, registrar)
+    import uuid
+    from .store import config_entry
+    entry = config_entry(hass)
+    if entry is not None:
+        application_methods.gruu_id = uuid.uuid5(uuid.NAMESPACE_URL, f"voip-stack:{entry.entry_id}").hex
     pbx_runtime.attach_component(
         "sip_application",
         application_methods,
@@ -307,6 +312,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         sip_uri_transport=_sip_uri_transport,
         enable_reused_tcp_connection=_enable_reused_sip_tcp_connection,
     )
+    pbx_runtime.adopt_component("endpoint_dialer", endpoint_dialer)
     _browser_leg_for_member = endpoint_dialer.browser_leg_for_member
     _prepare_outbound_leg = endpoint_dialer.prepare_outbound_leg
 
@@ -392,12 +398,6 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             endpoint_id,
             role="destination",
         )
-        registry.add_leg(
-            invite.call_id,
-            invite.call_id,
-            role="ha_softphone",
-            state=CallState.RINGING.value,
-        )
         expected_revision = session.revision
 
         def _publish_ringing_if_current() -> None:
@@ -450,6 +450,8 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         expected_sequence: int = 0,
         initial_selection: bool = False,
         trunk_id: str = "",
+        precondition=None,
+        control_endpoint_id: str = "",
     ) -> None:
         await async_forward_existing_call(
             ForwardRuntime(
@@ -470,6 +472,8 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
             expected_sequence=expected_sequence,
             initial_selection=initial_selection,
             trunk_id=trunk_id,
+            precondition=precondition,
+            control_endpoint_id=control_endpoint_id,
         )
 
     async def _run_trunk_inbound_route_guarded(
@@ -839,13 +843,23 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         updated: SipInvite,
         method: str,
     ) -> SipInviteResult:
-        return await async_prepare_media_update(
-            hass,
-            local_ip,
-            previous,
-            updated,
-            method,
-        )
+        session = registry.get_session(registry.resolve_session_id(updated.call_id))
+        result = await async_prepare_media_update(hass, local_ip, previous, updated, method)
+        if session is None or not 200 <= result.status < 300:
+            return result
+        prior_notification = result.on_committed
+        def published(actual):
+            from .core.sip_dialog import notify_media_commit
+            from .call_projection import publish_bridge_projection
+            notify_media_commit(prior_notification, actual)
+            manager = sip_endpoint_manager(hass)
+            if (registry.get_session(session.call_id, generation=session.generation) is session
+                    and session.live and manager is not None
+                    and registry.resolve_session_id(actual.call_id) == session.call_id
+                    and manager.invite_for_call(actual.call_id) is actual):
+                session.state_changed()
+                publish_bridge_projection(hass, session, event_type="state_changed")
+        return replace(result, on_committed=published)
 
     async def _on_refer(call_id, target, *, source_client=None) -> int:
         from .call_transfer import async_transfer_target
@@ -887,6 +901,7 @@ async def async_start_sip_endpoint(hass: HomeAssistant) -> bool:
         on_media_update=_on_media_update,
         on_refer=_on_refer,
         on_request=application_methods.handle,
+        request_router=application_methods,
         on_flow_closed=_on_flow_closed,
         udp_enabled=True,
         tcp_enabled=True,

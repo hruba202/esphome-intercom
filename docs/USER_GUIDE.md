@@ -1,9 +1,28 @@
 # User guide
 
 This guide describes the normal VoIP Stack workflow from installation to the
-first local, SIP and trunk calls. Protocol and developer details are linked at
-the end. For the difference between a phone, card, contact and trunk, see
+first local, SIP and trunk calls, then explains the everyday PBX controls.
+ESP hardware is optional: you can start with a browser phone and ordinary SIP
+phones. For the difference between a phone, card, contact and trunk, see
 [basic concepts](CONCEPTS.md).
+
+## Find the task you need
+
+| I want to... | Start here |
+| --- | --- |
+| Choose which phone places a call | [Calling phone picker](#choose-the-calling-phone-in-the-editor) |
+| Add a provider or another PBX | [SIP trunks](#configure-a-trunk) |
+| Send an unanswered call somewhere else | [Ringing timeout and forwarding](#choose-what-happens-when-nobody-answers) |
+| Move an answered call to someone else | [Transfer a call](#forward-or-transfer-a-call) |
+| Leave and listen to messages | [Voicemail](#voicemail) |
+| Continue a conversation on another phone | [Parking and pickup](#parking-and-picking-up-calls) |
+| Call a phone and play an announcement | [Announcements](#make-an-announcement-without-a-browser) |
+| React when a phone rings or its mailbox changes | [Native automation tools](#phone-state-in-automations) |
+
+The screenshots use Home Assistant's visual editors. Choose phones by their
+names; HA stores the identifiers for you. The new PBX actions described here
+are included in the current **2026.10.3-dev** prerelease. If an action is missing
+after redownloading the same version, restart HA and reload the browser.
 
 ## Install Home Assistant VoIP Stack
 
@@ -31,9 +50,81 @@ before more phones are added.
 5. Grant microphone permission when the browser asks. Grant camera permission
    only when this phone must transmit video.
 
-The editor saves your selection automatically. Incoming calls for that phone
+After saving, the card controls the phone you selected. Incoming calls for that phone
 move every connected card bound to the same Device to `ringing`. The browser
 that answers becomes the media owner.
+
+## Read the phone card
+
+The same icons are used in audio and video mode.
+
+![Idle phone with keypad and options icons](images/pbx-phone-idle-green.png)
+
+| Control | What it does |
+| --- | --- |
+| Keypad (nine dots) | Enter a number, contact name or SIP URI. During a call, send DTMF digits. The icon changes to Contacts when it can return you to the phonebook. |
+| Voicemail (two linked circles) | Open this phone's messages. It appears when messages are available and the phone is idle, not during dialing, ringing or an active call. |
+| Transfer (handset with arrow) | Open the existing contact/keypad view to choose where to send the current call. Confirm with **Transfer**. |
+| P | Park the established audio call. The returned slot is the number to dial to retrieve it. |
+| Options (sliders) | Open this phone's answer, DND, mailbox, audio/video and routing settings. |
+| Call / Hang up | Start the selected call or end the current conversation. In video mode, use the handset icon in the translucent bottom bar. |
+
+![Phone options on the same green-themed dashboard](images/pbx-phone-options-green.png)
+
+Options includes auto-answer, DND, mailbox, ringtone and media-device settings.
+**Send Camera** controls your outgoing camera; it does not prevent receiving
+video. Disabling **Enable this phone's mailbox** deletes its messages and settings.
+
+Occupied parking slots appear as a left-aligned bullet list. Other phones that
+are calling, ringing or busy appear on the right, with the bullets at the right
+edge and the text in its normal reading order. These are backend call states,
+shared with SIP BLF; external PBX extensions are not automatically monitored.
+The phone you are currently speaking to is already shown in the call status
+and is omitted from the activity list.
+
+The lists do not move or resize Call, Answer, Decline or the toolbar icons.
+Lists fit the space beside the call controls and scroll when necessary.
+Empty lists occupy no space. They are hidden while
+the keypad, options or video view needs that space. Voicemail stays in its own
+button and is not duplicated in these lists.
+
+![An established audio call, with Parking available](images/pbx-phone-audio-call-green.png)
+
+The keypad closes when you start or answer a call. Open it again if an IVR or
+door station needs DTMF. On short video cards it scrolls above the call bar.
+
+![Live video received from a Mobotix door station](images/pbx-mobotix-video-green.png)
+
+This is a real call through a FreeSWITCH-based PBX with the local webcam off.
+The image arrives from the door station. **P is disabled during video calls**:
+parking currently supports audio calls. Switching off Send Camera alone does
+not make a call audio-only when the peer is sending video.
+
+![DTMF keypad open during the same video call](images/pbx-mobotix-keypad-green.png)
+
+For parking and retrieval, follow the [parking walkthrough](CALL_PARKING.md).
+For forwarding, ringing timeouts, mailbox setup and line selection, see
+[PBX workflows](PBX_WORKFLOWS.md).
+
+## Rename Home Assistant entities
+
+You can change a VoIP Stack entity ID in **Settings > Devices & services >
+Entities**, for example from `sensor.casa_call_state` to `sensor.living_room_call`.
+The entity stays linked to the same phone. Its extension, settings and active
+call do not change. Access checks use the current entity identity, not its old
+name.
+
+The shared phonebook and call-event entities can also be renamed. VoIP Stack
+finds them through Home Assistant's entity registry, and cards using automatic
+phonebook selection follow the new ID. You do not need to recreate the phone.
+
+If you explicitly entered an entity ID in a card's YAML, a template or an
+external automation, check that reference after renaming. VoIP Stack does not
+rewrite user-authored YAML or retain the old ID as an alias.
+
+This works with the existing remove-and-add lifecycle and Home Assistant's
+in-place entity renaming introduced in Core 2026.11. The minimum supported
+Home Assistant version remains 2026.7.0.
 
 ## Choose the calling phone in the editor
 
@@ -44,11 +135,11 @@ No YAML editing or identifier lookup is needed. Enable the optional **Calling
 phone** field, open **Select a device**, and choose the phone by name. Home
 Assistant stores the selection for you.
 
-![Find VoIP Stack: Call in the HA action picker](images/call-action-picker.png)
+![Find VoIP Stack: Call in the HA action picker](images/call-action-picker-dark.png)
 
-![Choose the calling phone by its readable name](images/call-phone-picker.png)
+![Choose the calling phone by its readable name](images/call-phone-picker-dark.png)
 
-![Calling phone and Destination filled in the visual action editor](images/call-action-fields.png)
+![Calling phone and Destination filled in the visual action editor](images/call-action-fields-dark.png)
 
 In these screenshots, **Casa** is the calling phone and **Kitchen** is the
 example destination. Nothing is executed just by filling these fields. In an
@@ -103,7 +194,7 @@ phone is allowed after another preferred phone has been selected.
 4. Add it through the normal ESPHome integration.
 5. Wait for VoIP Stack to discover its endpoint and publish it in the phonebook.
 
-Custom profiles use ESPHome 2026.9.0 or newer and enable native API actions:
+Custom profiles use ESPHome 2026.10.0 or newer and enable native API actions:
 
 ```yaml
 api:
@@ -238,6 +329,15 @@ another PBX:
 5. Choose the allowed codecs and the receiving phone under **Fallback destination**.
 6. Enable digit collection only if callers should choose an internal extension.
 
+![Open the integration menu and choose Add SIP trunk](images/pbx-add-trunk-menu-dark.png)
+
+![Name the line and choose whether it registers](images/pbx-add-trunk-dark.png)
+
+Leave **Register the trunk** enabled when the provider gives you a SIP account.
+Disable it only for a peer configured to accept a static connection. A static
+trunk needs a precise incoming IP allowlist; its Ready indicator means it is
+configured for that mode, not that a REGISTER succeeded.
+
 Each trunk is a separate HA entry with its own device and readiness entity.
 Edit it through the configuration control beside that named trunk, not through
 **Reconfigure > Trunk** on the main integration. The first line becomes the
@@ -256,60 +356,149 @@ Home Assistant trunk and standard SIP legs support UDP, TCP and verified TLS.
 ESP endpoints intentionally remain lightweight local SIP/RTP phones and do not
 terminate SIP TLS or SRTP.
 
+## Choose what happens when nobody answers
+
+Open the phone's card and choose **Options > Call routing**. These are the
+phone's settings in the backend: they still apply when its card is closed.
+The ESP mirror card exposes the same phone-routing policy.
+
+![Phone routing options, including an optional ringing timeout](images/pbx-phone-routing-green.png)
+
+For a phone that should ring for 20 seconds and then take a message:
+
+1. Enable its mailbox as described in the next section.
+2. Enable **Ringing timeout** and enter **20 seconds**.
+3. Choose **Voicemail** under **After timeout**.
+4. Leave the mailbox destination empty to use this phone's mailbox, or choose
+   another phone with an enabled mailbox.
+5. Press **Save**.
+
+Choose **Forward** and a destination instead to try another phone. Choose
+**Hang up** to finish the unanswered call. Rules for forwarding every call,
+forwarding while busy/DND, and forwarding while unavailable are separate.
+Leave them unset when you do not need them. With no ringing timeout, VoIP Stack
+adds no application-level no-answer deadline; caller cancellation and SIP
+network timeouts still apply.
+
+An automation that accepts control with a routing action can override the
+phone's fallback for that call. Merely sending a notification does not take
+control. For example, a native **Call ringing timeout** trigger can use
+**Send to voicemail** or **Forward call**. See [routing precedence and
+examples](PHONE_ROUTING.md).
+
 ## Forward or transfer a call
 
-These actions also provide a visual **Phone** picker and a **Destination** field.
-For Transfer call, the optional Phone picker is under **Advanced options**.
-Select the local phone by name; Home Assistant saves its `device_id` for you.
-Native VoIP call triggers supply the current call automatically. Explicit `call_id` selection is an advanced option, not a value you must look
-up for every automation. See the
-[automation cookbook](AUTOMATION_DIALPLAN.md) for examples using the current call.
+| Situation | Control to use |
+| --- | --- |
+| The phone is still ringing and another destination should answer | **Forward call**, a routing rule, or an automation |
+| You have answered and want another person to take over | **Transfer** |
+| You want to put the caller aside and resume elsewhere yourself | **Park call**, then call the assigned slot |
 
-Secure SIP identities such as `sips:desk@pbx.example:5061;transport=tls` are
-preserved across direct routing, outbound proxies and REFER targets.
+### Transfer from the card
 
-Between SIP endpoints, use the telephone's normal attended-transfer controls: hold
-the caller, dial the other extension, speak to that person, then complete the
-transfer. The telephone must support REFER with Replaces. VoIP Stack keeps the
-destination's existing SIP dialog and RTP address, so that person does not receive
-a second ringing call. If the transfer is rejected, the existing calls remain
-available to the telephone's normal resume or hangup controls.
+1. During the conversation, press the **Transfer call** handset-and-arrow icon.
+2. Select a contact. To enter an extension or SIP address, switch to **Keypad**.
+3. Press **Transfer** to confirm.
+4. On success, your phone becomes free. If the transfer fails, read the error
+   and keep using the existing call; do not assume the destination answered.
 
-A SIP phone can originate a consultation while already in an established call.
-It still appears busy to unrelated incoming calls. Browser and ESP phone controls
-retain their existing single-call behavior.
+![Choose a destination in the card's transfer view](images/phone-transfer-dark.png)
 
-For two SIP audio calls already routed through HA, a remaining phone that rejects
-REFER can still be connected locally. HA retains its existing call and joins the
-two media legs. This also covers static SIP endpoints without REGISTER. Video
-calls continue to require the peers' REFER/Replaces support; the local fallback
-does not silently remove negotiated video.
+The card reuses the same contact and keypad view as normal dialing. Opening the
+transfer view does not send the call anywhere until you confirm.
+
+A blind transfer of a browser-to-browser call can select another browser or
+route the remaining participant to a SIP phone or trunk. For a browser-to-SIP
+or trunk handoff, turn off both local cameras first: active local video is not
+supported on that handoff. A failed preparation leaves the original
+conversation available.
+
+### Transfer from a SIP handset or automation
+
+For an attended transfer on a SIP handset, hold the caller, call the other
+extension, speak to that person, then complete the transfer. The handset must
+support REFER with Replaces. The destination retains its answered SIP dialog;
+it is not called a second time. On failure, use the handset's normal resume or
+hangup controls. SIP consultation calls can coexist; browser and ESP controls
+retain their single-call behavior.
+
+In an HA automation, choose **VoIP Stack: Transfer call** and the destination.
+Native VoIP call triggers supply the current call. For a manually configured
+action, the participating **Phone** picker is under **Advanced options**.
+An explicit call ID is only needed for advanced selection between concurrent
+calls. See the [action reference](SERVICES.md#voip_stacktransfer).
+
+For two SIP audio calls already controlled by HA, the backend can join the
+remaining participants locally when appropriate, including static SIP peers.
+This is not a guarantee that every handset supports every REFER target or media
+change. The updated ESP development firmware supports blind audio transfers
+between IPv4 SIP endpoints over UDP or TCP. Rebuild and install the firmware;
+updating HA alone cannot add this support to an ESP. Spotpear Ball V2 FULL has
+been tested with HA browser phones in all four UDP/TCP transport combinations,
+including busy, timeout and cancellation. The replacement call retains its
+active TX codec, so the tested Spotpear transfer uses L16/16 kHz both ways.
+Video transfers, hostname targets and attended REFER with Replaces are outside
+this ESP receiver's supported scope. The original call remains available when
+a transfer fails, provided its caller has not already hung up.
 
 ## Voicemail
 
-Voicemail is available in the updated 2026.10.3-dev preview. Enable it in
-VoIP Stack's settings and select a Home Assistant TTS voice and language for the
-spoken telephone menus. Then enable the mailbox for each phone that needs one.
+PBX functions are available by default. There are no global parking or voicemail
+enable switches. Configure resources as needed; registering a function does not
+create mailboxes, record calls or start playback.
 
-The mailbox belongs to that phone. Its card shows a **Voicemail** button when
-messages exist. Open it to see callers and recording dates, listen to a message
-or delete it. The softphone places an ordinary call to the mailbox and sends
-keypad commands; the message list stays open during that call.
+A **mailbox** is the message inbox belonging to one phone. Voicemail is the PBX
+feature that answers a call, plays a greeting and records the caller.
 
-On a registered SIP handset, configure the voicemail key to dial `*97`. This
-opens its own mailbox without a PIN. To reach another mailbox, dial `*98` and
-enter its extension and PIN. VoIP Stack uses SIP MWI to update a compatible
-handset's new-message indicator.
+### Enable the mailbox and its routing rule
 
-Enabling a mailbox alone leaves normal ringing unchanged. In the phone card's
-**Options > Call routing**, enable a ringing timeout and choose voicemail if
-unanswered calls should leave a message. Automations can also speak an
-announcement and then send that particular call to a selected mailbox.
+1. For spoken mailbox menus, open **VoIP Stack > Reconfigure > Voicemail voice**
+   and choose an HA TTS provider, language and voice. Message deposits use a
+   recording tone or the mailbox greeting and do not require TTS.
+2. Open the phone card's **Options** and enable **Enable this phone's mailbox**.
+3. If unanswered calls should leave a message, configure **Call routing >
+   Ringing timeout > Voicemail** and save it.
 
-Recordings are stored once in Home Assistant Media. A **Voicemail received**
-automation can use that file for a notification or optionally transcribe it
-through an installed HA STT provider. See the [voicemail guide](VOICEMAIL.md)
-for complete setup, keypad commands and automation examples.
+You can also use **VoIP Stack: Configure voicemail** in the action editor and
+select the phone by name. Selecting a mailbox does not itself redirect calls.
+
+![Configure a phone's mailbox through the native HA action](images/mailbox-action-dark.png)
+
+Disabling the mailbox deletes that phone's mailbox, settings and messages.
+Removing its HA phone or ESP endpoint also removes its mailbox. Conversation
+recordings are separate and are not deleted by disabling voicemail.
+
+### Listen, delete or use a SIP voicemail key
+
+The card shows **Voicemail** while the phone is idle and has messages. Open it
+to see the callers and recording dates. Select a message to listen; use its
+Delete control to delete that message. The softphone calls the same voicemail
+menu used by a SIP handset and sends the keypad commands. Its list remains open.
+
+| From a phone connected to this PBX | What happens |
+| --- | --- |
+| Dial `*97`, or configure the handset's voicemail key to use it | Open that identified phone's own mailbox without a PIN |
+| Dial `*98` | Choose another mailbox by extension and enter its PIN |
+| Press `1` during playback | Next message |
+| Press `2` during playback | Delete the selected message |
+| Press `3` during playback | Repeat the selected message |
+
+Another phone cannot open a mailbox unless that mailbox has a PIN configured.
+MWI updates a compatible SIP handset's new-message indicator; it does not
+transfer a list of audio files to the phone.
+
+### Notify or transcribe after a message arrives
+
+Use the native **Voicemail received** trigger to act on a newly saved recording.
+For example, add **Transcribe voicemail** and then your notification action if
+an HA speech-to-text provider is available. STT is optional and belongs to the
+automation, not to the telephone menu. The recording is stored once in Home
+Assistant Media and can be reused by the notification.
+
+Use **Phone mailbox changed** when you want to react to message-count changes,
+including messages being read or deleted. These are different triggers: a count
+change does not necessarily mean a new recording arrived. See the
+[voicemail guide](VOICEMAIL.md) for media access and complete examples.
 
 ## Busy lamps on SIP phones
 
@@ -330,15 +519,52 @@ and must refresh before expiry.
 
 ## Parking and picking up calls
 
-Enable parking in the main integration configuration. Transfer an established
-call to `700`, then dial its assigned slot (normally `701` through `720`) from
-another phone. The dashboard's **Park call** button uses the same backend.
+### Continue a conversation on another phone
 
-To answer an individual phone that is still ringing, dial `pickup.<phone>` or
-`*8` followed by its extension. For example, `*8101` answers the ringing phone
-with extension `101`. These are local PBX dial-plan conventions, not SIP
-protocol requirements. See [parking and pickup](CALL_PARKING.md) for limits and
-return behavior.
+Parking is available by default. During an audio call,
+press **P** on the card. The phone is released and the left-hand list shows the
+assigned slot, for example **701**.
+
+![The occupied slot shown after parking a call](images/pbx-phone-parked-green.png)
+
+On the phone where you want to continue, open the keypad, enter **701** and
+press **Call**. The original card can retrieve it too. The slot disappears when
+the conversation resumes.
+
+![Dial the assigned slot from the receiving phone](images/pbx-phone-pickup-green.png)
+
+A SIP handset can park by transferring to **700** instead of pressing P.
+**These are two ways to park, not two steps.** Once parked, call the reported
+slot to retrieve it. Do not transfer it to 700 again. HA's slots are separate
+from another PBX's own parking extensions; a trunk must route those numbers to
+HA if they are used from the other PBX.
+
+### Answer a phone that is still ringing
+
+Choose **VoIP Stack: Pick up call** in the HA action editor:
+
+1. **Recovering phone:** where you want to answer, for example Office.
+2. **Ringing phone:** the phone currently ringing, for example Kitchen.
+3. **Wait for answer:** how long to wait for the recovering phone to answer.
+4. Leave **Parking slot** empty for a ringing-call pickup.
+
+![Pick up a ringing call on another phone using the device pickers](images/pickup-ringing-action-dark.png)
+
+A SIP or ESP recovering phone rings and must answer. For a browser phone, keep
+its card open and its audio connection ready. If another group member answers
+first, that answer wins. A failed pickup leaves the original ringing call
+available. The advanced call and leg fields are only needed when the selected
+phone has more than one eligible call.
+
+To retrieve a parked call through this action, choose **Recovering phone** and
+**Parking slot** instead of Ringing phone. From a telephone keypad, use the slot
+number, `pickup.<phone>`, or `*8` followed by the ringing extension, such as
+`*8101`. These are this PBX's dial-plan codes, not universal SIP codes.
+
+For a native ringing-trigger automation, you can omit Ringing phone: the
+trigger already identifies the call. Follow the
+[complete visual recipe](#recover-a-ringing-call-from-an-automation).
+For return timeouts and supported media, see [parking and pickup](CALL_PARKING.md).
 
 ## Recording a conversation
 
@@ -350,6 +576,40 @@ and do not turn on message-waiting indicators.
 
 The [recording guide](CALL_RECORDING.md) describes file access, automation events
 and supported call paths. Recording is optional and off until requested.
+
+## Make an announcement without a browser
+
+An Automation contact can originate an audio call from the HA backend. No
+microphone, open card or ESP caller is required.
+
+For a weekday wake-up call, create an enabled Automation contact named
+`Wakeup-Caller`. Then create an HA automation with a **Time** trigger at
+**07:30** and a **Time** condition allowing Monday through Friday. Add these
+actions in order:
+
+1. **VoIP Stack: Call:** enable **Calling Automation contact**, enter
+   `Wakeup-Caller`, set Destination to the target phone or SIP account, and
+   choose **Wait for answer**, for example 30 seconds. Leave Calling phone unset.
+2. **VoIP Stack: Speak to the caller:** choose the installed TTS provider and
+   enter your message.
+3. **VoIP Stack: Hang up:** keep the current call supplied by this execution.
+
+![Choose the TTS provider and announcement text in the action editor](images/tts-action-dark.png)
+
+Call waits for an answer before the next action runs. Speak waits for the
+announcement to finish transmitting before Hang up runs. If the destination
+is busy or never answers, the call action fails and releases its call; the
+announcement does not play during ringing.
+
+For a sound file, use **Play audio to the caller** and its media picker in
+place of Speak. Both playback actions leave hangup to the next action, so you
+can chain several announcements. Keep the sequence in the same automation
+execution to use its call automatically. You do not need a call-ID template
+for this ordinary sequence.
+
+The same sequence can be triggered by a delivery notification or door sensor.
+See the [automation cookbook](AUTOMATION_DIALPLAN.md) for incoming calls, menus,
+error handling and complete YAML examples.
 
 ## Audio and video calls
 
@@ -411,16 +671,97 @@ for Asterisk and FreeSWITCH static extensions, conventional SIP phones, ESP
 contacts, audio formats and call tests. This is a
 firmware-to-PBX path; HA can continue providing the device's Assist features.
 
+## Phone state in automations
+
+Use native triggers for changes and native conditions for decisions. These
+choices appear in the ordinary Home Assistant automation editor; you do not
+need an event-type string or a template to detect a ringing phone.
+
+| Tool | Use it when... |
+| --- | --- |
+| **Phone state changed** trigger | A particular phone starts ringing, connects, goes on hold or returns to idle |
+| **Phone mailbox changed** trigger | The phone's new/read message counts change |
+| **Call picked up** trigger | A pickup has completed, rather than merely been attempted |
+| **Phone is in state** condition | Continue only if the selected phone is idle, ringing, in a call, held, calling or unavailable |
+| **Phone has a ringing call** condition | Check for a call that can still be answered |
+| **Phone has voicemail** condition | Check for unread messages, or any messages when unread-only is disabled |
+| **Get phone state** action | Read a snapshot into an action response for a more advanced script |
+
+**Idle** and **Unavailable** are different. A phone can also have DND enabled;
+reading its state does not turn DND off. Calls on an external PBX are not assumed
+idle simply because HA cannot see them. These tools describe phones and calls
+managed by this VoIP Stack instance.
+
+### Recover a ringing call from an automation
+
+Example: Kitchen is ringing, and you want Office to recover the call if Office
+is free. First ensure Office is available and DND is off. If Office is a browser
+phone, open its card so its audio connection is ready.
+
+1. Open **Settings > Automations & scenes > Create automation**, then create an
+   empty automation.
+2. Under **When**, choose **Add trigger**. In the trigger chooser, select
+   **By type** if it initially shows targets. Search for **Phone state changed**.
+3. Select **Kitchen** as Phone. Enable **To** and choose **Ringing**. Leave From
+   unset so any transition into ringing can start the automation.
+
+![Native phone-state trigger with Kitchen and To Ringing selected](images/phone-state-trigger-dark.png)
+
+4. Under **And if**, add **Phone is in state**. Select **Office** and **Idle**.
+
+![Native condition requiring Office to be idle](images/phone-state-condition-dark.png)
+
+5. Under **Then do**, add **VoIP Stack: Pick up call**. Select **Office** as
+   Recovering phone and choose a Wait for answer duration. Leave Ringing phone,
+   Parking slot and Advanced options unset: this native trigger already carries
+   the ringing call.
+
+![Pickup action with only the recovering phone selected](images/pickup-action-dark.png)
+
+6. Save the automation. To test it, call Kitchen from a third phone. Office
+   should receive the recovery attempt; answer it to complete the pickup.
+
+The condition is an initial check, not a reservation. If another member answers
+first or Office becomes busy, the backend resolves that race. A stale execution
+cannot pick up a later call merely because it rings the same phone.
+
+For a button, standalone script or a trigger from another integration, also
+choose **Ringing phone** in Pick up call, or choose **Parking slot** for a parked
+caller. A manual **Run actions** test does not reproduce the native ringing
+trigger's call context. Use the complete test call above to validate the
+triggered sequence.
+
+### Read a snapshot when a script needs more detail
+
+Select **VoIP Stack: Get phone state** and choose Phone with the device picker.
+The response includes availability, DND, active calls and their participants,
+and mailbox new/read counts. In an automation or script, give the action a
+response variable when subsequent steps need those details.
+
+![Read Office's state through the native HA action](images/get-phone-state-action-dark.png)
+
+Reading state never answers, routes or ends a call. Use the native triggers
+instead of repeatedly polling this action when you only need to react to a
+change. See the [action reference](SERVICES.md#voip_stackget_phone_state) for
+response fields and advanced concurrent-call selection.
+
 ## Detailed references
 
 - [Automation cookbook](AUTOMATION_DIALPLAN.md)
-- [What is new in 2026.9.0](WHATS_NEW_2026_9_0.md)
 - [Deployment guide](DEPLOYMENT_GUIDE.md)
 - [Home Assistant actions](SERVICES.md)
 - [Dial plan](DIALPLAN_RESOLVER.md)
 - [Groups](GROUPS.md)
 - [SIP trunk](SIP_TRUNK.md)
 - [SIP video](SIP_VIDEO.md)
-- [Automation cookbook](AUTOMATION_DIALPLAN.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](ARCHITECTURE.md)
+
+### Optional firmware audio tuning
+
+Start with your maintained device YAML and its default AEC/AFE profile. For a
+custom two-microphone delivery, analog PGA controls or a recording of individual
+PCM stages, see [Audio Stack's tuning guide](https://github.com/n-IA-hane/esphome-audio-stack/blob/dev/docs/AUDIO_TUNING.md).
+These development options are opt-in; removing their YAML excludes the
+corresponding capture/control code. The normal calling and Assist paths continue
+to use the same microphone and speaker owners.

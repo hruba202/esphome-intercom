@@ -1,0 +1,42 @@
+# P4 videophone panel and backlight. No camera or codec is selected here.
+display:
+- platform: mipi_dsi
+  id: main_display
+  model: WAVESHARE-10.1-DSI-TOUCH-A
+  reset_pin: ${display_reset_pin}
+  lane_bit_rate: 1500Mbps
+  vsync_back_porch: 10
+  dimensions:
+    width: 800
+    height: 1280
+  update_interval: never
+  auto_clear_enabled: false
+touchscreen:
+- platform: gt911
+  id: main_touch
+  i2c_id: internal_i2c
+  address: 93
+  display: main_display
+  on_touch:
+  - output.set_level:
+      id: backlight_pwm
+      level: 100%
+light:
+- platform: monochromatic
+  id: display_backlight
+  name: Display Backlight
+  output: backlight_pwm
+  restore_mode: ALWAYS_ON
+  default_transition_length: 250ms
+output:
+- platform: ledc
+  id: backlight_pwm
+  pin: ${display_backlight_pin}
+  inverted: false
+  frequency: 1000Hz
+packages:
+  ppa: !include '../lvgl/p4_ppa.yaml'
+external_components:
+- source: ${ext_components_source}
+  components:
+  - mipi_dsi

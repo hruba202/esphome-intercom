@@ -66,7 +66,7 @@ flashed. No physical ESP validation is claimed for these new native API actions.
 
 Conversation recording supports two-party audio, not conferences. Parking and
 directed pickup reject active video before changing ownership. Directed pickup
-targets individual phones, not branches inside a ringing group. Direct endpoint
+targets ringing phones, including members of audio ring groups. Direct endpoint
 calls that bypass HA cannot use backend routing, voicemail or recording.
 
 The initial qualification used the development lab. Later selected changes were
@@ -103,8 +103,8 @@ public hardware claims require separate device tests.
 
 ## Documentation comparison, 2026-10-11
 
-The published `v2026.10.3-dev` tag resolves to `16714a9b`; `origin/main` resolves
-to `6581cfea`. They are different comparison points. The PBX workflow guide
+For this historical comparison, the preview snapshot is `16714a9b` and the
+`main` snapshot is `6581cfea`. They are different comparison points. The PBX workflow guide
 covers branch additions after the published preview, including named trunks,
 phone routing, voicemail/MWI, parking/pickup, consultation transfer/dialog-state
 support and conversation recording. Existing Automation origination, TTS/media
@@ -130,3 +130,22 @@ synthetic RTP source in the Android emulator exposed initial loss when browser
 readiness exceeded the bounded receive queue. That separate startup/burst case
 remains to be investigated; preloading worklets alone did not resolve it.
 The development branch is not being declared universally hardware-qualified.
+
+## Ring-group pickup regression boundaries
+
+`test_group_pickup_regressions_ha.py` imports the real fork controller, group
+builder, owned wrapper, route decisions and canonical phone projections. It
+covers browser-only and mixed arbitration, pending/committed/withdrawn tickets,
+negative preparation, cancellation, overall deadlines and subsequent attempts.
+Browser rollback checks the exact candidate, call generation, claims, leg,
+route membership and final phone event. A concurrent unrelated member and a
+new generation must survive another attempt's cleanup.
+
+`test_call_pickup_ha.py` also runs identified baresip pickup through the real HA
+orchestrator for browser-only groups, both incoming SIP pickup and the HA
+callback service. Its decline/retry scenario uses native HA services, then
+answers on another browser phone and starts a new call on the declined phone.
+These tests exercise backend state and isolated SIP peers. They do not certify
+physical handset LEDs or a rendered dashboard. Fault-injected cancellation and
+preparation errors test rollback contracts; they are not evidence for the
+separate, unconfirmed concurrent-discovery hypothesis.

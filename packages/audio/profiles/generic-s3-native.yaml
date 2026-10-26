@@ -1,0 +1,31 @@
+# Physical capture/output and processing parameters for this reference profile.
+microphone:
+- platform: i2s_audio
+  id: native_mic_raw
+  adc_type: external
+  i2s_audio_id: rx_i2s
+  i2s_din_pin: ${rx_i2s_din_pin}
+  channel: stereo
+  sample_rate: 16000
+  bits_per_sample: 32bit
+  correct_dc_offset: true
+speaker:
+- platform: i2s_audio
+  id: hw_speaker
+  dac_type: external
+  i2s_audio_id: tx_i2s
+  i2s_dout_pin: ${tx_i2s_dout_pin}
+  channel: mono
+  sample_rate: 48000
+  bits_per_sample: 16bit
+  buffer_duration: 100ms
+  timeout: 500ms
+switch:
+- platform: output
+  id: speaker_power
+  name: Speaker Power
+  output: speaker_enable
+  restore_mode: RESTORE_DEFAULT_ON
+packages:
+  microphone_mute: !include '../../features/shared/microphone_mute.yaml'
+  speaker_mute: !include '../../voip/speaker_mute_runtime.yaml'

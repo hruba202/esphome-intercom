@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ SPEC = importlib.util.spec_from_file_location(
 )
 assert SPEC is not None and SPEC.loader is not None
 sip_auth = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = sip_auth
 SPEC.loader.exec_module(sip_auth)
 build_digest_authorization = sip_auth.build_digest_authorization
 parse_digest_challenge = sip_auth.parse_digest_challenge

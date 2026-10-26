@@ -184,6 +184,7 @@ async def test_reconfigure_preserves_latest_permission_changed_during_wizard(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
     )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "user"})
     user_input = result["data_schema"]({CONF_SIP_VIDEO: True})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input)
     assert result["step_id"] == "video"

@@ -158,6 +158,7 @@ def _publish_leg(
     endpoint_id: str,
     *,
     terminal: bool = False,
+    event_type: str = "",
 ) -> None:
     """Project one local bridge leg into the existing softphone contract."""
     caller_endpoint = _endpoint(hass, snapshot.caller_endpoint_id)
@@ -212,6 +213,8 @@ def _publish_leg(
         )
     elif state == "ringing":
         extra["sip_status_code"] = 180
+    if event_type:
+        extra["event_type"] = event_type
     if terminal:
         terminal_reason = _reason(snapshot, endpoint_id)
         extra.update(
@@ -285,6 +288,9 @@ def _bridge_event(hass: HomeAssistant, event: LocalBridgeEvent) -> None:
             endpoint_id=snapshot.caller_endpoint_id,
             source_endpoint_id=snapshot.caller_endpoint_id,
             dest_endpoint_id=snapshot.callee_endpoint_id,
+            target_endpoint_id=snapshot.callee_endpoint_id,
+            media_client_id=snapshot.caller_media_owner_id,
+            source_media_client_id=snapshot.caller_media_owner_id,
             local_bridge=True,
         )
         registry.add_leg(
@@ -339,8 +345,8 @@ def _bridge_event(hass: HomeAssistant, event: LocalBridgeEvent) -> None:
         return
 
     if event.event_type is LocalBridgeEventType.VIDEO_UPDATED:
-        _publish_leg(hass, snapshot, snapshot.caller_endpoint_id)
-        _publish_leg(hass, snapshot, snapshot.callee_endpoint_id)
+        _publish_leg(hass, snapshot, snapshot.caller_endpoint_id, event_type="state_changed")
+        _publish_leg(hass, snapshot, snapshot.callee_endpoint_id, event_type="state_changed")
         return
 
     if event.event_type is LocalBridgeEventType.ENDED:
@@ -433,7 +439,7 @@ class PendingLocalSource:
         session = self.registry.get_session(snapshot.call_id if snapshot else call_id)
         if self.established:
             if (snapshot is None or snapshot.caller_state is not LocalCallState.IN_CALL
-                    or snapshot.callee_state is not LocalCallState.IN_CALL or snapshot.video_enabled
+                    or snapshot.callee_state is not LocalCallState.IN_CALL or snapshot.video_active
                     or retained_endpoint_id not in {snapshot.caller_endpoint_id, snapshot.callee_endpoint_id}):
                 raise RuntimeError("local handoff requires an established audio participant")
         if session is None or (snapshot is not None and not self.established
@@ -469,6 +475,12 @@ class PendingLocalSource:
         if not isinstance(self.media, dict):
             raise RuntimeError("local call media ownership is missing")
         self.original_media = dict(self.media)
+        self.original_identity = {key: session.metadata.get(key) for key in (
+            "endpoint_id", "source_endpoint_id", "dest_endpoint_id", "target_endpoint_id", "local_bridge",
+            "source_device_id", "dest_device_id", "target_device_id", "session_device_id",
+            "media_client_id", "source_media_client_id", "bridge_dest_call_id", "outbound_trunk_id",
+        )} if self.established else {}
+        self.original_parties = (session.caller, session.callee) if self.established else ("", "")
         self.paused = False
         self.committed = False
         caller = _endpoint(hass, self.call.caller_endpoint_id)
@@ -497,16 +509,21 @@ class PendingLocalSource:
         if not self.registry.is_generation_current(self.token.call_id, self.token.generation):
             raise RuntimeError("local source ended during forwarding")
         session = self.registry.get_session(self.token.call_id)
-        if self.outgoing:
+        if self.outgoing or self.established:
             self.paused = True
             return
+        self._publish_retired_phone(session)
+        self.paused = True
+
+    def _publish_retired_phone(self, session) -> None:
+        retired = self.call.callee_endpoint_id
+        outgoing = self.snapshot is not None and retired == self.snapshot.caller_endpoint_id
         observe_phone_leg_projection(
-            self.hass, self.registry, session, self.call.callee_endpoint_id, "idle",
-            leg_id=f"local:{self.call.callee_endpoint_id}", role="local_phone",
-            peer_name=self.invite.caller, direction="incoming", reason="forwarded",
+            self.hass, self.registry, session, retired, "idle",
+            leg_id=f"local:{retired}", role="local_phone",
+            peer_name=self.invite.caller, direction="outgoing" if outgoing else "incoming", reason="forwarded",
             last_sip_event="ROUTE_FORWARD",
         )
-        self.paused = True
 
     async def retire_destination(self) -> None:
         """Close the old UAC leg through its owner before using a replacement."""
@@ -605,6 +622,10 @@ class PendingLocalSource:
             expected = LocalCallState.IN_CALL if self.established else LocalCallState.RINGING
             if current.callee_state is not expected:
                 raise RuntimeError("local source changed before handoff")
+            if self.established and current != replace(
+                self.snapshot, caller_media=current.caller_media, callee_media=current.callee_media
+            ):
+                raise RuntimeError("local media ownership changed before handoff")
         self.registry.claim_endpoint(self.token.call_id, self.call.caller_endpoint_id, role="source")
         if not self.outgoing:
             if self.established:
@@ -624,6 +645,9 @@ class PendingLocalSource:
             media_client_id=self.call.caller_media_owner_id,
             source_media_client_id=self.call.caller_media_owner_id,
         )
+        if self.established:
+            self._publish_retired_phone(session)
+            self.registry.remove_leg(self.token.call_id, f"local:{self.call.callee_endpoint_id}")
 
     def resume(self, *, redial: bool = False, destination: str = "", trunk_id: str = "") -> None:
         if self.outgoing:
@@ -657,15 +681,26 @@ class PendingLocalSource:
                     self.registry.take_pending_invite(self.token.call_id)
                 self.registry.release_resource(self.token.call_id, f"browser_source:{self.token.call_id}", value=self)
             return
-        if (
-            self.bridge.get_call(self.token.call_id) is None
-            or not self.registry.is_generation_current(self.token.call_id, self.token.generation)
-        ):
+        current = self.bridge.get_call(self.token.call_id)
+        if current is None or not self.registry.is_generation_current(self.token.call_id, self.token.generation):
             return
         self.media.clear()
         self.media.update(self.original_media)
         self.registry.take_pending_invite(self.token.call_id)
         session = self.registry.get_session(self.token.call_id)
+        if self.established:
+            for key, value in self.original_identity.items():
+                if value is None:
+                    session.metadata.pop(key, None)
+                else:
+                    session.metadata[key] = value
+            session.update_metadata(media_client_id=current.caller_media_owner_id,
+                                    source_media_client_id=current.caller_media_owner_id)
+            self.registry.transition(self.token.call_id, owner="local_bridge", state="in_call",
+                caller=self.original_parties[0], callee=self.original_parties[1], route_kind="local")
+            for endpoint in (self.call.caller_endpoint_id, self.call.callee_endpoint_id):
+                _publish_leg(self.hass, current, endpoint, event_type="state_changed")
+            return
         if session.owner != "local_bridge" or session.state != "ringing":
             self.registry.transition(
                 self.token.call_id, owner="local_bridge", state="ringing",
@@ -681,11 +716,19 @@ class PendingLocalSource:
             _publish_leg(self.hass, self.snapshot, endpoint)
 
     def connected(self, destination: str, route_kind: str) -> None:
-        session = self.registry.get_session(self.token.call_id)
+        session = self.registry.get_session(self.token.call_id, generation=self.token.generation)
+        if session is None or not session.live:
+            return
+        peer_id = str(session.metadata.get("dest_endpoint_id") or "")
+        peer = _endpoint(self.hass, peer_id)
+        source = _endpoint(self.hass, self.call.caller_endpoint_id)
+        session.update_metadata(target_endpoint_id=peer_id, target_device_id=_device_id(peer),
+                                source_device_id=_device_id(source), dest_device_id=_device_id(peer))
         observe_phone_leg_projection(
             self.hass, self.registry, session, self.call.caller_endpoint_id, "in_call",
             leg_id=f"browser-origin:{self.call.caller_endpoint_id}",
             peer_name=destination, direction="outgoing", media_transport="rtp",
+            target_device_id=_device_id(peer),
             selected_tx_format=self.invite.recv_format.audio_format.wire_token(),
             selected_rx_format=self.invite.send_format.audio_format.wire_token(),
             selected_tx_rtp_format=self.invite.recv_format.wire_token(),

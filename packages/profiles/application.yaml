@@ -1,0 +1,67 @@
+# Select capabilities once. Dependencies are resolved at configuration time.
+substitutions:
+  firmware_audio_backend: audio_stack
+  firmware_ringtone: true
+  firmware_status_led_requires_display: false
+  firmware_lvgl: false
+  firmware_led_package: ../../led/status_ws2812_ring.yaml
+  firmware_controls: {}
+  firmware_voice_binding: {}
+  firmware_wake_word_binding: {}
+  firmware_voip_binding: {}
+  firmware_music_binding: {}
+  firmware_announcement_binding: {}
+  firmware_timer_binding: {}
+  firmware_display_package: ../features/shared/absent.yaml
+  _fw_voice: ${ 'voice' in firmware_features }
+  _fw_wake_word: ${ _fw_voice and 'wake_word' in firmware_features }
+  _fw_voip: ${ 'voip' in firmware_features }
+  _fw_music: ${ 'music' in firmware_features }
+  _fw_sendspin: ${ _fw_music and 'sendspin' in firmware_features }
+  _fw_timers: ${ _fw_voice and 'timers' in firmware_features }
+  _fw_display: ${ 'display' in firmware_features }
+  _fw_lvgl: ${ _fw_display and firmware_lvgl }
+  _fw_led: ${ 'status_led' in firmware_features and (not firmware_status_led_requires_display or _fw_display) }
+  _fw_ringtone: ${ _fw_voip and firmware_ringtone }
+  _fw_announcements: ${ _fw_voice or _fw_timers or _fw_ringtone }
+  _fw_playback: ${ _fw_music or _fw_announcements }
+  _fw_mixed: ${ ((_fw_announcements | int) + (_fw_music | int) + (_fw_voip | int)) >= 2 }
+  _fw_core_package: !include ../features/shared/runtime.yaml
+  _fw_mixer_package: !include ../features/shared/mixer.yaml
+  _fw_player_package: !include ../features/shared/player.yaml
+  _fw_announcement_package: !include ../features/shared/announcements.yaml
+  _fw_file_package: !include ../media_player/file_announcements.yaml
+  _fw_voice_package: !include ../features/voice/main.yaml
+  _fw_wake_word_package: !include ../features/wake_word/main.yaml
+  _fw_voip_package: !include ../features/voip/main.yaml
+  _fw_music_package: !include ../features/music/main.yaml
+  _fw_sendspin_package: !include ../features/sendspin/main.yaml
+  _fw_timers_package: !include ../features/timers/main.yaml
+  _fw_ringtone_package: !include ../features/voip/ringtone.yaml
+  _fw_led_package: !include ../features/presentation/led.yaml
+  _fw_display_package: !include ../features/presentation/display.yaml
+  _fw_maintenance_package: !include ../features/shared/maintenance.yaml
+packages:
+  runtime: ${ _fw_core_package }
+  mixer: ${ _fw_mixer_package if _fw_mixed else {} }
+  playback: ${ _fw_player_package if _fw_playback else {} }
+  music: ${ _fw_music_package if _fw_music else {} }
+  music_binding: ${ firmware_music_binding if _fw_music else {} }
+  announcements: ${ _fw_announcement_package if _fw_announcements else {} }
+  announcement_files: ${ _fw_file_package if _fw_ringtone or _fw_timers else {} }
+  voice: ${ _fw_voice_package if _fw_voice else {} }
+  voice_binding: ${ firmware_voice_binding if _fw_voice else {} }
+  wake_word: ${ _fw_wake_word_package if _fw_wake_word else {} }
+  wake_word_binding: ${ firmware_wake_word_binding if _fw_wake_word else {} }
+  voip: ${ _fw_voip_package if _fw_voip else {} }
+  voip_binding: ${ firmware_voip_binding if _fw_voip else {} }
+  announcement_binding: ${ firmware_announcement_binding if _fw_announcements else {} }
+  sendspin: ${ _fw_sendspin_package if _fw_sendspin else {} }
+  timers: ${ _fw_timers_package if _fw_timers else {} }
+  timer_binding: ${ firmware_timer_binding if _fw_timers else {} }
+  ringtone: ${ _fw_ringtone_package if _fw_ringtone else {} }
+  led: ${ _fw_led_package if _fw_led else {} }
+  display: ${ _fw_display_package if _fw_display else {} }
+  display_binding: !include ${ firmware_display_package if _fw_display else '../features/shared/absent.yaml' }
+  controls: ${ firmware_controls }
+  maintenance: ${ _fw_maintenance_package }

@@ -90,3 +90,87 @@ async def test_reoffer_wakes_video_nat_refresh_without_waiting_for_period(monkey
         for sock in sockets:
             sock.close()
     assert not sessions
+
+
+async def test_parameter_only_h264_packets_are_cached_without_becoming_browser_frames(monkeypatch, socket_enabled):
+    from custom_components.voip_stack import video_ws_view as view
+    from custom_components.voip_stack.core import rtp, sdp, video_rtp
+
+    sessions = {}
+    ended = asyncio.Event()
+    store = {"call_id": "parameter-refresh"}
+    monkeypatch.setattr(view, "require_runtime_data", lambda _: SimpleNamespace(
+        media=SimpleNamespace(sessions_for=lambda _: sessions)))
+    monkeypatch.setattr(view, "call_projection", lambda _: None)
+    monkeypatch.setattr(view, "_ha_softphone_store", lambda *_: store)
+    monkeypatch.setattr(view, "_publish_ha_softphone_state", lambda *a, **k: None)
+    monkeypatch.setattr(view, "debug_mode", lambda _: False)
+    monkeypatch.setattr(view, "listen_for_media_call_end", lambda *a: (ended, lambda: None))
+
+    class WebSocket:
+        def __init__(self):
+            self.ready = asyncio.Event()
+            self.frames = asyncio.Queue()
+
+        async def send_json(self, _):
+            self.ready.set()
+
+        async def send_bytes(self, value):
+            self.frames.put_nowait(value)
+
+        def force_close(self):
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await asyncio.Event().wait()
+
+    sockets = []
+    for _ in range(2):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.setblocking(False)
+        sockets.append(sock)
+    local, peer = sockets
+    target = local.getsockname()
+    session = view._VideoMediaSession(
+        call_id=store["call_id"], local_rtp_port=target[1], rtp_socket=local,
+        remote_rtp_host="127.0.0.1", remote_rtp_port=peer.getsockname()[1],
+        remote_rtcp_host="127.0.0.1", remote_rtcp_port=peer.getsockname()[1],
+        remote_rtcp_mux=True, video_format=sdp.RtpVideoFormat(payload_type=103),
+        local_direction="recvonly",
+    )
+    ws = WebSocket()
+    task = asyncio.create_task(view._run_video_session(object(), ws, session, endpoint_id="phone"))
+    loop = asyncio.get_running_loop()
+    sequence = 10
+
+    async def send(nals, timestamp):
+        nonlocal sequence
+        for index, nal in enumerate(nals):
+            raw = rtp.build_packet(rtp.RtpPacket(103, sequence, timestamp, 123, nal,
+                marker=index == len(nals) - 1))
+            await loop.sock_sendto(peer, raw, target)
+            sequence += 1
+
+    sps, pps = b"\x67\x42\xe0\x1f", b"\x68\xce\x06\xe2"
+    updated_sps = b"\x67\x42\xe0\x1e"
+    try:
+        await asyncio.wait_for(ws.ready.wait(), 1)
+        await send([sps, pps, b"\x65\xaa"], 9000)
+        first = await asyncio.wait_for(ws.frames.get(), 1)
+        assert video_rtp.split_annex_b(first[view._VIDEO_HEADER.size:]) == [sps, pps, b"\x65\xaa"]
+        await send([updated_sps, pps], 18000)
+        await send([b"\x65\xbb"], 27000)
+        second = await asyncio.wait_for(ws.frames.get(), 1)
+        assert video_rtp.split_annex_b(second[view._VIDEO_HEADER.size:]) == [updated_sps, pps, b"\x65\xbb"]
+    finally:
+        ended.set()
+        await asyncio.wait_for(task, 1)
+        for sock in sockets:
+            sock.close()
+    assert not sessions
+    assert store["video_access_units_rx"] == 2
+    assert store["video_drop_error"] == 0

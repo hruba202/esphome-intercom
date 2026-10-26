@@ -17,6 +17,7 @@ _PHONE_ACTIONS = ("start_call", "answer_call", "decline_call", "hangup_call")
 def async_sync_runtime_issues(hass: HomeAssistant) -> None:
     """Expose private media capture while enabled and clear stale warnings."""
 
+    async_sync_pbx_configuration_issues(hass)
     runtime = runtime_data(hass)
     if runtime is not None and runtime.media_capture:
         ir.async_create_issue(
@@ -78,6 +79,7 @@ def async_sync_extension_issues(hass: HomeAssistant, entries) -> None:
     """Report conflicting extensions in the complete discovered phonebook."""
     from .roster import duplicate_numeric_extensions
 
+    async_sync_pbx_configuration_issues(hass)
     conflicts = duplicate_numeric_extensions(entries)
     issue_id = "duplicate_extensions"
     if not conflicts:
@@ -91,3 +93,24 @@ def async_sync_extension_issues(hass: HomeAssistant, entries) -> None:
             for extension, names in sorted(conflicts.items())
         )},
     )
+
+
+def async_sync_pbx_configuration_issues(hass: HomeAssistant) -> None:
+    """Leave existing routes intact while exposing application prerequisites."""
+    from .parking_config import parking_settings
+    from .voicemail_config import mailbox_routes_available
+    from .store import config_entry
+
+    if config_entry(hass) is None:
+        return
+    parking = parking_settings(hass)
+    for issue_id, failed in (
+        ("parking_configuration", not parking.get("enabled")),
+        ("mailbox_route_conflict", not mailbox_routes_available(hass)),
+    ):
+        if failed:
+            ir.async_create_issue(hass, DOMAIN, issue_id, is_fixable=False,
+                is_persistent=False, severity=ir.IssueSeverity.ERROR,
+                translation_key=issue_id)
+        else:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)

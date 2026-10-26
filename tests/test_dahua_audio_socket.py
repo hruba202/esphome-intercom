@@ -43,7 +43,7 @@ class _Browser:
         return message
 
 
-async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_tx_pt=97):
+async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_tx_pt=97, delayed_playback=False):
     """Independent SDP and PCM bytes reproduce the reporter's PT97/0 mismatch."""
     view = _load_audio_ws_runtime_module()
     audio_ws = _load_intercom_module("audio_ws")
@@ -135,7 +135,13 @@ async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_
         # Use the actual dialog-to-browser adapter, so this test also catches
         # negotiated receive payloads lost between signaling and the media view.
         session = view._active_softphone_media_session(hass, "default")
-        runtime = asyncio.create_task(view._run_audio_session(hass, browser, session, endpoint_id="default"))
+        playback = None
+        if delayed_playback:
+            playback = _load_intercom_module("browser_playback").BrowserPlayback()
+            playback.attach(browser)
+        runtime = asyncio.create_task(view._run_audio_session(
+            hass, browser, session, endpoint_id="default", playback=playback,
+        ))
         await asyncio.wait_for(browser.ready.wait(), 1)
 
         async def send(pt, sequence, timestamp, payload):
@@ -144,6 +150,20 @@ async def _exercise_dahua_call(monkeypatch, user_agent, *, symmetric=False, pcm_
                 ssrc=123, payload=payload,
             ))
             await loop.sock_sendto(remote, packet, ("127.0.0.1", local_port))
+
+        if delayed_playback:
+            # The SIP answer can precede the browser's final ready message.
+            # Preserve each initial PCMU frame while that handshake completes.
+            for index, encoded in enumerate((0xCE, 0xBE, 0xAE, 0x9E)):
+                await send(0, 65520 + index, index * 160, bytes([encoded]) * 160)
+                await asyncio.sleep(0.02)
+            assert browser.audio.empty()
+            playback.ready(browser)
+            for encoded in (0xCE, 0xBE, 0xAE, 0x9E):
+                frame = audio_ws.decode_audio_frame(await asyncio.wait_for(browser.audio.get(), 1))
+                value = encoded ^ 0xFF
+                expected = (((value & 0x0F) * 8 + 132) << ((value >> 4) & 7)) - 132
+                assert struct.unpack("<160h", frame) == (expected,) * 160
 
         await send(97, 1, 0, struct.pack("<320h", *([1000] * 320)))
         expected_bytes = session.recv_format.audio_format.nominal_frame_bytes
@@ -360,3 +380,7 @@ async def test_registered_and_manual_dahua_transmit_identical_nonzero_pcmu(monke
 async def test_symmetric_dahua_transmits_pcm_using_answer_mapping(monkeypatch, pcm_tx_pt):
     for _ in range(2):
         await _exercise_dahua_call(monkeypatch, "Dahua UAC/V4.511.0.0", symmetric=True, pcm_tx_pt=pcm_tx_pt)
+
+
+async def test_immediate_sip_answer_preserves_audio_until_browser_is_ready(monkeypatch):
+    await _exercise_dahua_call(monkeypatch, "", delayed_playback=True)

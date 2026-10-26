@@ -20,6 +20,7 @@ VIDEO_MODEL = MODULE.with_name("voip-stack-video-model.js")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
+@pytest.mark.js_runtime
 def test_media_device_inventory_preferences_and_permission_probe() -> None:
     script = f"""
 import fs from "fs";
@@ -110,6 +111,7 @@ assert.equal(JSON.stringify(exactDeviceConstraint({{ width: 640 }}, "")), '{{"wi
 
 
 @pytest.mark.skipif(shutil.which("chromium") is None, reason="Chromium is unavailable")
+@pytest.mark.browser_real
 def test_media_device_inventory_in_real_chromium() -> None:
     playwright = pytest.importorskip("playwright.sync_api")
 
@@ -180,6 +182,7 @@ def test_media_device_inventory_in_real_chromium() -> None:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
+@pytest.mark.js_runtime
 def test_live_camera_replacement_is_atomic() -> None:
     script = f"""
 import fs from "fs";

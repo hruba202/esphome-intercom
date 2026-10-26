@@ -1,0 +1,18 @@
+# Complete standalone telephone composition with the shared OTA lifecycle.
+defaults:
+  _phone_diagnostics: !include '../diagnostics/native.yaml'
+  _phone_led_hardware: !include '../led/status_ws2812_single.yaml'
+  _phone_led_status: !include '../voip/simple_led_status_full_duplex.yaml'
+  _phone_no_led_status: !include '../features/voip/no_status_light.yaml'
+  _phone_telephone: !include '../features/voip/devices/generic-s3-phone-single.yaml'
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  hardware: !include '../board/generic-s3-phone-single.yaml'
+  audio: !include '../audio/profiles/generic-s3-phone-single.yaml'
+  telephone: ${ _phone_telephone if 'voip' in firmware_features else {} }
+  diagnostics: ${ _phone_diagnostics if 'diagnostics' in firmware_features else {} }
+  led_hardware: ${ _phone_led_hardware if 'status_led' in firmware_features else {} }
+  status: ${ _phone_led_status if 'voip' in firmware_features and 'status_led' in firmware_features else _phone_no_led_status
+    }
+  maintenance: !include '../features/shared/standalone_phone_maintenance.yaml'
+substitutions: {}

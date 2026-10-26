@@ -81,6 +81,7 @@ async def async_emit_state_event(
         "direction": "",
         "call_id": "",
     }
+    managed_session = None
     if device is not None:
         entities = device.get("entities") or {}
         endpoint = guarded_endpoint or endpoint_registry.by_device_id(
@@ -101,13 +102,17 @@ async def async_emit_state_event(
                 or endpoint.active_call_id
                 or (f"physical:{endpoint.endpoint_id}" if active else "")
             )
-            if active:
+            if runtime.sip is not None:
+                candidate = runtime.sip.get_session(runtime.sip.resolve_session_id(transport_call_id))
+                if candidate is not None and not candidate.metadata.get("event_only"):
+                    managed_session = candidate
+            if active and managed_session is None:
                 endpoint = endpoint_registry.sync_transport_call(
                     endpoint.endpoint_id,
                     active=True,
                     fallback_call_id=f"physical:{endpoint.endpoint_id}",
                 )
-            elif transport_call_id:
+            elif transport_call_id and managed_session is None:
                 endpoint_registry.release_call(
                     endpoint.endpoint_id,
                     transport_call_id,
@@ -137,6 +142,27 @@ async def async_emit_state_event(
             payload["direction"] = "incoming"
         elif raw_state in ("calling", "remote_ringing"):
             payload["direction"] = "outgoing"
+    if runtime.sip is not None:
+        runtime.sip.observe_external_state(
+            str(payload.get("call_id") or ""), sip_public_state(state),
+            endpoint_id=str(payload.get("endpoint_id") or ""),
+            direction=str(payload.get("direction") or ""),
+            caller=str(payload.get("caller") or ""), callee=str(payload.get("callee") or ""),
+        )
+    if managed_session is not None:
+        # A sensor is an observation, never the owner of an HA-anchored dialog.
+        # Keep the wire report for diagnostics while publishing its canonical
+        # endpoint perspective without a second answered/ended occurrence.
+        endpoint_id = str(payload.get("endpoint_id") or "")
+        leg = next((item for item in managed_session.legs.values()
+                    if item.endpoint_id == endpoint_id), None)
+        canonical = leg.state if leg is not None else managed_session.state
+        source = endpoint_id == managed_session.metadata.get("source_endpoint_id")
+        if canonical in {"ringing", "remote_ringing"}:
+            canonical = "remote_ringing" if source else "ringing"
+        payload.update(state=canonical, reported_state=state, event_type="state_changed",
+                       direction="outgoing" if source else "incoming", reason="",
+                       caller=managed_session.caller, callee=managed_session.callee)
     _fire_call_event(hass, payload, "esp")
 
 
@@ -189,7 +215,33 @@ def register_state_event_bridge(hass: HomeAssistant) -> None:
             ),
         )
 
-    runtime.esp_state_event_bridge_unsub = hass.bus.async_listen(
-        EVENT_STATE_CHANGED,
-        _on_state_changed,
+    @callback
+    def _on_entity_registry_changed(event: Event) -> None:
+        old_id = event.data.get("old_entity_id")
+        new_id = event.data.get("entity_id")
+        if event.data.get("action") != "update" or not old_id or not new_id:
+            return
+        endpoint = runtime.endpoints.by_entity_id(old_id)
+        entity = er.async_get(hass).async_get(new_id)
+        if (
+            endpoint is None or str(endpoint.kind) != "esphome"
+            or entity is None or entity.platform != "esphome"
+            or entity.device_id != endpoint.device_id
+        ):
+            return
+        from .endpoint_device import async_link_endpoint_entity
+
+        runtime.esp_state_event_generations.pop(old_id, None)
+        async_link_endpoint_entity(runtime.endpoints, endpoint.endpoint_id, new_id, old_id)
+
+    unsubscribe_state = hass.bus.async_listen(EVENT_STATE_CHANGED, _on_state_changed)
+    unsubscribe_registry = hass.bus.async_listen(
+        er.EVENT_ENTITY_REGISTRY_UPDATED, _on_entity_registry_changed
     )
+
+    @callback
+    def unsubscribe() -> None:
+        unsubscribe_state()
+        unsubscribe_registry()
+
+    runtime.esp_state_event_bridge_unsub = unsubscribe

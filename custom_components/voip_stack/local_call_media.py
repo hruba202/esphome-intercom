@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from collections.abc import AsyncGenerator, Awaitable, Callable
 import contextlib
 import logging
+import socket
 from typing import Any, TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
@@ -133,6 +134,7 @@ class LocalCallMedia:
         reservation: RtpPortReservation,
         on_complete: Callable[[str], Awaitable[None]],
         rtp_source: rtp.AudioRtpSenderState | None = None,
+        rtp_socket: socket.socket | None = None,
     ) -> None:
         self.hass = hass
         self.invite = invite
@@ -146,6 +148,7 @@ class LocalCallMedia:
         self._dtmf_events = frozenset()
 
         self.transport: asyncio.DatagramTransport | None = None
+        self._rtp_socket = rtp_socket
         self.closed = asyncio.Event()
         self.rx_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_RX_QUEUE_FRAMES)
         self.tx_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_TX_QUEUE_FRAMES)
@@ -253,10 +256,17 @@ class LocalCallMedia:
             if self.closed.is_set() or self._cleanup_done.is_set():
                 raise RuntimeError("Local call media session is already closed")
             loop = asyncio.get_running_loop()
-            transport, _ = await loop.create_datagram_endpoint(
-                lambda: _LocalRtpProtocol(self),
-                local_addr=("0.0.0.0", self.local_rtp_port),
-            )
+            bound_socket, self._rtp_socket = self._rtp_socket, None
+            try:
+                transport, _ = await loop.create_datagram_endpoint(
+                    lambda: _LocalRtpProtocol(self),
+                    **({"sock": bound_socket} if bound_socket is not None else
+                       {"local_addr": ("0.0.0.0", self.local_rtp_port)}),
+                )
+            except BaseException:
+                if bound_socket is not None:
+                    bound_socket.close()
+                raise
             # stop() deliberately does not wait behind a potentially blocked
             # socket bind. If shutdown won the race, close the acquired
             # transport before it can publish tasks behind cleanup_done.
@@ -330,6 +340,9 @@ class LocalCallMedia:
                 if self.transport is not None:
                     self.transport.close()
                     self.transport = None
+                if self._rtp_socket is not None:
+                    self._rtp_socket.close()
+                    self._rtp_socket = None
                 if self.release_reservation_on_stop:
                     self.reservation.release()
                 self._cleanup_done.set()

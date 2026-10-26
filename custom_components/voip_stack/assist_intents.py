@@ -11,6 +11,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import intent
 from homeassistant.helpers.intent import Intent, IntentHandler, IntentResponse
 
+from .entity_identity import phonebook_state
+
 from .const import DOMAIN
 from .runtime_data import registration_data
 
@@ -217,7 +219,7 @@ async def _phonebook_contacts(hass: HomeAssistant) -> list[ContactCandidate]:
         ]
         contacts.append(ContactCandidate(canonical=name, tokens=tuple(tokens), source="device"))
 
-    ha_phonebook = hass.states.get("sensor.voip_phonebook")
+    ha_phonebook = phonebook_state(hass)
     if ha_phonebook is not None:
         roster_json = str(ha_phonebook.attributes.get("roster_json") or "")
         if roster_json:

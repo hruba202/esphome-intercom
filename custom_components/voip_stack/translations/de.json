@@ -14,9 +14,7 @@
           "media_capture": "Nehmen Sie den Ton privater Anrufe zur Diagnose auf",
           "experimental_sip_video": "Aktivieren Sie SIP-Video für das Home Assistant-Softphone",
           "sip_registrar_enabled": "Aktivieren Sie lokale SIP-Konten",
-          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk",
-          "voicemail_enabled": "Anrufbeantworter aktivieren",
-          "parking_enabled": "Anrufparken aktivieren"
+          "trunk_enabled": "Aktivieren Sie den optionalen SIP-Trunk"
         },
         "data_description": {
           "sip_port": "Abhörport für den HA-SIP-Endpunkt. HA akzeptiert SIP-Signalisierung über UDP und TCP an diesem Port.",
@@ -77,7 +75,8 @@
           "trunk_dtmf_terminator": "DTMF-Terminator",
           "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
           "trunk_audio_codecs": "Zulässige Audiocodecs",
-          "trunk_video_codecs": "Zulässige Videocodecs"
+          "trunk_video_codecs": "Zulässige Videocodecs",
+          "trunk_outbound_media_address": "IPv4-Medienadresse für ausgehende Anrufe"
         },
         "data_description": {
           "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -96,7 +95,8 @@
           "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
           "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
           "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
-          "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
+          "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben.",
+          "trunk_outbound_media_address": "Optional. Adresse von Home Assistant, die diese Telefonanlage für Audio und Video ausgehender Anrufe erreichen kann. Hinter NAT die eigene öffentliche IPv4-Adresse verwenden und RTP/RTCP unter unveränderten Portnummern erreichbar halten. Nicht die Adresse des Anbieters eingeben. Ein leeres Feld verwendet die bisherige HA-Adresse. LAN-Anrufe und SIP-Registrierung bleiben unverändert."
         }
       },
       "trunk_mode": {
@@ -107,7 +107,7 @@
         }
       },
       "voicemail": {
-        "title": "Stimme des Anrufbeantworters",
+        "title": "Mailbox-Stimme",
         "description": "Wählen Sie die Home Assistant TTS-Entität für das gemeinsame Telefonmenü.",
         "data": {
           "tts_entity_id": "TTS-Entität"
@@ -137,6 +137,15 @@
           "hold_media": "Wartemusik",
           "clear_hold_media": "Gespeicherte Wartemusik entfernen"
         }
+      },
+      "reconfigure": {
+        "title": "VoIP-Stack-Einstellungen",
+        "description": "Wähle die Einstellungen. Alle PBX-Funktionen sind verfügbar; richte ihre Ressourcen bei Bedarf ein.",
+        "menu_options": {
+          "user": "Allgemeine Einstellungen",
+          "parking": "Anruf parken",
+          "voicemail": "Mailbox-Stimme"
+        }
       }
     },
     "error": {
@@ -154,7 +163,9 @@
       "parking_configuration_invalid": "Wählen Sie eindeutige Parkcodes und Zeiten zwischen 1 und 3600 Sekunden.",
       "parking_route_conflict": "Ein Parkcode wird bereits von einem Telefon, Kontakt, Assist-Anschluss oder einer Gruppe verwendet.",
       "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
-      "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
+      "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein.",
+      "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen.",
+      "parking_slots_in_use": "Hole die Anrufe aus den zu entfernenden Parkpositionen zurück oder beende sie zuerst."
     },
     "abort": {
       "reconfigure_successful": "VoIP-Stack erfolgreich neu konfiguriert.",
@@ -190,13 +201,14 @@
             "video_enabled": "Video zulassen",
             "auto_answer": "Automatische Antwort",
             "send_video": "Video senden",
-            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
+            "voicemail_enabled": "Mailbox aktivieren"
           },
           "data_description": {
             "name": "Erforderlicher Telefonname, der von der Karte, dem Telefonbuch und der Anrufweiterleitung verwendet wird.",
             "extension": "Optionale, eindeutig wählbare Nebenstelle. Das logische Telefon bleibt klingelbar, wenn keine Browserkarte angeschlossen ist.",
             "auto_answer": "Automatische Antwort, wenn ein angeschlossener Browser über eine Mikrofonberechtigung verfügt.",
-            "send_video": "Senden Sie standardmäßig eine angeschlossene Browserkamera, wenn Video ausgehandelt wird und die Erlaubnis verfügbar ist."
+            "send_video": "Senden Sie standardmäßig eine angeschlossene Browserkamera, wenn Video ausgehandelt wird und die Erlaubnis verfügbar ist.",
+            "voicemail_enabled": "Beim Deaktivieren werden Nachrichten, Dateien, PIN und Mailbox-Einstellungen dauerhaft gelöscht. Erneutes Aktivieren erstellt eine leere Mailbox."
           }
         },
         "sip_account": {
@@ -215,7 +227,10 @@
             "video_enabled": "Videoverhandlung zulassen",
             "offline_policy": "Wenn nicht registriert",
             "offline_forward_target": "Ziel weiterleiten",
-            "voicemail_enabled": "Anrufbeantworter für dieses Telefon aktivieren"
+            "voicemail_enabled": "Mailbox aktivieren"
+          },
+          "data_description": {
+            "voicemail_enabled": "Beim Deaktivieren werden Nachrichten, Dateien, PIN und Mailbox-Einstellungen dauerhaft gelöscht. Erneutes Aktivieren erstellt eine leere Mailbox."
           }
         },
         "reconfigure": {
@@ -227,7 +242,8 @@
         "phone_username_invalid": "Verwenden Sie nur Buchstaben, Zahlen, Punkte, Unterstriche oder Bindestriche.",
         "phone_password_required": "Ein SIP-Passwort ist erforderlich.",
         "phone_forward_target_required": "Für die Weiterleitungsrichtlinie ist ein Weiterleitungsziel erforderlich.",
-        "phone_alias_conflict": "Der Name, die Durchwahl oder der Benutzername wird bereits von einem anderen Telefon verwendet."
+        "phone_alias_conflict": "Der Name, die Durchwahl oder der Benutzername wird bereits von einem anderen Telefon verwendet.",
+        "mailbox_removal_failed": "Die Mailbox konnte nicht gelöscht werden. Stellen Sie den Zugriff auf das Medienverzeichnis wieder her und versuchen Sie es erneut."
       },
       "abort": {
         "reconfigure_successful": "Telefon erfolgreich neu konfiguriert.",
@@ -315,7 +331,8 @@
             "trunk_dtmf_terminator": "DTMF-Terminator",
             "trunk_allowed_ips": "Erlaubte eingehende IP-Adressen",
             "trunk_audio_codecs": "Zulässige Audiocodecs",
-            "trunk_video_codecs": "Zulässige Videocodecs"
+            "trunk_video_codecs": "Zulässige Videocodecs",
+            "trunk_outbound_media_address": "IPv4-Medienadresse für ausgehende Anrufe"
           },
           "data_description": {
             "trunk_transport": "SIP-Transport von HA zum Anbieter verwendet.",
@@ -334,7 +351,8 @@
             "trunk_dtmf_terminator": "Optionale Abschlussziffer, z. B. #. Leer bedeutet Zeitüberschreitung oder genaue Übereinstimmung mit der Telefonbucherweiterung.",
             "trunk_allowed_ips": "Jede erlaubte Quell-IP oder jedes CIDR-Netz einzeln eingeben. Diese können vom ausgehenden Server abweichen. Ohne Registrierung erforderlich.",
             "trunk_audio_codecs": "Zulässige Codecs für eingehende und ausgehende Anrufe auf diesem Trunk. Behalte die Vorgaben, sofern dein Anbieter keine eigene Liste verlangt. Mindestens ein Audiocodec ist erforderlich. Beide Seiten benötigen einen gemeinsamen Codec; DTMF wird separat ausgehandelt. Andere Trunks und lokale Telefone bleiben unabhängig.",
-            "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben."
+            "trunk_video_codecs": "Leere die Liste für reine Audioanrufe. Die Auswahl aktiviert weder Video noch Transkodierung: Telefon und Medienpfad müssen den Codec unterstützen. H.264-Profile werden automatisch ausgehandelt. Behalte im Zweifel die Vorgaben.",
+            "trunk_outbound_media_address": "Optional. Adresse von Home Assistant, die diese Telefonanlage für Audio und Video ausgehender Anrufe erreichen kann. Hinter NAT die eigene öffentliche IPv4-Adresse verwenden und RTP/RTCP unter unveränderten Portnummern erreichbar halten. Nicht die Adresse des Anbieters eingeben. Ein leeres Feld verwendet die bisherige HA-Adresse. LAN-Anrufe und SIP-Registrierung bleiben unverändert."
           }
         }
       },
@@ -350,7 +368,8 @@
         "trunk_registration_failed": "Registrierung fehlgeschlagen. Prüfe Server, Transport und Zugangsdaten. Die gespeicherte Konfiguration wurde nicht geändert.",
         "trunk_validation_failed": "Prüfe die Verbindungseinstellungen und erlaubten Quellnetze. Statische Trunks mit demselben Transport dürfen keine überlappenden Quellnetze haben.",
         "trunk_codecs_invalid": "Wähle unterstützte Codecs und mindestens einen Audiocodec.",
-        "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein."
+        "trunk_target_required": "Wähle ein empfangendes Telefon oder gib ein Ziel im Wählplan ein.",
+        "trunk_media_address_invalid": "Eine erreichbare Unicast-IPv4-Adresse eingeben oder das Feld leer lassen."
       },
       "abort": {
         "reconfigure_successful": "Trunk-Konfiguration aktualisiert."
@@ -429,6 +448,16 @@
         "H263P": "H.263+",
         "H265": "H.265 / HEVC"
       }
+    },
+    "phone_state": {
+      "options": {
+        "idle": "Frei",
+        "unavailable": "Nicht verfügbar",
+        "calling": "Wählt",
+        "ringing": "Klingelt",
+        "in_call": "Im Gespräch",
+        "held": "Gehalten"
+      }
     }
   },
   "system_health": {
@@ -463,6 +492,14 @@
     "duplicate_extensions": {
       "title": "Doppelte Nebenstellennummern",
       "description": "Diese Ziele verwenden dieselbe Nebenstellennummer: {conflicts}. Weise jedem Telefon, Kontakt und Assist-Endpunkt eine eigene Nummer zu. Anrufe an eine mehrdeutige Nummer werden abgewiesen; eindeutige Namen und explizite SIP-Adressen bleiben nutzbar. Bei ESPHome-Telefonen muss die Nummer am Gerät geändert werden. Die Meldung verschwindet, sobald das Telefonbuch keine Konflikte mehr enthält."
+    },
+    "parking_configuration": {
+      "title": "Parkkonfiguration prüfen",
+      "description": "Wähle gültige Parknummern ohne Konflikte mit Telefonen, Kontakten oder Gruppen. Bestehende Ziele bleiben unverändert."
+    },
+    "mailbox_route_conflict": {
+      "title": "Konflikt mit Mailbox-Codes",
+      "description": "Ein Telefon, Kontakt oder eine Gruppe verwendet eine Mailbox-Adresse. Benenne das betreffende Ziel um; bestehende Routen bleiben unverändert."
     }
   },
   "exceptions": {
@@ -835,6 +872,36 @@
           "description": "Optionaler Telefonfilter. Leer lassen für alle Postfächer."
         }
       }
+    },
+    "phone_state_changed": {
+      "name": "Telefonstatus geändert",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "from": {
+          "name": "Von"
+        },
+        "to": {
+          "name": "Nach"
+        }
+      }
+    },
+    "mailbox_changed": {
+      "name": "Telefon-Mailbox geändert",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "call_picked_up": {
+      "name": "Anruf übernommen",
+      "fields": {
+        "destination": {
+          "name": "Ziel"
+        }
+      }
     }
   },
   "conditions": {
@@ -875,6 +942,74 @@
         "digits": {
           "name": "Erwartete Ziffern",
           "description": "Leer lassen, um jede empfangene Ziffernfolge zu akzeptieren."
+        }
+      }
+    },
+    "is_phone_state": {
+      "name": "Telefon hat Status",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "state": {
+          "name": "Status"
+        }
+      }
+    },
+    "has_ringing_call": {
+      "name": "Telefon hat einen klingelnden Anruf",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "has_voicemail": {
+      "name": "Telefon hat Sprachnachrichten",
+      "fields": {
+        "phone": {
+          "name": "Telefon"
+        },
+        "unread_only": {
+          "name": "Nur ungelesene Nachrichten"
+        }
+      }
+    }
+  },
+  "services": {
+    "get_phone_state": {
+      "name": "Telefonstatus abrufen",
+      "description": "Status, Anrufe und Mailbox-Zähler des ausgewählten Telefons lesen.",
+      "fields": {
+        "device_id": {
+          "name": "Telefon"
+        }
+      }
+    },
+    "pickup": {
+      "name": "Anruf übernehmen",
+      "description": "Einen klingelnden oder geparkten Anruf auf dem ausgewählten Telefon übernehmen.",
+      "fields": {
+        "device_id": {
+          "name": "Übernehmendes Telefon"
+        },
+        "target_device_id": {
+          "name": "Klingelndes Telefon"
+        },
+        "slot": {
+          "name": "Parkplatz"
+        },
+        "answer_timeout": {
+          "name": "Auf Antwort warten"
+        },
+        "call_id": {
+          "name": "Anruf-ID"
+        },
+        "expected_generation": {
+          "name": "Anrufgeneration"
+        },
+        "leg_id": {
+          "name": "Anrufzweig"
         }
       }
     }

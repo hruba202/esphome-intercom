@@ -1,0 +1,32 @@
+# Physical audio for the standalone phone. Playback adapters are selected as a compatible set.
+microphone:
+- platform: i2s_audio
+  id: mic_main
+  adc_type: external
+  i2s_audio_id: rx_i2s
+  i2s_din_pin: ${rx_i2s_din_pin}
+  channel: stereo
+  sample_rate: 48000
+  bits_per_sample: 32bit
+  correct_dc_offset: true
+speaker:
+- platform: i2s_audio
+  id: hw_speaker
+  dac_type: external
+  i2s_audio_id: tx_i2s
+  i2s_dout_pin: ${tx_i2s_dout_pin}
+  channel: mono
+  sample_rate: 48000
+  bits_per_sample: 16bit
+  buffer_duration: 128ms
+  timeout: 500ms
+switch:
+- platform: output
+  id: speaker_power
+  name: Speaker Power
+  output: speaker_enable
+  restore_mode: RESTORE_DEFAULT_ON
+external_components: []
+packages:
+  speaker_mute: !include '../../voip/speaker_mute.yaml'
+  playback_compatibility: !include '../../media_player/playback_compat.yaml'

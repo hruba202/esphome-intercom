@@ -27,7 +27,7 @@ Home Assistant is more than a card backend:
 - HA is the central phonebook/dial-plan publisher;
 - HA is a SIP router/B2BUA for logical names, numbers, bridge requests and
   transport boundaries;
-- HA can optionally register one provider/PBX trunk;
+- HA supports independently configured provider/PBX trunks, registered or static;
 - HA can optionally act as a local registrar for standard SIP endpoints such as
   Zoiper, Linphone, baresip or pjsua;
 - HA can optionally expose one native Assist pipeline as a local phonebook
@@ -76,9 +76,8 @@ second user-selectable identity and is never stored by new card configuration.
 
 ### HA runtime ownership model
 
-The PBX ownership core is built alongside the existing SIP dispatcher as a
-migration seam; it is not a second router and a call never passes through two
-independent dial plans.
+The SIP dispatcher resolves each call through one dial plan. The PBX session
+core owns its participants, media resources and termination.
 
 - `SipEndpointRuntime` owns endpoint-wide components such as listeners,
   registrar, trunk and conference manager.
@@ -106,6 +105,57 @@ independent dial plans.
   The intentional `connecting -> ringing` fallback remains valid, while a late
   provisional event cannot regress an established dialog back to `calling` or
   `ringing`.
+
+### Committed state and read-only consumers
+
+The runtime commits nested synchronous mutations as one operation and produces
+an immutable `CallStateSnapshot`. The snapshot includes participant states and
+the relevant media attributes read from their existing SIP owners. It is a
+read model, not another session registry or signaling state machine.
+
+The selected browser participant is updated by the same registry operation as
+its call. Its state is not copied indiscriminately from the aggregate session:
+an already answered caller can remain connected while a replacement destination
+is still ringing. A SIP destination must not acquire a synthetic browser leg.
+An existing, claimed browser participant also survives a change of application
+owner, such as entering voicemail. Application ownership must not freeze that
+participant in `calling`, reopen a released participant, or return an answered
+caller to ringing while another route is being prepared.
+Observing a phone's activity does not grant browser media ownership. The card's
+view of the phone and the participant that actually sends or receives audio
+remain distinct. Associating several registered devices with one extension is
+not introduced by this consolidation and must preserve that distinction.
+
+`PhoneStateObserver` consumes committed changes directly. BLF, phone-state
+actions, conditions and phone-state triggers therefore do not need a card event
+to discover an accepted transition. `CallStatePublisher` uses the existing HA
+projection adapters for browser state delivery, with at most one pending loop
+callback per generation. Explicit operation events retain their existing commit
+points; automatic presentation updates are `state_changed` observations, not
+new claims that an answer or transfer succeeded. Delivery bookkeeping is cleared
+on termination and component shutdown.
+
+Reading or publishing event fields does not mutate a materialised call. Internal
+operations use a `CallPrecondition` containing the call identity, generation,
+owner and committed sequence. Public `expected_state` and `expected_sequence`
+arguments retain their names and are validated centrally; an explicitly selected
+phone is checked against its own participant. Incoming `ringing` and outgoing
+`remote_ringing` describe the two perspectives of the unanswered phase, not two
+independent call states.
+
+ESPHome sensor updates cannot release a PBX-owned endpoint or replace its control
+context. For an HA-anchored call, an ESP observation retains the native value as
+`reported_state`, while its public state follows the canonical participant and
+its event type is `state_changed`. Answered and ended operations come from the
+PBX owner. Direct ESP calls that bypass HA remain passive observations in the
+same registry; observing them does not give HA ownership of their SIP dialogs.
+
+`AnswerTransaction` defers state notifications until its commit or compensation
+finishes. A rejected or exceptional state claim uses `SessionHandoff` to restore
+the previous participants, routing artifacts and call identity before prepared
+resources are released. The original resource objects keep their existing owners.
+The architecture tests reject direct lifecycle writes outside those owners and
+call mutations inside the event-publication functions.
 
 Termination is generation-guarded, idempotent and cancellation-safe. The
 session enters `terminating` synchronously, then waits for a shielded cleanup
@@ -176,9 +226,10 @@ of bypassing an intervening proxy.
 SDP offer/answer negotiates RTP. RTP media is always UDP, even when SIP
 signaling uses TCP.
 
-ESP devices are PCM-only endpoints. The supported ESP profile is linear PCM
-with network byte order on RTP; incompatible SDP receives `488 Not Acceptable
-Here` or the equivalent terminal reason.
+ESP firmware selects PCM or Opus at compile time. FULL and P4 profiles use
+linear PCM with network byte order on RTP; maintained ESP32-S3 VoIP-only
+profiles can use Opus. Unsupported media receives `488 Not Acceptable Here`
+or the equivalent terminal reason. See the [ESP media profile](voip_profile.md#sdp-and-rtp).
 
 HA can accept richer media on softphone/trunk legs when it has a bidirectional
 converter for the selected codec. Optional codecs are capability-gated and are
@@ -231,11 +282,17 @@ or SBC boundary.
 
 ### Telephone applications and voicemail
 
-On the PBX development branch, Automation and voicemail use
+Automation and voicemail use
 `LocalCallApplication` for answer and media setup. The existing
 `EndpointCallSession` owns their tasks, RTP reservation and termination. Changing
 from an announcement to voicemail transfers that application's control within
 the same call; it does not originate a second call to record the first one.
+
+Outgoing Automation calls bind their advertised RTP socket before sending the
+INVITE. The SIP client owns that socket until the answered call transfers it to
+`LocalCallMedia`, which adopts it without rebinding. Failed and cancelled
+attempts release the socket through the existing call cleanup. This follows
+the media-readiness requirement in [RFC 3264 section 5.1](https://www.rfc-editor.org/rfc/rfc3264.html#section-5.1).
 
 ```mermaid
 flowchart TD
@@ -393,6 +450,18 @@ registration/call legs. UDP signaling still sends datagrams directly.
 
 ## Frontend contract
 
+Shared entity IDs are resolved from the HA entity registry using their stable
+`unique_id`, rather than their initial object IDs. `voip_stack/list_devices`
+retains its `devices` array and also returns `entity_ids`, with `call_event` and
+`phonebook` keys (each an entity ID or `null`). Cards refresh this metadata when
+the HA entity registry changes or their connection changes. Explicit card entity
+selections remain user configuration.
+
+Phone entity rename callbacks re-key the existing endpoint index. Older HA
+versions use the same operation when re-adding the entity. Neither path changes
+endpoint identity or call ownership. Authorization resolves the current global
+event entity and never falls back to an unrelated entity using its old name.
+
 Cards do not own call control state.
 
 - The HA softphone card mirrors the HA softphone state pushed by
@@ -452,3 +521,98 @@ become a different codec. Codec switches discard incomplete converted audio
 from the previous format and preserve the destination RTP clock.
 
 This changes HA media handling, not ESP firmware or codec preference lists.
+
+
+## Phone state and call pickup
+
+The call registry owns sessions, legs and generations; the endpoint registry
+owns phone identity, availability and settings. `dialog_info.snapshot_all`
+projects the call legs for SIP dialog notifications. `PhoneStateObserver`
+shares that projection with WebSocket activity and native HA triggers, without
+polling or maintaining another call registry. Mailbox counters come from the
+same archive used by MWI.
+
+A phone claim is an internal reservation, not a public ringing or answered
+transition. Call events update the shared projection after their call context
+has been published. Identity, availability and mailbox changes can update their
+own fields without exposing a partially prepared call. Native trigger payloads
+carry detached snapshots and, for call-related actions, the original call token.
+A stale automation cannot control a later generation of the same phone.
+
+HA actions and card commands enter the same backend operations. SIP requests
+use those operations through their protocol adapters; the SIP transport does
+not depend on an automation execution to progress its transactions. Conditions
+read state and do not answer, route or allocate media. `get_phone_state` is a
+read-only action; `pickup` explicitly names the recovering phone.
+
+An individual pickup retains the original caller. A group pickup competes with
+ordinary answers in `DialForkController`, including groups reached through a
+forward. The existing session owns the prepared candidates and the answer gate.
+Before selection, cancellation releases the prospective recovering leg. After
+the arbiter accepts it, cancelling the action waiter cannot close a leg already
+owned by the group. The committed media/answer owner emits the pickup event,
+so the event does not depend on a browser or an automation waiting for a reply.
+
+## SIP transactions, event usages and media replacement
+
+An established outbound dialog has one transport reader. The dispatcher sends
+responses to the matching transaction mailbox and routes requests to bounded
+handlers. A transfer waits for its own subscription result rather than competing
+with the call watcher to read the socket. Its deadline includes request
+serialization, authentication and the final notification. Local BYE completion
+also wakes the dialog observer; it does not depend on another incoming packet.
+
+Responses to existing listener transactions do not consume an ordinary request
+handler. Recognized dialog control has reserved capacity, including PRACK and
+transfer NOTIFY. Unknown requests cannot obtain that capacity merely by naming
+a control method. These rules also apply to messages received over TCP.
+
+A REFER operation and its progress subscription have distinct lifetimes.
+Rejecting the first NOTIFY does not cancel an already accepted transfer.
+Notifications match the dialog, the REFER CSeq carried in the Event id, and the
+remote notification sequence. Legacy peers may omit the id for the first REFER
+in a dialog, but an ambiguous notification cannot complete a later transfer.
+Terminating the INVITE usage does not discard an unfinished event usage.
+
+When the peer provides a GRUU Contact, REFER creates a separate dialog and uses
+Target-Dialog to identify the call. Without a GRUU, the legacy in-dialog path is
+retained. Accepted REFER responses use 200; received 202 responses remain valid.
+Referred-By and an associated MIME token are forwarded without treating them as
+authorization credentials. The integration does not provide certificate or
+signature validation for those tokens.
+
+Application subscriptions share stable dialog routing and CSeq state. A refresh
+can update Contact but cannot replace the initial route set. NOTIFY follows that
+route set or Contact, rather than automatically returning to the SUBSCRIBE
+source port. Presence, MWI and BLF keep one notification in flight and at most
+one pending state update. A terminal update cannot be replaced by a later state
+change. The application owner limits retained subscriptions and publications to
+256 globally and 64 per account. Each successful PUBLISH produces a new ETag;
+independent publications for the same address remain independent records.
+
+Replaces waits for the source and destination dialogs' current media transitions
+before preparing the handoff. The source media lock remains held through commit or rollback;
+BYE processing does not wait for that lock. The destination preparation exposes
+the exact pre-commit and post-commit dialog identities, including changes that
+finished while waiting for offer serialization. Session generation, registry
+membership, endpoint claims and the destination client are checked separately.
+
+An accepted remote media change cannot be undone by freeing local reservations.
+Rollback sends a compensating offer when the same dialog is still owned. It
+does not overwrite a newer committed contract or stop video retained by that
+contract. Old
+video resources remain available until handoff finalization. Synchronous session
+handoff restores registry resources and callbacks if a local operation fails.
+The existing termination intent and cleanup barrier release the candidate;
+they do not create a second call lifecycle or RTP receiver.
+
+Protocol references: [RFC 3261](https://www.rfc-editor.org/rfc/rfc3261),
+[RFC 3264](https://www.rfc-editor.org/rfc/rfc3264),
+[RFC 3515](https://www.rfc-editor.org/rfc/rfc3515),
+[RFC 3891](https://www.rfc-editor.org/rfc/rfc3891),
+[RFC 3903](https://www.rfc-editor.org/rfc/rfc3903),
+[RFC 4538](https://www.rfc-editor.org/rfc/rfc4538),
+[RFC 5057](https://www.rfc-editor.org/rfc/rfc5057),
+[RFC 5627](https://www.rfc-editor.org/rfc/rfc5627),
+[RFC 6665](https://www.rfc-editor.org/rfc/rfc6665) and
+[RFC 7647](https://www.rfc-editor.org/rfc/rfc7647).

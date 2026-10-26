@@ -9,6 +9,8 @@ from typing import Any
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 
+from .entity_identity import phonebook_state
+
 from .config import assist_config
 from .config_validation import route_namespace_conflicts
 from .const import (
@@ -35,15 +37,13 @@ def _entry_mapping(entry: RosterEntry) -> dict[str, Any]:
 
 def _runtime_route_mappings(hass: Any) -> list[Mapping[str, Any]]:
     from .mailbox import mailbox_settings
-    from .voicemail_config import voicemail_config
 
     mappings: list[Mapping[str, Any]] = []
     from .parking_config import parking_settings
     parking = parking_settings(hass)
     if parking.get("enabled"):
         mappings.append({"parking_feature_routes": parking})
-    if voicemail_config(hass).get("enabled"):
-        mappings.append({"mailbox_feature_routes": True})
+    mappings.append({"mailbox_feature_routes": True})
     registry = endpoint_directory(hass)
     mappings.extend(
         {
@@ -268,7 +268,7 @@ def build_phonebook_service_handlers(
             await sensor.async_update()
             roster_json = sensor.extra_state_attributes.get("roster_json", "")
         else:
-            state = hass.states.get("sensor.voip_phonebook")
+            state = phonebook_state(hass)
             roster_json = str(state.attributes.get("roster_json") or "") if state is not None else ""
         await push_roster_json_to_esps(hass, roster_json)
         _LOGGER.info("Phonebook push requested (%d bytes)", len(roster_json))

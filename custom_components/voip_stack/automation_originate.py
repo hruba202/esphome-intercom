@@ -20,6 +20,7 @@ from .endpoint_registry import EndpointBusyError
 from .endpoint_session import CleanupStage, TerminationIntent
 from .fsm import CallState
 from .local_call_media import LocalAudioContract, LocalCallMedia
+from .media_ports import bind_sip_rtp_socket
 from .outbound_attempts import async_close_outbound_leg
 from .pbx_routing import roster_entry_for_target
 from .peer_snapshot import async_advertise_host, async_build_peer_snapshot
@@ -37,6 +38,9 @@ async def _dial_attempt(hass, registry, session, attempt, destination, timeout):
     registry.set_pending_route(session.call_id, {"future": decision, "outgoing_automation": True})
 
     async def dial():
+        # Bind the advertised media port before SIP can allocate an ephemeral
+        # socket or the peer can send its first RTP packet (RFC 3264, 5.1).
+        client.audio_rtp_socket = bind_sip_rtp_socket(client.local_rtp_port)
         result = await client.invite(
             target=attempt.uri.user, target_display_name=destination,
             remote_host=attempt.uri.host, remote_sip_port=sip_default_port(attempt.uri),
@@ -303,12 +307,13 @@ async def async_originate_automation_call(call: ServiceCall) -> dict:
             media = LocalCallMedia(
                 hass, invite=LocalAudioContract.from_dialog(client.dialog),
                 local_rtp_port=attempt.ports.ports[0], reservation=attempt.ports,
-                on_complete=complete,
+                on_complete=complete, rtp_socket=client.audio_rtp_socket,
             )
             if not media.can_send:
                 raise ServiceValidationError("The destination cannot receive announcement audio")
             media.release_reservation_on_stop = False
             registry.attach_relay(call_id, media)
+            client.audio_rtp_socket = None
             application.media = media
             async def update_media(_current, updated, _method):
                 commit = media.prepare_media_update(LocalAudioContract.from_dialog(updated))

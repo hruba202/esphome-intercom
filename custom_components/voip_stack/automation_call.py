@@ -11,10 +11,9 @@ from homeassistant.exceptions import ServiceValidationError
 
 from .authorization import async_require_service_admin
 from .automation_context import current_execution
-from .browser_playback import BrowserPlayback
 from .call_projection import publish_bridge_projection
 from .endpoint_lifecycle import call_registry
-from .endpoint_session import CleanupStage, TerminationIntent
+from .endpoint_session import TerminationIntent
 from .fsm import CallState
 from .runtime_data import call_runtime_artifacts
 
@@ -357,8 +356,7 @@ async def take_over_ringing_phone(call: ServiceCall, call_id: str) -> Automation
     if endpoint_id and local_source is None and native_destination is None:
         if not _release_ha_softphone_claim(call.hass, call_id, endpoint_id=endpoint_id):
             registry.release_endpoint_claim(call_id, endpoint_id)
-    # The same execution may now speak, wait for DTMF and hand off the call.
-    # It is no longer constrained to the old ringing snapshot.
+    # Application control remains valid after the call leaves ringing.
     execution.ringing_guard = None
     publish_bridge_projection(
         call.hass, session, direction="incoming", event_type="forwarding", route_kind="automation",

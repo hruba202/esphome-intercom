@@ -1,0 +1,21 @@
+# Optional BOX-3-SENSOR dock entities. Requires external_i2c.
+binary_sensor:
+- id: radar_sensor
+  platform: gpio
+  pin: GPIO21
+  disabled_by_default: false
+  name: Presence
+  device_class: occupancy
+  filters:
+  - delayed_off: 120s
+sensor:
+- platform: aht10
+  variant: AHT20
+  i2c_id: external_i2c
+  temperature:
+    name: Temperature
+    id: s3temp
+  humidity:
+    name: Humidity
+    id: s3hum
+  update_interval: 60s

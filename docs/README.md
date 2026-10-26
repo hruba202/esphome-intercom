@@ -19,6 +19,12 @@ beyond the project overview in the [top-level README](../README.md).
 Historical release notes and migration entries describe their named versions.
 Do not use an old release example as the current installation procedure.
 
+For ESP firmware, use a separate progression: [choose and build your board](../yamls/README.md#how-to-use),
+then [edit its feature selection](../packages/README.md#work-through-a-full-profile),
+and only then explore the [board/audio/module map](../packages/README.md#find-the-implementation).
+The [migration checklist](BREAKING_CHANGES.md#development-firmware-new-device-packages)
+explains how to carry settings from an older YAML into the new device packages.
+
 ## Pick your path
 
 | Need | Document |
@@ -28,6 +34,7 @@ Do not use an old release example as the current installation procedure.
 | Build greetings, keypad menus and call routing in the HA editor | [Automation as dialplan cookbook](AUTOMATION_DIALPLAN.md) |
 | Review the current release | [Release history](../CHANGELOG.md) |
 | Choose a board and maintained YAML | [Deployment guide](DEPLOYMENT_GUIDE.md) |
+| Start simple and add ESP voice, calls, music or presentation | [Package walkthrough](../packages/README.md#work-through-a-full-profile) |
 | Complete the shortest supported setup | [Quick start](../README.md#fastest-start) |
 | Update an existing installation | [Breaking changes](BREAKING_CHANGES.md) |
 | Connect ESP firmware to a classic PBX | [Static SIP peers without REGISTER](CLASSIC_PBX.md) |
@@ -62,6 +69,7 @@ preview, not stable 2026.10.1.
 | Ring and conference groups | [Groups](GROUPS.md) |
 | Phone mailboxes, SIP message indicators and optional transcription | [Voicemail](VOICEMAIL.md) |
 | Parking, retrieval and directed pickup | [Call parking](CALL_PARKING.md) |
+| Blind transfer from the card and consultation transfer from a SIP handset | [Transfer a call](USER_GUIDE.md#forward-or-transfer-a-call) |
 | Play an ordinary ESPHome announcement or PCM sound | [ESPHome sound actions](ESPHOME_SOUND_ACTIONS.md) |
 | Record an established conversation | [Conversation recording](CALL_RECORDING.md) |
 | Provider registration and external routing | [SIP trunk](SIP_TRUNK.md) |
@@ -97,8 +105,9 @@ Each ESPHome component ships its own README with the full option list, YAML snip
 - Full-experience media now uses ESPHome's source-based `speaker_source` path:
   HA media, announcements, local files and optional Sendspin streams feed one
   media player before the mixer arbitrates with VoIP and Voice Assistant.
-  The local [`speaker`](../esphome/components/speaker/README.md) fork remains
-  documented for custom YAMLs that still use `platform: speaker`.
+  The native ESPHome `speaker` base remains in use; the local legacy player
+  fork has been removed. See the [migration instructions](BREAKING_CHANGES.md#development-firmware-retired-speaker-fork)
+  for custom YAMLs that selected it explicitly.
 - [`runtime_controller`](https://github.com/n-IA-hane/esphome-runtime-controller), a generic
   YAML-programmed reducer used by maintained full-experience profiles to derive
   LED, LVGL/display, audio ducking, ringtone and timer policies from one state

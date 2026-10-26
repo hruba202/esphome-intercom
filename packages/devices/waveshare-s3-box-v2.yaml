@@ -1,0 +1,174 @@
+# Waveshare 1.85C BOX V2: one device owner, selectable processing and SIP.
+# Hardware calibration is shared. Only the selected processor is included.
+defaults:
+  audio_processor: ${ audio_processor | default("aec") }
+  mic_mix: ${ mic_mix | default("average") }
+  mic_id: ${ mic_id | default("mic_main") }
+  aec_mode_options: ${ aec_mode_options | default(["fd_low_cost", "fd_high_perf"]) }
+  afe_mode_options: ${ afe_mode_options | default(["sr_low_cost", "sr_high_perf", "fd_low_cost", "fd_high_perf"]) }
+substitutions:
+  audio_processor: ${audio_processor}
+  mic_mix: ${mic_mix}
+  mic_id: ${mic_id}
+  _v2_afe: ${ (audio_processor | lower) == 'afe' }
+  _v2_average: ${ (mic_mix | lower) == 'average' }
+  # FULL AFE plus the native 360x360 assets needs the official size optimization
+  # to fit the existing OTA slots. DSP algorithms and assets remain unchanged.
+  v2_compiler_optimization: ${ 'SIZE' if _v2_afe and 'display' in firmware_features else 'PERF' }
+  firmware_processing_modes: ${ afe_mode_options if _v2_afe else aec_mode_options }
+  gmf_ai_audio_source: ''
+  runtime_controller_debug: 'false'
+  http_media_persistent_ring_buffer: 'true'
+  http_media_ring_buffer_size: '32768'
+  sendspin_audio_ring_buffer_size: '262144'
+  voip_audio_task_stacks_in_psram: 'true'
+  voip_tx_task_stack_size: '12288'
+  voip_rx_task_stack_size: '12288'
+  name: waveshare-s3-touch-lcd-185c-v2
+  friendly_name: Waveshare S3 Touch LCD 1.85C V2
+  ext_components_source: github://n-IA-hane/esphome-intercom@dev
+  voip_stack_components_source: github://n-IA-hane/esphome-voip-stack@dev
+  audio_stack_components_source: github://n-IA-hane/esphome-audio-stack@dev
+  runtime_controller_components_source: github://n-IA-hane/esphome-runtime-controller@dev
+  assets_base: https://github.com/n-IA-hane/esphome-intercom/raw/dev/
+  ai_avatar: f_off
+  settings_row_width: '255'
+  settings_wide_width: '285'
+  settings_mid_width: '255'
+  settings_narrow_width: '225'
+  settings_dropdown_width: '255'
+  settings_slider_height: '18'
+  settings_switch_width: '75'
+  settings_switch_height: '39'
+  settings_label_font: font_info
+  settings_pad_row: '9'
+  voice_assist_idle_phase_id: '1'
+  voice_assist_listening_phase_id: '2'
+  voice_assist_thinking_phase_id: '3'
+  voice_assist_replying_phase_id: '4'
+  voice_assist_not_ready_phase_id: '10'
+  voice_assist_error_phase_id: '11'
+  voice_assist_muted_phase_id: '12'
+  font_glyphsets: GF_Latin_Core
+  font_family: Figtree
+  display_width: '360'
+  display_height: '360'
+  codec_i2c_sda_pin: GPIO11
+  codec_i2c_scl_pin: GPIO10
+  i2s_mclk_pin: GPIO2
+  i2s_bclk_pin: GPIO48
+  i2s_lrclk_pin: GPIO38
+  i2s_din_pin: GPIO39
+  i2s_dout_pin: GPIO47
+  battery_adc_pin: GPIO8
+  main_button_pin: GPIO0
+  speaker_enable_pin: GPIO15
+  display_backlight_pin: GPIO5
+  touch_interrupt_pin: GPIO4
+  firmware_lvgl: true
+  firmware_display_package: ../features/presentation/devices/waveshare_v2.yaml
+  firmware_primary_button_id: main_button
+  firmware_voice_binding:
+    voice_assistant:
+      id: va
+      microphone: ${mic_id}
+      media_player: speaker_media_player
+      noise_suppression_level: 0
+      auto_gain: 0dBFS
+      volume_multiplier: 2.0
+  firmware_wake_word_binding:
+    micro_wake_word:
+      id: mww
+      microphone: ${mic_id}
+      stop_after_detection: false
+      models:
+      - model: alexa
+  firmware_voip_binding:
+    voip_stack:
+      use_ha_as_first_contact: true
+      task_stacks_in_psram: true
+      audio_task_stacks_in_psram: ${voip_audio_task_stacks_in_psram}
+      tx_task_stack_size: ${voip_tx_task_stack_size}
+      rx_task_stack_size: ${voip_rx_task_stack_size}
+      signaling_buffers_in_psram: true
+      buffers_in_psram: true
+      id: phone
+      extension: '101'
+      conference_groups: CG Casa
+      conference_ring: false
+      ring_groups: RG Casa
+      audio:
+        tx:
+          sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        tx_formats:
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx:
+          sample_rate: 48000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        rx_formats:
+        - sample_rate: 32000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 10
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 16
+        - sample_rate: 16000
+          pcm_format: s16le
+          channels: 1
+          frame_ms: 32
+      microphone: ${mic_id}
+      speaker: voip_speaker_input
+      delete_contact_missing_from:
+        updates_number: 1
+  firmware_music_binding:
+    media_source:
+    - id: !extend 'media_http_source'
+      buffer_size: ${http_media_ring_buffer_size}
+      task_stack_in_psram: true
+      persistent_ring_buffer: ${http_media_persistent_ring_buffer}
+  firmware_announcement_binding:
+    media_source:
+    - id: !extend 'announcement_http_source'
+      buffer_size: ${http_media_ring_buffer_size}
+      task_stack_in_psram: true
+      persistent_ring_buffer: ${http_media_persistent_ring_buffer}
+  _round_full_buttons: !include '../features/controls/spotpear_full.yaml'
+  _round_simple_buttons: !include '../features/controls/primary_button.yaml'
+  _round_diagnostics: !include '../diagnostics/native.yaml'
+  firmware_controls:
+    packages:
+      buttons: ${ _round_full_buttons if _fw_display and _fw_voice and _fw_voip else _round_simple_buttons }
+      processing: !include ${ '../features/audio_controls/afe_mode.yaml' if _v2_afe else '../features/audio_controls/aec_mode.yaml' }
+  aec_initial_mode: fd_low_cost
+  aec_mode_restore_value: false
+  afe_initial_mode: fd_high_perf
+  afe_mode_restore_value: false
+runtime_controller:
+  id: runtime
+  storage_in_psram: true
+packages:
+  feature_validation: !include ../profiles/feature_validation.yaml
+  hardware: !include '../board/waveshare_s3_box_v2.yaml'
+  display_hardware: !include '${ ''../board/waveshare_s3_box_v2_display.yaml'' if ''display'' in firmware_features
+    else ''../features/shared/absent.yaml'' }'
+  audio: !include ${ '../audio/profiles/waveshare-s3-box-v2-afe.yaml' if _v2_afe else '../audio/profiles/waveshare-s3-box-v2-aec.yaml' }
+  boot: !include '../features/shared/spotpear_boot.yaml'
+  diagnostics: ${ _round_diagnostics if 'diagnostics' in firmware_features else {} }
+  flac_memory: !include '../audio/flac_codecs_psram.yaml'
+  application: !include '../profiles/application.yaml'
+firmware_feature_check:
+  audio_processor: ${audio_processor}
