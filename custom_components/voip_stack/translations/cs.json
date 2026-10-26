@@ -20,7 +20,7 @@
           "sip_port": "Naslouchací port pro SIP koncový bod HA. HA na tomto portu automaticky přijímá SIP signalizaci přes UDP i TCP.",
           "rtp_port": "Základní RTP UDP port pro média a přenosy HA.",
           "advertise_host": "Volitelné přepsání adresy zveřejňované v telefonních seznamech ESP. Použijte v případě, že se HA nachází za směrovačem, NAT, LXC, VPN nebo ve více podsítích a automaticky oznámená adresa není pro zařízení ESP dostupná.",
-          "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. \"Hey Jarvis, zavolej do kuchyně\"). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
+         
           "assist_intents": "Registrovat volitelné obslužné rutiny Assist pro volání, ukončení hovoru, přijetí a odmítnutí (např. \"Hey Jarvis, call Kitchen\"). Vyslovená jména kontaktů se dynamicky vyhodnocují oproti aktuálnímu telefonnímu seznamu VoIP.",
           "assist_endpoint_enabled": "Přidat SIP klapku propojenou přímo s konverzačním asistentem Home Assistant Assist. Není vyžadována žádná samostatná VoIP integrace ani SIP posluchač.",
           "debug_mode": "Povolí podrobnou diagnostiku a logování SIP/RTP/médií bez zaznamenávání samotného zvuku hovorů.",
